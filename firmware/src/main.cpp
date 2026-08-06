@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "compat/log.h"
 #include <FreeRTOS.h>
 #include <task.h>
 #include <queue.h>

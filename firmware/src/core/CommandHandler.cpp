@@ -1,4 +1,5 @@
 #include "core/CommandHandler.h"
+#include "compat/log.h"
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
 

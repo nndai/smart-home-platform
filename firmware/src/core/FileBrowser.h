@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <lt_logger.h>
+#include "compat/log.h"
 
 class FileBrowser {
 public:

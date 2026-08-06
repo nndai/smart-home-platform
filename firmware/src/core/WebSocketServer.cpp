@@ -1,4 +1,5 @@
 #include "core/WebSocketServer.h"
+#include "compat/log.h"
 
 WebSocketServer::WebSocketServer(uint16_t port)
     : _server(nullptr)

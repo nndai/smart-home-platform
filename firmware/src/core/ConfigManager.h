@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <cstring>
 #include <Config.h>
+#include "compat/log.h"
 
 enum class ConnMode : uint8_t { AP_WS = 0, STA_MQTT, DEBUG_WS };
 enum class RelayStartMode : uint8_t { OFF = 0, ON, LAST };

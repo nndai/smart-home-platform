@@ -45,6 +45,7 @@
  * lt_ota), nên chạy trước mọi ctor khác là an toàn.
  */
 #include <Arduino.h>
+#include "compat/log.h"
 #include <FreeRTOS.h>
 #include <task.h>
 #include <Config.h>

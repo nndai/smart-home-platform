@@ -1,5 +1,6 @@
 #pragma once
 #include "LogBase.h"
+#include "compat/log.h"
 #include <FreeRTOS.h>
 #include <queue.h>
 #include <task.h>
