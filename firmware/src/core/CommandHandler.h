@@ -8,15 +8,16 @@
 #include <LittleFS.h>
 
 #include "core/ConfigManager.h"
-#include "profiles/pump/PumpConfig.h"
-#include "profiles/pump/CurrentSensor.h"
-#include "profiles/pump/TemperatureSensor.h"
-#include "profiles/pump/PumpController.h"
+#include "core/DeviceDriver.h"
 #include "core/MqttClient.h"
 #include "core/WebSocketServer.h"
 #include "core/log/LogManager.h"
 #include "core/OTAManager.h"
 #include "core/FileBrowser.h"
+
+// CommandHandler xử lý mọi command dùng chung; command riêng của thiết bị
+// (setRelay, calibrate...) được chuyển cho DeviceDriver (xem setDriver).
+struct PumpConfig;
 
 class CommandHandler {
 public:
@@ -29,9 +30,8 @@ public:
     };
 
     CommandHandler();
-    void begin(ConfigManagerT<PumpConfig>* cfg, CurrentSensor* current, TemperatureSensor* temp,
-               PumpController* pump, LogManager* log,
-               OTAManager* ota);
+    void begin(ConfigManagerT<PumpConfig>* cfg, LogManager* log, OTAManager* ota);
+    void setDriver(DeviceDriver* driver) { _driver = driver; }
     void setResponseCallback(ResponseCallback cb);
     void handleCommand(const String& source, const String& json);
 
@@ -42,9 +42,7 @@ public:
 
 private:
     ConfigManagerT<PumpConfig>* _cfg;
-    CurrentSensor* _current;
-    TemperatureSensor* _temp;
-    PumpController* _pump;
+    DeviceDriver* _driver = nullptr;
     LogManager* _log;
     OTAManager* _ota;
     ResponseCallback _responseCb;
@@ -64,7 +62,6 @@ private:
     void _sendResponse(const String& source, const String& json);
     void _handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload);
 
-    void _cmdSetRelay(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdSetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp);
@@ -73,9 +70,6 @@ private:
     void _cmdOtaUrl(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdReboot(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp);
-    void _cmdCalibrate(const String& source, const JsonDocument& payload, JsonDocument& resp);
-    void _cmdResetCalibration(const String& source, const JsonDocument& payload, JsonDocument& resp);
-    void _cmdClearPumpFault(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetScanWifiData(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetLogStats(const String& source, const JsonDocument& payload, JsonDocument& resp);

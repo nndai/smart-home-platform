@@ -2,6 +2,7 @@
 #include "compat/log.h"
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
+#include "profiles/pump/PumpConfig.h"
 
 extern "C" uint16_t cal_adc_read(adc_ch_t ch);
 
@@ -9,21 +10,15 @@ extern ConnMode g_connMode;
 
 CommandHandler::CommandHandler()
     : _cfg(nullptr)
-    , _current(nullptr)
-    , _temp(nullptr)
-    , _pump(nullptr)
+    , _driver(nullptr)
     , _log(nullptr)
     , _ota(nullptr)
 {
 }
 
-void CommandHandler::begin(ConfigManagerT<PumpConfig>* cfg, CurrentSensor* current, TemperatureSensor* temp,
-    PumpController* pump, LogManager* log,
+void CommandHandler::begin(ConfigManagerT<PumpConfig>* cfg, LogManager* log,
     OTAManager* ota) {
     _cfg = cfg;
-    _current = current;
-    _temp = temp;
-    _pump = pump;
     _log = log;
     _ota = ota;
 }
@@ -81,8 +76,13 @@ void CommandHandler::_handleCommand(const String& source, const JsonDocument& cm
     
     if (reqId.length() > 0) resp["reqId"] = reqId;
 
-    if (cmdStr == "setRelay") _cmdSetRelay(source, payload, resp);
-    else if (cmdStr == "getStatus") _cmdGetStatus(source, payload, resp);
+    // Command riêng của thiết bị → chuyển cho driver
+    if (_driver && _driver->handleCmd(cmdStr.c_str(), payload, resp)) {
+        _sendResponse(source, resp);
+        return;
+    }
+
+    if (cmdStr == "getStatus") _cmdGetStatus(source, payload, resp);
     else if (cmdStr == "getConfig") _cmdGetConfig(source, payload, resp);
     else if (cmdStr == "setConfig") _cmdSetConfig(source, payload, resp);
     else if (cmdStr == "getLog") _cmdGetLog(source, payload, resp);
@@ -90,8 +90,6 @@ void CommandHandler::_handleCommand(const String& source, const JsonDocument& cm
     else if (cmdStr == "otaUrl") _cmdOtaUrl(source, payload, resp);
     else if (cmdStr == "reboot") _cmdReboot(source, payload, resp);
     else if (cmdStr == "factoryReset") _cmdFactoryReset(source, payload, resp);
-    else if (cmdStr == "calibrate") _cmdCalibrate(source, payload, resp);
-    else if (cmdStr == "resetCalibration") _cmdResetCalibration(source, payload, resp);
     else if (cmdStr == "setLogMqtt") _cmdSetLogMqtt(source, payload, resp);
     else if (cmdStr == "getLogMqtt") _cmdGetLogMqtt(source, payload, resp);
     else if (cmdStr == "getLogStats") _cmdGetLogStats(source, payload, resp);
@@ -100,7 +98,6 @@ void CommandHandler::_handleCommand(const String& source, const JsonDocument& cm
     else if (cmdStr == "uploadFirmwareEnd") _cmdUploadFirmwareEnd(source, payload, resp);
     else if (cmdStr == "uploadFirmwareAbort") _cmdUploadFirmwareAbort(source, payload, resp);
     else if (cmdStr == "otaChunk") _cmdOtaChunk(source, payload, resp);
-    else if (cmdStr == "clearPumpFault") _cmdClearPumpFault(source, payload, resp);
     else if (cmdStr == "scanWifi") _cmdScanWifi(source, payload, resp);
     else if (cmdStr == "getScanWifiData") _cmdGetScanWifiData(source, payload, resp);
     else if (cmdStr == "listDir" || cmdStr == "readFile" || cmdStr == "fileInfo" || cmdStr == "deleteItem" || cmdStr == "fsInfo" || cmdStr == "downloadFile") {
@@ -152,67 +149,14 @@ void CommandHandler::sendStream(StreamType type) {
     }
 }
 
-void CommandHandler::_cmdSetRelay(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    if (!payload["state"].is<bool>()) {
-        resp["status"] = "error";
-        resp["message"] = "Missing or invalid 'state' field";
-        _sendResponse(source, resp);
-        return;
-    }
-    bool on = payload["state"].as<bool>();
-    on ? _pump->turnOn() : _pump->turnOff();
-    resp["status"] = "ok";
-    resp["state"] = on ? "on" : "off";
-    LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
-    _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
-    _sendResponse(source, resp);
-}
-
 void CommandHandler::_cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     
     resp["timestamp"] = _log->getEpoch();
-    BL0937SensorData blData = _current->readAll();
 
     resp["status"] = "ok";
-    resp["relay"] = _pump->isOn();
-    resp["current"] = blData.current;
-    resp["power"] = blData.power;
-    resp["voltage"] = blData.voltage;
-    resp["dailyEnergy"] = blData.dailyEnergy;
-    resp["hourlyEnergy"] = blData.hourlyEnergy;
-    resp["apparent"] = blData.apparent;
-    resp["pf"] = blData.pf;
-    resp["temperature"] = _temp->readCelsius();
     resp["rssi"] = WiFi.RSSI();
-    resp["pumpMode"] = _cfg->get().pumpMode;
-    switch (_pump->getState()) {
-    case PumpState::OFF:
-        resp["pumpStateStr"] = "OFF";
-        resp["pumpState"] = (int)PumpState::OFF;
-        break;
-    case PumpState::RUNNING_OK:
-        resp["pumpStateStr"] = "RUNNING OK";
-        resp["pumpState"] = (int)PumpState::RUNNING_OK;
-        break;
-    case PumpState::DRY_RUN:
-        resp["pumpStateStr"] = "DRY RUN";
-        resp["pumpState"] = (int)PumpState::DRY_RUN;
-        break;
-    case PumpState::HIGH_CURRENT:
-        resp["pumpStateStr"] = "HIGH CURRENT";
-        resp["pumpState"] = (int)PumpState::HIGH_CURRENT;
-        break;
-    case PumpState::CRITICAL_CURRENT:
-        resp["pumpStateStr"] = "CRITICAL CURRENT";
-        resp["pumpState"] = (int)PumpState::CRITICAL_CURRENT;
-        break;
-    case PumpState::OVERLOAD:
-        resp["pumpStateStr"] = "OVERLOAD";
-        resp["pumpState"] = (int)PumpState::OVERLOAD;
-        break;
-    }
-
+    if (_driver) _driver->getStatus(resp);
 
     _sendResponse(source, resp);
 
@@ -253,24 +197,13 @@ void CommandHandler::_cmdGetConfig(const String& source, const JsonDocument& pay
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", c.debugNetmask[0], c.debugNetmask[1], c.debugNetmask[2], c.debugNetmask[3]);
     resp["debugNetmask"] = (const char*)ipBuf;
 
-    // Pump settings
-    resp["pumpMode"] = c.pumpMode;
-    resp["threshOff"] = c.threshOff;
-    resp["threshNoWater"] = c.threshNoWater;
-    resp["threshRunning"] = c.threshRunning;
-    resp["threshOverload"] = c.threshOverload;
-
-    resp["dryTimeout"] = c.dryTimeout;
-    resp["overloadTimeout"] = c.overloadTimeout;
     resp["relayStartMode"] = (int)c.relayStartMode;
-
-    // Calibration coefficients
-    resp["cCal"] = c.cCal;
-    resp["vCal"] = c.vCal;
-    resp["pCal"] = c.pCal;
 
     resp["sysLogFileEnabled"] = c.sysLogFileEnabled;
     resp["sysLogFileLevel"] = c.sysLogFileLevel;
+
+    // Field riêng của thiết bị
+    if (_driver) _driver->getConfig(resp);
 
     _sendResponse(source, resp);
 }
@@ -353,39 +286,8 @@ void CommandHandler::_cmdSetConfig(const String& source, const JsonDocument& pay
         needReboot = true;
     }
 
-    // Pump settings
-    if (payload["pumpMode"].is<bool>()) { c.pumpMode = payload["pumpMode"];  
-        _pump->setPumpMode(c.pumpMode);
-        changed = true;
-    }
-    if (payload["dryTimeout"].is<unsigned int>()) { 
-        c.dryTimeout = payload["dryTimeout"]; 
-        _pump->setTimeouts(c.dryTimeout, c.overloadTimeout);
-        changed = true;
-    }
-    if (payload["overloadTimeout"].is<unsigned int>()) { 
-        c.overloadTimeout = payload["overloadTimeout"]; 
-        _pump->setTimeouts(c.dryTimeout, c.overloadTimeout);
-        changed = true;
-    }
-    if (payload["threshOff"].is<unsigned int>()) { 
-        c.threshOff = payload["threshOff"]; 
-        _pump->setThresholds(c.threshOff, c.threshNoWater, c.threshRunning, c.threshOverload);
-        changed = true; 
-    }
-    if (payload["threshNoWater"].is<unsigned int>()) { 
-        c.threshNoWater = payload["threshNoWater"]; 
-        _pump->setThresholds(c.threshOff, c.threshNoWater, c.threshRunning, c.threshOverload);
-        changed = true;
-    }
-    if (payload["threshRunning"].is<unsigned int>()) { 
-        c.threshRunning = payload["threshRunning"]; 
-        _pump->setThresholds(c.threshOff, c.threshNoWater, c.threshRunning, c.threshOverload);
-        changed = true;
-    }
-    if (payload["threshOverload"].is<unsigned int>()) { 
-        c.threshOverload = payload["threshOverload"]; 
-        _pump->setThresholds(c.threshOff, c.threshNoWater, c.threshRunning, c.threshOverload);
+    // Pump settings → driver
+    if (_driver && _driver->setConfig(payload, resp)) {
         changed = true;
     }
 
@@ -397,23 +299,6 @@ void CommandHandler::_cmdSetConfig(const String& source, const JsonDocument& pay
             changed = true; 
         }
     }
-
-    // Calibration coefficients
-    if (payload["cCal"].is<double>()) { 
-        c.cCal = payload["cCal"]; 
-        _current->setCurrentMultiplier(c.cCal); 
-        changed = true; 
-    }
-    if (payload["vCal"].is<double>()) { 
-        c.vCal = payload["vCal"]; 
-        _current->setVoltageMultiplier(c.vCal); 
-        changed = true; }
-    if (payload["pCal"].is<double>()) { 
-        c.pCal = payload["pCal"]; 
-        _current->setPowerMultiplier(c.pCal); 
-        changed = true; 
-    }
-
 
     // Debug network settings
     auto parseIP = [](const char* s, uint8_t ip[4]) -> bool {
@@ -532,63 +417,6 @@ void CommandHandler::_cmdFactoryReset(const String& source, const JsonDocument& 
     LT_IM(CMD, "Factory reset");
     delay(1000);
     ESP.restart();
-}
-
-void CommandHandler::_cmdCalibrate(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    bool didCalib = false;
-
-    if (payload["current"].is<double>()) {
-        double expected = payload["current"].as<double>();
-        _current->calibrateCurrent(expected);
-        LT_IM(CMD, "Calibrated current to %.2fA", expected);
-        didCalib = true;
-    }
-
-    if (payload["voltage"].is<unsigned int>()) {
-        unsigned int expected = payload["voltage"].as<unsigned int>();
-        _current->calibrateVoltage(expected);
-        LT_IM(CMD, "Calibrated voltage to %u V", expected);
-        didCalib = true;
-    }
-
-    if (payload["power"].is<unsigned int>()) {
-        unsigned int expected = payload["power"].as<unsigned int>();
-        _current->calibratePower(expected);
-        LT_IM(CMD, "Calibrated power to %u W", expected);
-        didCalib = true;
-    }
-
-    if (didCalib) {
-        PumpConfig& c = _cfg->get();
-        c.cCal = _current->getCurrentMultiplier();
-        c.vCal = _current->getVoltageMultiplier();
-        c.pCal = _current->getPowerMultiplier();
-        _cfg->save(c);
-        resp["status"] = "ok";
-        resp["message"] = "Calibrated";
-    }
-
-    resp["cCal"] = _current->getCurrentMultiplier();
-    resp["vCal"] = _current->getVoltageMultiplier();
-    resp["pCal"] = _current->getPowerMultiplier();
-    _sendResponse(source, resp);
-}
-
-void CommandHandler::_cmdResetCalibration(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    (void)payload;
-    _current->resetCalibration();
-    PumpConfig& c = _cfg->get();
-    c.cCal = _current->getCurrentMultiplier();
-    c.vCal = _current->getVoltageMultiplier();
-    c.pCal = _current->getPowerMultiplier();
-    _cfg->save(c);
-    resp["status"] = "ok";
-    resp["message"] = "Calibration reset to HW defaults";
-    resp["cCal"] = c.cCal;
-    resp["vCal"] = c.vCal;
-    resp["pCal"] = c.pCal;
-    _sendResponse(source, resp);
-    LT_IM(CMD, "Calibration reset");
 }
 
 void CommandHandler::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
@@ -828,23 +656,7 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
     }
 
     if (has("pump")) {
-        JsonObject p = resp["pump"].to<JsonObject>();
-        p["relay"] = _pump->isOn();
-        p["voltage"] = _current->getVoltage();
-        p["current"] = _current->getCurrent();
-        p["power"] = _current->getActivePower();
-        p["apparent"] = _current->getApparentPower();
-        p["dailyEnergy"] = _current->getDailyEnergy();
-        p["hourlyEnergy"] = _current->getHourlyEnergy();
-        p["temperature"] = _temp->readCelsius();
-        switch (_pump->getState()) {
-        case PumpState::OFF:        p["pumpState"] = "off"; break;
-        case PumpState::RUNNING_OK: p["pumpState"] = "running"; break;
-        case PumpState::DRY_RUN:       p["pumpState"] = "dry_run"; break;
-        case PumpState::HIGH_CURRENT:  p["pumpState"] = "high_current"; break;
-        case PumpState::CRITICAL_CURRENT: p["pumpState"] = "critical_current"; break;
-        case PumpState::OVERLOAD:      p["pumpState"] = "overload"; break;
-        }
+        if (_driver) _driver->getSysInfo(resp);
     }
 
     _sendResponse(source, resp);
@@ -852,15 +664,6 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
     if (payload["stream"].is<bool>() && payload["stream"].as<bool>()) {
         startStream(STREAM_SYSINFO, source, STREAM_DURATION_MS);
     }
-}
-
-void CommandHandler::_cmdClearPumpFault(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    (void)payload;
-    _pump->clearPumpFault();
-    resp["status"] = "ok";
-    resp["message"] = "Pump fault cleared";
-    LT_IM(CMD, "Clear pump fault");
-    _sendResponse(source, resp);
 }
 
 void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp) {

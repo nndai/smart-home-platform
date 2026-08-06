@@ -9,31 +9,24 @@
 #include <sdk_private.h>
 
 #include "core/ConfigManager.h"
-#include "profiles/pump/PumpConfig.h"
-#include "profiles/pump/CurrentSensor.h"
-#include "profiles/pump/TemperatureSensor.h"
-#include "core/devices/RelayController.h"
 #include "core/LedController.h"
 #include <OneButton.h>
-#include "profiles/pump/PumpController.h"
 #include "core/MqttClient.h"
 #include "core/WebSocketServer.h"
 #include "core/log/LogManager.h"
 #include "core/OTAManager.h"
 #include "core/CommandHandler.h"
 #include "core/BuildInfo.h"
+#include "profiles/registry.h"
 #include "utils/power_mgmt/ln_pm.h"
 #include <hal/hal_gpio.h>
 
 
 // ── Global objects ──
 ConfigManagerT<PumpConfig> configManager;
-CurrentSensor currentSensor;
-TemperatureSensor tempSensor;
-RelayController relayController;
+DeviceDriver* g_driver = nullptr;
 LedController ledController;
 OneButton button;
-PumpController pumpController;
 MqttClient mqttClient;
 WebSocketServer wsServer(WEBSOCKET_PORT);
 LogManager logManager;
@@ -51,17 +44,11 @@ void taskWifiConnect(void* pvParams);
 void taskWsLoop(void* pvParams);
 void taskMqttLoop(void* pvParams);
 void taskNtpUpdate(void* pvParams);
-void sensorTask(void* pvParams);
+void driverTask(void* pvParams);
 void buttonTask(void* pvParams);
 void ledTask(void* pvParams);
 void taskWdtFeed(void* pvParams);
-void taskEnergyLog(void* pvParams);
 void taskStreamSender(void* pvParams);
-
-// ── Energy log tracking ──
-static uint32_t s_lastHourEpoch = UINT32_MAX;
-static uint32_t s_hourRefMillis = 0;
-static uint32_t s_lastDayEpoch = UINT32_MAX;
 
 static void setupAP_WS(PumpConfig& cfg);
 static void setupSTA_MQTT(PumpConfig& cfg);
@@ -69,7 +56,6 @@ static void setupDEBUG_WS(PumpConfig& cfg);
 static void onMqttMessage(const String& topic, const String& payload);
 static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
-static void onPumpState(PumpState state, float current, bool isOn, const char* msg);
 static void onButtonClick();
 static void onButtonDoubleClick();
 static void onButtonLongPressStart();
@@ -194,35 +180,19 @@ void setup() {
 
     configManager.print();
 
-    currentSensor.begin(PIN_BL0937_CF, PIN_BL0937_CF1, PIN_BL0937_SEL);
-    if (isnan(cfg.cCal) || isnan(cfg.vCal) || isnan(cfg.pCal)) {
-        cfg.cCal = currentSensor.getCurrentMultiplier();
-        cfg.vCal = currentSensor.getVoltageMultiplier();
-        cfg.pCal = currentSensor.getPowerMultiplier();
-        configManager.save(cfg);
-    }
-    else {
-        currentSensor.setCurrentMultiplier(cfg.cCal);
-        currentSensor.setVoltageMultiplier(cfg.vCal);
-        currentSensor.setPowerMultiplier(cfg.pCal);
-    }
+    // Driver thiết bị (theo profile) — wiring + calib + relayStartMode nằm trong driver
+    g_driver = createDriver();
+    g_driver->setLed(&ledController);
+    g_driver->setLog(&logManager);
+    g_driver->begin(configManager.get(), [&]() { return configManager.save(); });
 
-
-    tempSensor.begin(PIN_NTC_ADC);
-    relayController.begin(PIN_RELAY, PIN_TRIAC_GATE);
     ledController.begin(PIN_LED, LED_ACTIVE_LOW);
     button.setup(PIN_BUTTON, INPUT_PULLUP, BUTTON_ACTIVE_LOW);
 
-    pumpController.begin(&relayController, cfg.pumpMode);
-    pumpController.setThresholds(cfg.threshOff, cfg.threshNoWater, cfg.threshRunning, cfg.threshOverload);
-    pumpController.setTimeouts(cfg.dryTimeout, cfg.overloadTimeout);
-    pumpController.setEventCallback(onPumpState);
-
-
     otaManager.begin();
 
-    commandHandler.begin(&configManager, &currentSensor, &tempSensor,
-        &pumpController, &logManager, &otaManager);
+    commandHandler.begin(&configManager, &logManager, &otaManager);
+    commandHandler.setDriver(g_driver);
     commandHandler.setResponseCallback(sendResponse);
 
     ln_pm_always_clk_disable_select(CLK_G_I2S | CLK_G_WS2811 | CLK_G_SDIO | CLK_G_AES);
@@ -244,21 +214,9 @@ void setup() {
         break;
     }
 
-    if (cfg.relayStartMode == RelayStartMode::ON) {
-        pumpController.turnOn();
-    }
-    else if (cfg.relayStartMode == RelayStartMode::OFF) {
-        pumpController.turnOff();
-    }
-    else {
-        // LAST: TODO
-        pumpController.turnOff();
-    }
-
-    xTaskCreate(sensorTask, "sensor", TASK_SENSOR_STACK, NULL, TASK_SENSOR_PRIO, NULL);
+    xTaskCreate(driverTask, "driver", TASK_SENSOR_STACK, NULL, TASK_SENSOR_PRIO, NULL);
     xTaskCreate(buttonTask, "button", TASK_BUTTON_STACK, NULL, TASK_BUTTON_PRIO, NULL);
     xTaskCreate(ledTask, "led", TASK_LED_STACK, NULL, TASK_LED_PRIO, NULL);
-    xTaskCreate(taskEnergyLog, "energyLog", 1000, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(taskStreamSender, "stream", 1000, NULL, tskIDLE_PRIORITY + 2, NULL);
 
     LT_IM(SYS, "System ready!");
@@ -495,52 +453,14 @@ void taskWdtFeed(void* pvParams) {
     }
 }
 
-// ── Energy Log Task ──
-void taskEnergyLog(void* pvParams) {
+// ── Driver Task ──
+void driverTask(void* pvParams) {
     (void)pvParams;
-    uint32_t time = 0;
+    TickType_t lastWake = xTaskGetTickCount();
 
     while (1) {
-        if (logManager.isTimeSynced()) {
-            uint32_t epoch = logManager.getEpoch();
-            uint32_t h = epoch / 3600;
-
-            if (h != s_lastHourEpoch && s_lastHourEpoch != UINT32_MAX) {
-                uint32_t wh = currentSensor.getHourlyEnergy(); // Wh
-                if (wh > 0) {
-                    uint8_t label = s_lastHourEpoch % 24;
-                    time_t intervalStart = (time_t)s_lastHourEpoch * 3600;
-                    logManager.logHourlyPower(label, wh, intervalStart);
-                    logManager.addTotalPower(wh);
-                }
-                currentSensor.resetHourlyEnergy();
-            }
-            s_lastHourEpoch = h;
-            s_hourRefMillis = millis();
-
-            uint32_t d = epoch / 86400;
-            if (d != s_lastDayEpoch && s_lastDayEpoch != UINT32_MAX) {
-                currentSensor.resetDailyEnergy();
-            }
-            s_lastDayEpoch = d;
-        }
-        else {
-            if (millis() - s_hourRefMillis >= 3600000UL) {
-                uint32_t wh = currentSensor.getHourlyEnergy(); // Wh
-                if (wh > 0) {
-                    logManager.addTotalPower(wh);
-                }
-                currentSensor.resetHourlyEnergy();
-                s_hourRefMillis = millis();
-            }
-        }
-
-        if (millis() - time >= 3600000UL) {
-            time = millis();
-            logManager.addPumpTime(3600000UL);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        g_driver->loop(millis());
+        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(20));
     }
 }
 
@@ -553,24 +473,6 @@ void taskStreamSender(void* pvParams) {
         commandHandler.sendStream(CommandHandler::STREAM_STATUS);
         commandHandler.sendStream(CommandHandler::STREAM_SYSINFO);
         vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(2000));
-    }
-}
-
-// ── Sensor Task ──
-void sensorTask(void* pvParams) {
-    (void)pvParams;
-    TickType_t lastWake = xTaskGetTickCount();
-    unsigned long lastMonitorLoop = 0;
-
-    while (1) {
-        unsigned long now = millis();
-        if (now - lastMonitorLoop >= 1000) {
-            currentSensor.loop();
-            lastMonitorLoop = now;
-        }
-        float current = currentSensor.getCurrent(); // A
-        pumpController.update(current);
-        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(20));
     }
 }
 
@@ -625,32 +527,9 @@ static void onWsBinary(const String& clientId, const uint8_t* data, size_t len) 
     }
 }
 
-static void onPumpState(PumpState state, float current, bool isOn, const char* msg) {
-    //LT_IM(PUMP, "%s (%.2fA)", msg, current);
-
-    if(state == PumpState::DRY_RUN) {
-        ledController.blink(500);
-    }
-    else if(state == PumpState::OVERLOAD) {
-        ledController.blink(200);
-    }
-    else if(state == PumpState::HIGH_CURRENT) {
-        ledController.blink(2, 500, 3000);
-    }
-    else if(state == PumpState::CRITICAL_CURRENT) {
-        ledController.blink(3, 200, 1000);
-    }
-    else if (isOn == false) {
-        ledController.off();
-    }
-    else if (isOn == true) {
-        ledController.on();
-    }
-}
-
 static void onButtonClick() {
-    bool on = !pumpController.isOn();
-    pumpController.toggle();
+    bool on = !g_driver->isRelayOn();
+    g_driver->setRelay(on);
     //LT_IM(BTN, "Button click: Turn %s", on ? "ON" : "OFF");
     logManager.logToggle(LogManager::ToggleSource::TOGGLE_BUTTON, on);
     JsonDocument resp;
