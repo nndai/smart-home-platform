@@ -1,0 +1,3 @@
+-- Smart Home Platform — Supabase seed
+-- P1: schema đầy đủ nằm trong migrations/0001_schema.sql
+-- File này để placeholder tới khi P1 khởi động.
