@@ -1,7 +1,10 @@
 #include <Arduino.h>
 #include <cstring>
 #include <cstdlib>
-#include "LogManager.h"
+#include "core/log/LogManager.h"
+
+// Chỉ LibreTiny có --wrap=putchar_p (xem platformio.ini -Wl,--wrap)
+#if defined(LT_ARD_HAS_SERIAL)
 
 extern "C" void __real_putchar_p(char c, unsigned long port);
 
@@ -89,3 +92,5 @@ extern "C" void logCaptureFlushCallback(LogManager::LogCallback cb) {
 extern "C" bool logCaptureIsDone() {
     return s_callbackFlushed;
 }
+
+#endif

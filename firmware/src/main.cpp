@@ -18,6 +18,7 @@
 #include "core/BuildInfo.h"
 #include "profiles/registry.h"
 #include "compat/pm.h"
+#include "compat/log_capture.h"
 #include "chip/softap.h"
 #include "chip/io.h"
 
@@ -62,9 +63,6 @@ static void onButtonLongPressStart();
 static void sendResponse(const String& target, const String& json);
 void setLogMqttEnable(bool enable);
 bool isLogMqttEnabled();
-extern "C" void logCaptureFlushFile(LogManager* lm);
-extern "C" void logCaptureFlushCallback(LogManager::LogCallback cb);
-extern "C" bool logCaptureIsDone();
 
 static LogManager::LogCallback s_logCb;
 static bool _logMqttActive = false;

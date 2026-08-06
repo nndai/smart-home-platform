@@ -4,6 +4,9 @@
 #include <strings.h>
 #include <stdlib.h>
 
+// Chỉ LibreTiny thiếu strptime trong newlib (ESP32 đã có → xung đột symbol nếu compile)
+#if defined(LT_ARD_HAS_SERIAL)
+
 // C++ linkage (no extern "C") to match what HTTPClient.cpp expects
 // (lt_posix_api.h declares strptime without extern "C")
 
@@ -128,3 +131,5 @@ char *strptime(const char * s, const char * f, struct tm * tm) {
     }
     return (char *)s;
 }
+
+#endif

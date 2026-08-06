@@ -2,6 +2,9 @@
 #include "compat/log.h"
 #include "compat/task.h"
 
+// Chỉ LibreTiny cần hook này (ESP32 core đã tự định nghĩa)
+#if defined(LT_ARD_HAS_SERIAL)
+
 extern "C" void vApplicationMallocFailedHook(void) {
     printf("[FATAL] Malloc Failed\n");
     LT_E("Malloc Failed\n");
@@ -15,3 +18,5 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskNa
     delay(1000);
     ESP.restart();
 }
+
+#endif

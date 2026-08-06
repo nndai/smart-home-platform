@@ -53,6 +53,9 @@
 #include <Update.h>
 #include <sdk_private.h>
 
+// Cơ chế bootguard + pre-ctor chỉ tồn tại trên LibreTiny (linker .init_array, ln_kv, lt_ota)
+#if defined(LT_ARD_HAS_SERIAL)
+
 
 
 
@@ -320,3 +323,5 @@ void otaBootGuard() {
     }
     LT_IM(OTA, "Manual OTA: pattern failed, booting normally (state vẫn PREPARING)");
 }
+
+#endif
