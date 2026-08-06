@@ -1,0 +1,266 @@
+<resources>
+    <!-- Bottom Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_history">History</string>
+    <string name="nav_log">Log</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_system">System</string>
+
+    <string name="app_name">Remote Pump</string>
+
+    <!-- Dashboard - Fault Dialogs -->
+    <string name="fault_dry_run_title">DRY RUN WARNING</string>
+    <string name="fault_dry_run_desc">Dry run detected! Pump has automatically cut off relay to protect motor from damage.</string>
+    <string name="fault_critical_current_title">CRITICAL CURRENT WARNING</string>
+    <string name="fault_critical_current_desc">Current exceeds maximum threshold! Pump has emergency stopped to prevent system damage.</string>
+    <string name="fault_overload_title">OVERLOAD WARNING</string>
+    <string name="fault_overload_desc">Motor overload detected! System has cut power to prevent fire hazard.</string>
+    <string name="fault_generic_title">FAULT WARNING</string>
+    <string name="fault_generic_desc">Hazardous fault detected on the pump system.</string>
+
+    <!-- Dashboard - Fault Dialog Buttons -->
+    <string name="close">Close</string>
+    <string name="clear_fault">Confirm</string>
+
+    <!-- Dashboard - Relay Status -->
+    <string name="relay_on">ON</string>
+    <string name="relay_off">OFF</string>
+    <string name="relay_status">Relay</string>
+
+    <!-- Dashboard - Pump/Switch State -->
+    <string name="pump_state_title">PUMP STATE</string>
+    <string name="switch_state_title">SWITCH STATE</string>
+
+    <!-- Dashboard - Pump State Labels -->
+    <string name="pump_state_off">OFF</string>
+    <string name="pump_state_running_ok">RUNNING OK</string>
+    <string name="pump_state_high_current">HIGH CURRENT</string>
+    <string name="pump_state_dry_run">DRY RUN</string>
+    <string name="pump_state_critical_current">CRITICAL CURRENT</string>
+    <string name="pump_state_overload">OVERLOAD</string>
+
+    <!-- Dashboard - Metrics -->
+    <string name="metric_current">Current</string>
+    <string name="metric_power">Power</string>
+    <string name="metric_voltage">Voltage</string>
+    <string name="metric_apparent_power">Apparent Power</string>
+    <string name="metric_power_factor">Power Factor</string>
+    <string name="metric_energy">Energy</string>
+    <string name="metric_temperature">Temperature</string>
+    <string name="metric_rssi">RSSI</string>
+
+    <!-- Dashboard - Control Section -->
+    <string name="pump_control">PUMP CONTROL</string>
+    <string name="switch_control">SWITCH CONTROL</string>
+
+    <!-- Dashboard - ViewModel Messages -->
+    <string name="pump_turned_on">Pump turned ON</string>
+    <string name="pump_turned_off">Pump turned OFF</string>
+    <string name="failed_update_relay">Failed to update relay</string>
+    <string name="pump_fault_cleared">Pump fault cleared</string>
+    <string name="failed_clear_fault">Failed to clear fault</string>
+    <string name="relay_toggle_timeout">Relay toggle timed out (10s)</string>
+    <string name="failed_send_toggle">Failed to send toggle command</string>
+
+    <!-- Pump Control Button -->
+    <string name="pump_btn_turn_off_desc">Turn Off</string>
+    <string name="pump_btn_turn_on_desc">Turn On</string>
+    <string name="pump_btn_processing">PROCESSING...</string>
+    <string name="pump_btn_turn_off_relay">TURN OFF RELAY</string>
+    <string name="pump_btn_turn_on_relay">TURN ON RELAY</string>
+
+    <!-- History Screen -->
+    <string name="history_title">ENERGY &amp; OPERATION HISTORY</string>
+    <string name="history_sync">Sync</string>
+    <string name="history_daily_consumption">Daily Consumption</string>
+    <string name="history_toggle_count_format">%d times</string>
+    <string name="history_toggle_count_today">Toggles Today</string>
+    <string name="history_daily_chart_title">DAILY CONSUMPTION</string>
+    <string name="history_hour_tooltip">Hour %s: %d Wh</string>
+    <string name="history_monthly_chart_title">MONTHLY CONSUMPTION</string>
+    <string name="history_unit_kwh">Unit: kWh</string>
+    <string name="history_unit_wh">Unit: Wh</string>
+    <string name="history_total">Total: %s</string>
+    <string name="history_times">(%d times)</string>
+    <string name="history_monthly_daily_chart_title">MONTHLY DAILY CONSUMPTION</string>
+    <string name="history_month_label">Month %s</string>
+    <string name="history_day_tooltip">Day %d/%s: %s</string>
+    <string name="history_toggle_log_title">TOGGLE LOG</string>
+    <string name="history_no_toggle_events">No toggle events recorded for this day.</string>
+    <string name="history_today">Today</string>
+    <string name="history_select_date">Select Date</string>
+    <string name="history_select_month">Select Month</string>
+    <string name="history_choose">Select</string>
+    <string name="history_cancel">Cancel</string>
+    <string name="history_month_header">%02d/%04d</string>
+    <string name="history_year_label">Year %d</string>
+    <string-array name="history_week_days">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
+    <string-array name="history_month_names">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
+
+    <!-- Log Screen -->
+    <string name="log_title">Device Logs</string>
+    <string name="log_clear_logs">Clear logs</string>
+    <string name="log_listening">Listening...</string>
+    <string name="log_off">Off</string>
+    <string name="log_raw_json_hint">Enter raw JSON (e.g. {"cmd":"getStatus"})</string>
+    <string name="log_send">Send</string>
+    <string name="log_mode_live">Live</string>
+    <string name="log_mode_file">File Log (/logs/sys/)</string>
+    <string name="log_no_file_data">No system log file data available for this date</string>
+    <string name="log_sync_from_device">Sync from device</string>
+    <string name="log_delete_file_title">Delete System Log File</string>
+    <string name="log_delete_file_confirm">Are you sure you want to delete file %1$s from the device?</string>
+    <string name="log_delete_action">Delete</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_device_protection_mode">Device Protection Mode</string>
+    <string name="settings_pump_mode">PUMP MODE</string>
+    <string name="settings_smart_protection_enabled">Smart Protection Enabled</string>
+    <string name="settings_switch_mode">SWITCH MODE</string>
+    <string name="settings_manual_switch_only">Manual Switch Only</string>
+    <string name="settings_network_connection_mode">Network Connection Mode</string>
+    <string name="settings_wifi_mqtt">WiFi MQTT</string>
+    <string name="settings_ap_hotspot">AP Hotspot</string>
+    <string name="settings_wifi_debug">WiFi Debug</string>
+    <string name="settings_wifi_sta_credentials">WiFi STA Credentials</string>
+    <string name="settings_mqtt_server">MQTT Server Settings</string>
+    <string name="settings_wifi_ap_hotspot_settings">WiFi AP Hotspot Settings</string>
+    <string name="settings_wifi_debug_settings">WiFi Debug Settings</string>
+    <string name="settings_other_network_modes">Other Network Modes (Optional / Advanced)</string>
+    <string name="settings_toggle_other_network">Toggle other network settings</string>
+    <string name="settings_wifi_sta_mqtt">WiFi STA &amp; MQTT Settings</string>
+    <string name="settings_open_network">Open Network (No Password Required)</string>
+    <string name="settings_save_network">Save Network Settings</string>
+    <string name="settings_label_wifi_ssid">WiFi SSID</string>
+    <string name="settings_label_wifi_password">WiFi Password</string>
+    <string name="settings_label_ap_ssid">AP SSID</string>
+    <string name="settings_label_ap_password">AP Password</string>
+    <string name="settings_label_debug_ssid">Debug SSID</string>
+    <string name="settings_label_debug_password">Debug Password</string>
+    <string name="settings_label_mqtt_host">MQTT Server Host</string>
+    <string name="settings_label_username">Username</string>
+    <string name="settings_label_password">Password</string>
+    <string name="settings_label_topic">Topic</string>
+    <string name="settings_label_port">Port</string>
+    <string name="settings_scan">Scan</string>
+    <string name="settings_scanning">Scanning...</string>
+    <string name="settings_label_off">Off</string>
+    <string name="settings_label_dry_run">Dry Run</string>
+    <string name="settings_label_running">Running</string>
+    <string name="settings_label_overload">Overload</string>
+    <string name="settings_protection_thresholds">Protection Thresholds (mA)</string>
+    <string name="settings_timeouts">Timeouts (ms)</string>
+    <string name="settings_relay_startup_mode">Relay Startup Mode</string>
+    <string name="settings_relay_off">OFF</string>
+    <string name="settings_relay_on">ON</string>
+    <string name="settings_relay_keep_last">KEEP LAST</string>
+    <string name="settings_calibration_coefficients">Calibration Coefficients</string>
+    <string name="settings_label_current_cal">Current (cCal)</string>
+    <string name="settings_label_voltage_cal">Voltage (vCal)</string>
+    <string name="settings_label_power_cal">Power (pCal)</string>
+    <string name="settings_auto_calibrate">Auto-Calibrate with Real Values</string>
+    <string name="settings_toggle_calibrate">Toggle auto-calibrate</string>
+    <string name="settings_label_current">Current</string>
+    <string name="settings_label_voltage">Voltage</string>
+    <string name="settings_label_power">Power</string>
+    <string name="settings_label_dry_run_timeout">Dry Run Timeout</string>
+    <string name="settings_label_overload_timeout">Overload Timeout</string>
+    <string name="settings_display_off_threshold">Off Threshold (mA)</string>
+    <string name="settings_display_dry_threshold">Dry Run Threshold (mA)</string>
+    <string name="settings_display_running_threshold">Running Threshold (mA)</string>
+    <string name="settings_display_overload_threshold">Overload Threshold (mA)</string>
+    <string name="settings_display_dry_timeout">Dry Run Timeout (ms)</string>
+    <string name="settings_display_overload_timeout">Overload Timeout (ms)</string>
+    <string name="settings_display_cal_current">Current Calibration (cCal)</string>
+    <string name="settings_display_cal_voltage">Voltage Calibration (vCal)</string>
+    <string name="settings_display_cal_power">Power Calibration (pCal)</string>
+    <string name="settings_display_log_level">System Log Level</string>
+    <string name="settings_rescan">Rescan</string>
+    <string name="settings_close">Close</string>
+    <string name="settings_system_logging">System Logging</string>
+    <string name="settings_enable_system_log">Enable System Log File</string>
+    <string name="settings_label_log_level">Log Level</string>
+    <string name="settings_danger_zone">Danger Zone</string>
+    <string name="settings_fetching_config">Fetching device configuration...</string>
+    <string name="settings_retrying">Retrying every 5 seconds until connected...</string>
+    <string name="settings_saving">Saving configuration...</string>
+    <string name="settings_rebooting">Rebooting device...</string>
+    <string name="settings_available_wifi">Available Wi-Fi Networks</string>
+    <string name="settings_hidden_network">&lt;Hidden Network&gt;</string>
+    <string name="settings_secured_network">Secured Network</string>
+    <string name="settings_no_wifi">No Wi-Fi networks found.</string>
+    <string name="settings_wifi_pass_length">WiFi password must be 8-64 characters</string>
+    <string name="settings_ap_pass_length">AP password must be 8-64 characters</string>
+    <string name="settings_debug_pass_length">Debug password must be 8-64 characters</string>
+    <string name="settings_threshold_order">Thresholds must follow: Off &lt; Dry Run &lt; Running &lt; Overload</string>
+    <string name="settings_timeout_positive">Timeout must be greater than 0</string>
+    <string name="settings_enter_real_values">Please enter at least one real value</string>
+    <string name="settings_confirm_save_title">Confirm Save %s</string>
+    <string name="settings_confirm_save_message">Save new value for %s: %s?</string>
+    <string name="settings_confirm_save">Save Now</string>
+    <string name="settings_confirm_and_save">Confirm &amp; Save</string>
+    <string name="settings_confirm_network_title">Confirm Network Settings</string>
+    <string name="settings_network_modified">Send %d modified network setting(s) to device?\n\nModified fields: %s</string>
+    <string name="settings_save_local_mqtt">Save updated local MQTT connection parameters?</string>
+    <string name="settings_switch_pump_mode">Switch to PUMP MODE?</string>
+    <string name="settings_switch_switch_mode">Switch to SWITCH MODE?</string>
+    <string name="settings_pump_mode_desc">PUMP MODE enables smart protections. It will automatically turn off the relay if it detects \'Dry Run\' or \'Overload\'. Use this ONLY for water pumps.</string>
+    <string name="settings_switch_mode_desc">SWITCH MODE disables all smart protections. The device will act as a normal manual switch.</string>
+    <string name="settings_change_relay_mode">Change Relay Startup Mode?</string>
+    <string name="settings_relay_mode_message">Set relay startup mode to %s?</string>
+    <string name="settings_enable_log_title">Enable System Log File?</string>
+    <string name="settings_disable_log_title">Disable System Log File?</string>
+    <string name="settings_enable_log_msg">Enable logging system events to file?</string>
+    <string name="settings_disable_log_msg">Disable logging system events to file?</string>
+    <string name="settings_reboot_required">Reboot Required</string>
+    <string name="settings_reboot_required_msg">Configuration saved successfully. The device requires a reboot to apply the new settings. Reboot now?</string>
+    <string name="settings_reboot_now">Reboot Now</string>
+    <string name="settings_later">Later</string>
+    <string name="settings_reboot_device">Reboot Device</string>
+    <string name="settings_reboot_device_msg">The device will restart. Connection will be lost temporarily.</string>
+    <string name="settings_reboot">Reboot</string>
+    <string name="settings_factory_reset">Factory Reset</string>
+    <string name="settings_factory_reset_msg">This will erase ALL configuration and restore defaults. The device will reboot.</string>
+    <string name="settings_reset">Reset</string>
+    <string name="settings_confirm_calibrate_title">Confirm Auto-Calibration</string>
+    <string name="settings_confirm_calibrate_msg">Send the following real-world values to device to recalculate calibration coefficients?\n\n%s</string>
+    <string name="settings_send_calibration">Send Calibration</string>
+    <string name="settings_reset_calibration_title">Reset Calibration to Default</string>
+    <string name="settings_reset_calibration_msg">Reset cCal, vCal, pCal coefficients to hardware defaults?</string>
+    <string name="settings_reset_to_default">Reset to Default</string>
+
+    <!-- Language Selector -->
+    <string name="language">Language</string>
+    <string name="lang_en">English</string>
+    <string name="lang_vi">Tiếng Việt</string>
+
+    <!-- Connection Banner -->
+    <string name="conn_connected">Connected to Device</string>
+    <string name="conn_connected_via">Connected to Device via %s</string>
+    <string name="conn_transport_ready">Connected to %s, handshaking...</string>
+    <string name="conn_connecting">Connecting...</string>
+    <string name="conn_disconnected">Disconnected - Tap to retry</string>
+    <string name="conn_failed">Connection failed - Tap to retry</string>
+    <string name="conn_idle">Idle</string>
+</resources>
