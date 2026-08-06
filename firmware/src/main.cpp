@@ -6,7 +6,6 @@
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include "compat/wdt.h"
-#include <sdk_private.h>
 
 #include "core/ConfigManager.h"
 #include "core/LedController.h"
@@ -18,8 +17,9 @@
 #include "core/CommandHandler.h"
 #include "core/BuildInfo.h"
 #include "profiles/registry.h"
-#include "utils/power_mgmt/ln_pm.h"
-#include <hal/hal_gpio.h>
+#include "compat/pm.h"
+#include "chip/softap.h"
+#include "chip/io.h"
 
 
 // ── Global objects ──
@@ -60,7 +60,6 @@ static void onButtonClick();
 static void onButtonDoubleClick();
 static void onButtonLongPressStart();
 static void sendResponse(const String& target, const String& json);
-static void reclaimRelayGpio();
 void setLogMqttEnable(bool enable);
 bool isLogMqttEnabled();
 extern "C" void logCaptureFlushFile(LogManager* lm);
@@ -195,7 +194,7 @@ void setup() {
     commandHandler.setDriver(g_driver);
     commandHandler.setResponseCallback(sendResponse);
 
-    ln_pm_always_clk_disable_select(CLK_G_I2S | CLK_G_WS2811 | CLK_G_SDIO | CLK_G_AES);
+    compat::pmDisableUnusedClocks();
     //ln_pm_sleep_mode_set(LIGHT_SLEEP);
 
     // Connection-specific setup
@@ -245,22 +244,6 @@ void setupWiFiSTA(PumpConfig& cfg) {
     }
 }
 
-static void reclaimRelayGpio() {
-    uint32_t bases[2] = { GPIOB_BASE, GPIOA_BASE };
-    gpio_pin_t pins[2] = { GPIO_PIN_3, GPIO_PIN_8 };
-    for (int i = 0; i < 2; i++) {
-        hal_gpio_pin_afio_en(bases[i], pins[i], HAL_DISABLE);
-        gpio_init_t_def cfg;
-        cfg.pin = pins[i];
-        cfg.speed = GPIO_NORMAL_SPEED;
-        cfg.mode = GPIO_MODE_DIGITAL;
-        cfg.dir = GPIO_OUTPUT;
-        cfg.pull = GPIO_PULL_NONE;
-        hal_gpio_init(bases[i], &cfg);
-        hal_gpio_pin_reset(bases[i], pins[i]);
-    }
-}
-
 static void setupAP_WS(PumpConfig& cfg) {
     LT_IM(NET, "AP mode: SSID=%s", cfg.apSSID);
     g_connMode = ConnMode::AP_WS;
@@ -270,42 +253,9 @@ static void setupAP_WS(PumpConfig& cfg) {
         IPAddress(cfg.debugGateway[0], cfg.debugGateway[1], cfg.debugGateway[2], cfg.debugGateway[3]),
         IPAddress(cfg.debugNetmask[0], cfg.debugNetmask[1], cfg.debugNetmask[2], cfg.debugNetmask[3]));
 
-    static uint8_t psk[40] = { 0 };
-    ln_psk_calc(cfg.apSSID, cfg.apPass, psk, sizeof(psk));
+    chip::softApStart(cfg.apSSID, cfg.apPass);
 
-    static uint8_t ap_mac[6];
-    WiFi.softAPmacAddress(ap_mac);
-    
-
-    typedef struct {
-        char* ssid;
-        char* pwd;
-        uint8_t* bssid;
-        uint8_t channel;
-        uint8_t authmode;
-        uint8_t ssid_hidden;
-        uint8_t _pad1;          //padding
-        uint16_t beacon_interval;
-        uint8_t _pad2[2];       // padding
-        uint8_t* psk_value;
-    } ap_cfg_manual_t;
-    
-    ap_cfg_manual_t ap_cfg = {};
-    ap_cfg.ssid = cfg.apSSID;
-    ap_cfg.pwd = cfg.apPass;
-    ap_cfg.bssid = ap_mac;
-    ap_cfg.channel = 1;
-    ap_cfg.authmode = 3;    // WPA2_PSK
-    ap_cfg.beacon_interval = 5000;
-    ap_cfg.psk_value = psk;
-
-    int r = wifi_softap_start((wifi_softap_cfg_t*)&ap_cfg);
-    if (r != 0) {
-        LT_EM(NET, "SoftAP SDK failed: %d, fallback to WiFi.softAP()", r);
-        WiFi.softAP(cfg.apSSID, cfg.apPass);
-    }
-
-    reclaimRelayGpio();
+    chip::reclaimRelayGpio();
 
     wsServer.begin();
     wsServer.setCallback(onWsMessage);
@@ -317,7 +267,7 @@ static void setupSTA_MQTT(PumpConfig& cfg) {
     g_connMode = ConnMode::STA_MQTT;
     setupWiFiSTA(cfg);
 
-    reclaimRelayGpio();
+    chip::reclaimRelayGpio();
 
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser, cfg.mqttPass,
         DEVICE_NAME, cfg.mqttTopic);
@@ -331,7 +281,7 @@ static void setupDEBUG_WS(PumpConfig& cfg) {
     g_connMode = ConnMode::DEBUG_WS;
     setupWiFiSTA(cfg);
 
-   reclaimRelayGpio();
+    chip::reclaimRelayGpio();
 }
 
 // ── Task: WiFi Connect ──

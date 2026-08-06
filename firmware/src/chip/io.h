@@ -1,0 +1,9 @@
+#pragma once
+
+#include <Arduino.h>
+
+namespace chip {
+// LN882H: chân relay/triac trùng chân bootloader → phải reclaim khỏi SDK.
+// MCU khác: no-op.
+void reclaimRelayGpio();
+}

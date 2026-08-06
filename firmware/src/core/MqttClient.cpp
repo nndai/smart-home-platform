@@ -1,5 +1,6 @@
 #include "core/MqttClient.h"
 #include <Config.h>
+#include "compat/tls.h"
 
 static MqttClient* s_instance = nullptr;
 
@@ -48,9 +49,7 @@ bool MqttClient::connect() {
     }
 
     // Free SSL context, then close TCP and clear _connected
-    _wifiClientTls.stop();
-    _wifiClientTls.LwIPClient::stop();
-    delay(10);
+    compat::tlsReset(_wifiClientTls);
     _wifiClientTls.setInsecure();
     _mqtt.setClient(_wifiClientTls);
 
