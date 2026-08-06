@@ -9,6 +9,7 @@
 #include <sdk_private.h>
 
 #include "core/ConfigManager.h"
+#include "profiles/pump/PumpConfig.h"
 #include "profiles/pump/CurrentSensor.h"
 #include "profiles/pump/TemperatureSensor.h"
 #include "core/devices/RelayController.h"
@@ -26,7 +27,7 @@
 
 
 // ── Global objects ──
-ConfigManager configManager;
+ConfigManagerT<PumpConfig> configManager;
 CurrentSensor currentSensor;
 TemperatureSensor tempSensor;
 RelayController relayController;
@@ -62,9 +63,9 @@ static uint32_t s_lastHourEpoch = UINT32_MAX;
 static uint32_t s_hourRefMillis = 0;
 static uint32_t s_lastDayEpoch = UINT32_MAX;
 
-static void setupAP_WS(DeviceConfig& cfg);
-static void setupSTA_MQTT(DeviceConfig& cfg);
-static void setupDEBUG_WS(DeviceConfig& cfg);
+static void setupAP_WS(PumpConfig& cfg);
+static void setupSTA_MQTT(PumpConfig& cfg);
+static void setupDEBUG_WS(PumpConfig& cfg);
 static void onMqttMessage(const String& topic, const String& payload);
 static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
@@ -169,7 +170,7 @@ void setup() {
     if (!configManager.load(configManager.get())) {
         LT_IM(CFG, "No config found, using defaults");
     }
-    DeviceConfig& cfg = configManager.get();
+    PumpConfig& cfg = configManager.get();
 
     logManager.begin();
     logManager.setSysLogFileEnabled(cfg.connMode != ConnMode::DEBUG_WS && cfg.sysLogFileEnabled);
@@ -270,7 +271,7 @@ void loop() {
 
 // ── Connection setup functions ──
 
-void setupWiFiSTA(DeviceConfig& cfg) {
+void setupWiFiSTA(PumpConfig& cfg) {
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("iphone");
     if (g_connMode == ConnMode::STA_MQTT) {
@@ -302,7 +303,7 @@ static void reclaimRelayGpio() {
     }
 }
 
-static void setupAP_WS(DeviceConfig& cfg) {
+static void setupAP_WS(PumpConfig& cfg) {
     LT_IM(NET, "AP mode: SSID=%s", cfg.apSSID);
     g_connMode = ConnMode::AP_WS;
 
@@ -353,7 +354,7 @@ static void setupAP_WS(DeviceConfig& cfg) {
     wsServer.setBinaryCallback(onWsBinary);
 }
 
-static void setupSTA_MQTT(DeviceConfig& cfg) {
+static void setupSTA_MQTT(PumpConfig& cfg) {
     LT_IM(NET, "STA+MQTT mode: connecting to %s", cfg.wifiSSID);
     g_connMode = ConnMode::STA_MQTT;
     setupWiFiSTA(cfg);
@@ -366,7 +367,7 @@ static void setupSTA_MQTT(DeviceConfig& cfg) {
 
 }
 
-static void setupDEBUG_WS(DeviceConfig& cfg) {
+static void setupDEBUG_WS(PumpConfig& cfg) {
     LT_IM(NET, "Debug mode: connecting to %s", cfg.debugSSID);
     LT_IM(NET, "Debug mode: IP %d.%d.%d.%d", cfg.debugIp[0], cfg.debugIp[1], cfg.debugIp[2], cfg.debugIp[3]);
     g_connMode = ConnMode::DEBUG_WS;
@@ -704,7 +705,7 @@ static void onButtonLongPressStart() {
 
     if(step == 0) {
         LT_IM(BTN, "Button long press: Reset WiFi");
-        DeviceConfig cfg = configManager.get();
+        PumpConfig cfg = configManager.get();
         cfg.connMode = ConnMode::AP_WS;
         configManager.save(cfg);
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -712,7 +713,7 @@ static void onButtonLongPressStart() {
     }
     else if (step == 1) {
         LT_IM(BTN, "Button long press: Enter DEBUG mode");
-        DeviceConfig cfg = configManager.get();
+        PumpConfig cfg = configManager.get();
         cfg.connMode = ConnMode::DEBUG_WS;
         configManager.save(cfg);
         vTaskDelay(pdMS_TO_TICKS(1000));

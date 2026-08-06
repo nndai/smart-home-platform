@@ -4,12 +4,11 @@
 #include <ArduinoJson.h>
 #include <functional>
 #include <Config.h>
-#include <FreeRTOS.h>
-#include <task.h>
-#include <semphr.h>
+#include "compat/task.h"
 #include <LittleFS.h>
 
 #include "core/ConfigManager.h"
+#include "profiles/pump/PumpConfig.h"
 #include "profiles/pump/CurrentSensor.h"
 #include "profiles/pump/TemperatureSensor.h"
 #include "profiles/pump/PumpController.h"
@@ -30,7 +29,7 @@ public:
     };
 
     CommandHandler();
-    void begin(ConfigManager* cfg, CurrentSensor* current, TemperatureSensor* temp,
+    void begin(ConfigManagerT<PumpConfig>* cfg, CurrentSensor* current, TemperatureSensor* temp,
                PumpController* pump, LogManager* log,
                OTAManager* ota);
     void setResponseCallback(ResponseCallback cb);
@@ -42,7 +41,7 @@ public:
     bool anyStreamActive() const;
 
 private:
-    ConfigManager* _cfg;
+    ConfigManagerT<PumpConfig>* _cfg;
     CurrentSensor* _current;
     TemperatureSensor* _temp;
     PumpController* _pump;

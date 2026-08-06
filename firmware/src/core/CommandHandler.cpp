@@ -3,49 +3,6 @@
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
 
-extern "C" {
-struct ln_list_s {
-    struct ln_list_s *next;
-    struct ln_list_s *prev;
-};
-typedef struct ln_list_s ln_list_t;
-
-#define AP_LIST_NODE_MAX 40
-
-struct ap_info_s {
-    uint8_t  bssid[6];
-    char     ssid[33];
-    uint8_t  channel;
-    uint8_t  authmode;
-    uint8_t  imode;
-    int8_t   rssi;
-    int16_t  freq_offset;
-    uint8_t  bgn;
-    uint8_t  wps_en : 1;
-    uint8_t  is_hidden : 1;
-    uint8_t  rsn_mfpr : 1;
-    uint8_t  rsn_mfpc : 1;
-    uint8_t  set_wpa_sae_support : 1;
-};
-typedef struct ap_info_s ap_info_t;
-
-typedef struct ap_info_node_s {
-    ln_list_t   list;
-    ap_info_t   info;
-    uint32_t    life_ticks;
-} ap_info_node_t;
-
-int wifi_manager_get_ap_list(ln_list_t **list, uint8_t *node_count);
-}
-
-#define LN_LIST_ENTRY(node, type, field) \
-    ((type *)((uint8_t *)(node) - (uint32_t)(&(((type *)0)->field))))
-#define LN_LIST_FOR_EACH_ENTRY(entry, type, field, list) \
-    for (entry = LN_LIST_ENTRY((list)->next, type, field); \
-        &entry->field != (list); \
-        entry = LN_LIST_ENTRY(entry->field.next, type, field))
-
-typedef enum { ADC_CH0 = 1 << 0 } adc_ch_t;
 extern "C" uint16_t cal_adc_read(adc_ch_t ch);
 
 extern ConnMode g_connMode;
@@ -60,7 +17,7 @@ CommandHandler::CommandHandler()
 {
 }
 
-void CommandHandler::begin(ConfigManager* cfg, CurrentSensor* current, TemperatureSensor* temp,
+void CommandHandler::begin(ConfigManagerT<PumpConfig>* cfg, CurrentSensor* current, TemperatureSensor* temp,
     PumpController* pump, LogManager* log,
     OTAManager* ota) {
     _cfg = cfg;
@@ -266,7 +223,7 @@ void CommandHandler::_cmdGetStatus(const String& source, const JsonDocument& pay
 
 void CommandHandler::_cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
-    DeviceConfig& c = _cfg->get();
+    PumpConfig& c = _cfg->get();
     resp["status"] = "ok";
 
     // Connection mode
@@ -319,7 +276,7 @@ void CommandHandler::_cmdGetConfig(const String& source, const JsonDocument& pay
 }
 
 void CommandHandler::_cmdSetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    DeviceConfig& c = _cfg->get();
+    PumpConfig& c = _cfg->get();
     bool changed = false;
     bool needReboot = false;
 
@@ -602,7 +559,7 @@ void CommandHandler::_cmdCalibrate(const String& source, const JsonDocument& pay
     }
 
     if (didCalib) {
-        DeviceConfig& c = _cfg->get();
+        PumpConfig& c = _cfg->get();
         c.cCal = _current->getCurrentMultiplier();
         c.vCal = _current->getVoltageMultiplier();
         c.pCal = _current->getPowerMultiplier();
@@ -620,7 +577,7 @@ void CommandHandler::_cmdCalibrate(const String& source, const JsonDocument& pay
 void CommandHandler::_cmdResetCalibration(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     _current->resetCalibration();
-    DeviceConfig& c = _cfg->get();
+    PumpConfig& c = _cfg->get();
     c.cCal = _current->getCurrentMultiplier();
     c.vCal = _current->getVoltageMultiplier();
     c.pCal = _current->getPowerMultiplier();
