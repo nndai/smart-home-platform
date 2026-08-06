@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include "compat/log.h"
-#include <FreeRTOS.h>
-#include <task.h>
+#include "compat/task.h"
 
 extern "C" void vApplicationMallocFailedHook(void) {
     printf("[FATAL] Malloc Failed\n");

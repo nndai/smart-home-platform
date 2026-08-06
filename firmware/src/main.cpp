@@ -1,14 +1,11 @@
 #include <Arduino.h>
 #include "compat/log.h"
-#include <FreeRTOS.h>
-#include <task.h>
-#include <queue.h>
-#include <semphr.h>
+#include "compat/task.h"
 #include <Config.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
-#include <WDT.h>
+#include "compat/wdt.h"
 #include <sdk_private.h>
 
 #include "core/ConfigManager.h"
@@ -105,7 +102,7 @@ void setup() {
     LT_IM(SYS, "FW Version: %s (build %s, %u)", FIRMWARE_VERSION, buildStr(), (unsigned)buildUnixTime());
 
     //Watchdog: 15s timeout, feeder task feed mỗi 2s
-    if (WDT.enable(WDT_TIMEOUT_MS)) {
+    if (compat::wdtEnable(WDT_TIMEOUT_MS)) {
         xTaskCreate(taskWdtFeed, "wdtFeed", 512, NULL, tskIDLE_PRIORITY + 1, NULL);
         LT_IM(SYS, "Watchdog enabled, 15s timeout");
     }
@@ -420,7 +417,7 @@ void taskWsLoop(void* pvParams) {
     LT_IM(NET, "WebSocket server started");
 
     while (1) {
-        WDT.feed();
+        compat::wdtFeed();
         switch (g_connMode) {
         case ConnMode::DEBUG_WS:
             wsServer.handle();
@@ -446,7 +443,7 @@ void taskMqttLoop(void* pvParams) {
     bool logLostConnection = false;
 
     while (1) {
-        WDT.feed();
+        compat::wdtFeed();
         bool connected = mqttClient.loop();
         if (!connected && !logLostConnection) {
             LT_E("MQTT connection lost. Attempting to reconnect...");
@@ -491,7 +488,7 @@ void taskWdtFeed(void* pvParams) {
             ESP.restart();
             while (1) {}
         }
-        WDT.feed();
+        compat::wdtFeed();
 
         vTaskDelay(pdMS_TO_TICKS(WDT_FEED_INTERVAL_MS));
     }

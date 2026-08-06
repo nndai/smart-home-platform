@@ -1,9 +1,7 @@
 #pragma once
 #include "LogBase.h"
 #include "compat/log.h"
-#include <FreeRTOS.h>
-#include <queue.h>
-#include <task.h>
+#include "compat/task.h"
 #include <functional>
 
 class SysLog : public LogBase {
