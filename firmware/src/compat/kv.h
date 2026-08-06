@@ -45,7 +45,7 @@ namespace compat {
 inline int kvGet(const char* key, void* buf, size_t size, size_t* storedLen) {
     Preferences prefs;
     if (!prefs.begin("app", true)) return 2;
-    PreferencesType t = prefs.getType(key);
+    PreferenceType t = prefs.getType(key);
     if (t != PT_BLOB) {
         prefs.end();
         return (t == PT_INVALID) ? 1 : 2;

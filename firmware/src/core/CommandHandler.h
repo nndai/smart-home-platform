@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <functional>
 #include <Config.h>
 #include "compat/task.h"
-#include <LittleFS.h>
+#include "compat/fs.h"
 
 #include "core/ConfigManager.h"
 #include "core/DeviceDriver.h"
@@ -17,9 +17,9 @@
 
 // CommandHandler xử lý mọi command dùng chung; command riêng của thiết bị
 // (setRelay, calibrate...) được chuyển cho DeviceDriver (xem setDriver).
-struct PumpConfig;
-
-class CommandHandler {
+// Template theo kiểu config của profile (PumpConfig, SwitchConfig...).
+template <typename T>
+class CommandHandlerT {
 public:
     using ResponseCallback = std::function<void(const String& target, const String& json)>;
 
@@ -29,8 +29,8 @@ public:
         STREAM_COUNT    = 2
     };
 
-    CommandHandler();
-    void begin(ConfigManagerT<PumpConfig>* cfg, LogManager* log, OTAManager* ota);
+    CommandHandlerT();
+    void begin(ConfigManagerT<T>* cfg, LogManager* log, OTAManager* ota);
     void setDriver(DeviceDriver* driver) { _driver = driver; }
     void setResponseCallback(ResponseCallback cb);
     void handleCommand(const String& source, const String& json);
@@ -41,7 +41,7 @@ public:
     bool anyStreamActive() const;
 
 private:
-    ConfigManagerT<PumpConfig>* _cfg;
+    ConfigManagerT<T>* _cfg;
     DeviceDriver* _driver = nullptr;
     LogManager* _log;
     OTAManager* _ota;
@@ -82,3 +82,6 @@ private:
     void _cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId = "");
 };
+
+// ── Định nghĩa template (để main.cpp explicit-instantiate được) ──
+#include "core/CommandHandler.ipp"

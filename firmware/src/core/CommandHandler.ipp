@@ -1,15 +1,15 @@
-#include "core/CommandHandler.h"
+﻿#include "core/CommandHandler.h"
 #include "compat/log.h"
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
-#include "profiles/pump/PumpConfig.h"
 #include "compat/wifi_scan.h"
 #include "chip/scan.h"
 #include "chip/io.h"
 
 extern ConnMode g_connMode;
 
-CommandHandler::CommandHandler()
+template <typename T>
+CommandHandlerT<T>::CommandHandlerT()
     : _cfg(nullptr)
     , _driver(nullptr)
     , _log(nullptr)
@@ -17,18 +17,21 @@ CommandHandler::CommandHandler()
 {
 }
 
-void CommandHandler::begin(ConfigManagerT<PumpConfig>* cfg, LogManager* log,
+template <typename T>
+void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     OTAManager* ota) {
     _cfg = cfg;
     _log = log;
     _ota = ota;
 }
 
-void CommandHandler::setResponseCallback(ResponseCallback cb) {
+template <typename T>
+void CommandHandlerT<T>::setResponseCallback(ResponseCallback cb) {
     _responseCb = cb;
 }
 
-void CommandHandler::handleCommand(const String& source, const String& json) {
+template <typename T>
+void CommandHandlerT<T>::handleCommand(const String& source, const String& json) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json);
     if (err) {
@@ -58,17 +61,20 @@ void CommandHandler::handleCommand(const String& source, const String& json) {
     _handleCommand(source, doc, payload);
 }
 
-void CommandHandler::_sendResponse(const String& source, const String& json) {
+template <typename T>
+void CommandHandlerT<T>::_sendResponse(const String& source, const String& json) {
     if (_responseCb) _responseCb(source, json);
 }
 
-void CommandHandler::_sendResponse(const String& source, const JsonDocument& doc) {
+template <typename T>
+void CommandHandlerT<T>::_sendResponse(const String& source, const JsonDocument& doc) {
     String json;
     serializeJson(doc, json);
     _sendResponse(source, json);
 }
 
-void CommandHandler::_handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload) {
+template <typename T>
+void CommandHandlerT<T>::_handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload) {
     String cmdStr = cmd["cmd"].as<String>();
     String reqId = cmd["reqId"].is<String>() ? cmd["reqId"].as<String>() : "";
 
@@ -112,25 +118,29 @@ void CommandHandler::_handleCommand(const String& source, const JsonDocument& cm
     }
 }
 
-void CommandHandler::startStream(StreamType type, const String& source, unsigned long durationMs) {
+template <typename T>
+void CommandHandlerT<T>::startStream(StreamType type, const String& source, unsigned long durationMs) {
     if (type >= STREAM_COUNT) return;
     _streamDeadline[type] = millis() + durationMs;
     _streamSource[type] = source;
 }
 
-bool CommandHandler::isStreamActive(StreamType type) const {
+template <typename T>
+bool CommandHandlerT<T>::isStreamActive(StreamType type) const {
     if (type >= STREAM_COUNT) return false;
     return _streamSource[type].length() > 0 && millis() < _streamDeadline[type];
 }
 
-bool CommandHandler::anyStreamActive() const {
+template <typename T>
+bool CommandHandlerT<T>::anyStreamActive() const {
     for (int i = 0; i < STREAM_COUNT; i++) {
         if (isStreamActive((StreamType)i)) return true;
     }
     return false;
 }
 
-void CommandHandler::sendStream(StreamType type) {
+template <typename T>
+void CommandHandlerT<T>::sendStream(StreamType type) {
     if (!isStreamActive(type)) return;
 
     JsonDocument resp;
@@ -150,7 +160,8 @@ void CommandHandler::sendStream(StreamType type) {
     }
 }
 
-void CommandHandler::_cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     
     resp["timestamp"] = _log->getEpoch();
@@ -166,9 +177,10 @@ void CommandHandler::_cmdGetStatus(const String& source, const JsonDocument& pay
     }
 }
 
-void CommandHandler::_cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
-    PumpConfig& c = _cfg->get();
+    T& c = _cfg->get();
     resp["status"] = "ok";
 
     // Connection mode
@@ -209,8 +221,9 @@ void CommandHandler::_cmdGetConfig(const String& source, const JsonDocument& pay
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdSetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    PumpConfig& c = _cfg->get();
+template <typename T>
+void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+    T& c = _cfg->get();
     bool changed = false;
     bool needReboot = false;
 
@@ -346,7 +359,8 @@ void CommandHandler::_cmdSetConfig(const String& source, const JsonDocument& pay
 }
 
 
-void CommandHandler::_cmdGetLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     String logContent;
     if (_log->readSysLog(logContent, 4096)) {
@@ -361,7 +375,8 @@ void CommandHandler::_cmdGetLog(const String& source, const JsonDocument& payloa
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdClearSysLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdClearSysLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     _log->clearSysLog();
     resp["status"] = "ok";
@@ -369,7 +384,8 @@ void CommandHandler::_cmdClearSysLog(const String& source, const JsonDocument& p
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdOtaUrl(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     const char* url = payload["url"];
     if (!url) {
         resp["status"] = "error";
@@ -399,7 +415,8 @@ void CommandHandler::_cmdOtaUrl(const String& source, const JsonDocument& payloa
     );
 }
 
-void CommandHandler::_cmdReboot(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdReboot(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     resp["status"] = "ok";
     resp["message"] = "Rebooting...";
@@ -409,7 +426,8 @@ void CommandHandler::_cmdReboot(const String& source, const JsonDocument& payloa
     ESP.restart();
 }
 
-void CommandHandler::_cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     _cfg->reset();
     resp["status"] = "ok";
@@ -420,7 +438,8 @@ void CommandHandler::_cmdFactoryReset(const String& source, const JsonDocument& 
     ESP.restart();
 }
 
-void CommandHandler::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     extern void setLogMqttEnable(bool);
     bool en = payload["enabled"].as<bool>();
     setLogMqttEnable(en);
@@ -429,7 +448,8 @@ void CommandHandler::_cmdSetLogMqtt(const String& source, const JsonDocument& pa
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     extern bool isLogMqttEnabled();
     resp["status"] = "ok";
     resp["enabled"] = isLogMqttEnabled();
@@ -437,7 +457,8 @@ void CommandHandler::_cmdGetLogMqtt(const String& source, const JsonDocument& pa
 }
 
 
-void CommandHandler::_cmdGetLogStats(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetLogStats(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     resp["status"] = "ok";
     resp["sysLogSize"] = _log->getSysLogSize();
@@ -449,7 +470,8 @@ void CommandHandler::_cmdGetLogStats(const String& source, const JsonDocument& p
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdUploadFirmwareStart(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     if (!payload["size"].is<unsigned int>()) {
         resp["status"] = "error";
         resp["message"] = "Missing size";
@@ -501,7 +523,8 @@ void CommandHandler::_cmdUploadFirmwareStart(const String& source, const JsonDoc
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdUploadFirmwareEnd(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdUploadFirmwareEnd(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     if (!_ota->isRunning()) {
         resp["status"] = "error";
@@ -513,7 +536,8 @@ void CommandHandler::_cmdUploadFirmwareEnd(const String& source, const JsonDocum
     LT_IM(OTA, "stream ended");
 }
 
-void CommandHandler::_cmdUploadFirmwareAbort(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdUploadFirmwareAbort(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     (void)resp;
     if (!_ota->isRunning()) {
@@ -524,7 +548,8 @@ void CommandHandler::_cmdUploadFirmwareAbort(const String& source, const JsonDoc
     LT_IM(OTA, "aborted");
 }
 
-void CommandHandler::_cmdOtaChunk(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     if (!_ota->isRunning()) {
         resp["status"] = "error";
         resp["message"] = "No OTA in progress";
@@ -563,7 +588,8 @@ void CommandHandler::_cmdOtaChunk(const String& source, const JsonDocument& payl
     //_sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     resp["status"] = "ok";
 
     JsonVariantConst fields = payload["fields"];
@@ -579,8 +605,8 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
 
     if (has("system")) {
         JsonObject sys = resp["system"].to<JsonObject>();
-        sys["chipId"] = ESP.getChipId();
-        sys["chipModel"] = "LN882H";
+        sys["chipId"] = chip::systemChipId();
+        sys["chipModel"] = CHIP_MODEL;
         sys["cpuFreq"] = ESP.getCpuFreqMHz();
         sys["sdkVersion"] = ESP.getSdkVersion();
         sys["firmwareVersion"] = FIRMWARE_VERSION;
@@ -594,18 +620,19 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
         char buf[26];
         snprintf(buf, sizeof(buf), "%02d-%02d-%04d %02d:%02d:%02d", ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, ti.tm_hour, ti.tm_min, ti.tm_sec);
         sys["timeSys"] = String(buf);
-        sys["resetReason"] = ESP.getResetReason();
+        sys["resetReason"] = chip::systemResetReason();
         
     }
 
     if (has("memory")) {
         JsonObject mem = resp["memory"].to<JsonObject>();
         mem["freeHeap"] = ESP.getFreeHeap();
-        mem["minEverFreeHeap"] = lt_heap_get_min_free();
+        mem["minEverFreeHeap"] = (unsigned long)chip::heapMinFree();
     }
 
     if (has("tasks")) {
         JsonArray tasks = resp["tasks"].to<JsonArray>();
+#if defined(LT_ARD_HAS_SERIAL)
         UBaseType_t numTasks = uxTaskGetNumberOfTasks();
         TaskStatus_t* taskArray = (TaskStatus_t*)pvPortMalloc(numTasks * sizeof(TaskStatus_t));
         if (taskArray) {
@@ -627,6 +654,9 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
             }
             vPortFree(taskArray);
         }
+#else
+        (void)tasks;
+#endif
     }
 
     if (has("wifi")) {
@@ -667,7 +697,8 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
     }
 }
 
-void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
 
     if (_scanPending) {
@@ -682,7 +713,11 @@ void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payl
 
     if (!_scanEventHandlerId) {
         LT_IM(CMD, "Registering WiFi scan event handler");
+#if defined(LT_ARD_HAS_SERIAL)
         _scanEventHandlerId = WiFi.onEvent([this](EventId event, EventInfo info) {
+#else
+        _scanEventHandlerId = WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
+#endif
             (void)event;
             (void)info;
             _scanPending = false;
@@ -732,7 +767,8 @@ void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payl
     _sendResponse(source, resp);
 }
 
-void CommandHandler::_cmdGetScanWifiData(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+template <typename T>
+void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
 
     if (_scanPending) {
@@ -754,7 +790,8 @@ void CommandHandler::_cmdGetScanWifiData(const String& source, const JsonDocumen
     _scanResultJson = "";
 }
 
-void CommandHandler::_handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId) {
+template <typename T>
+void CommandHandlerT<T>::_handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId) {
     String path = payload["path"] | String("/");
 
     String json;

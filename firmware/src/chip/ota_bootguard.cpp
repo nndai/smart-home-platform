@@ -44,6 +44,9 @@
  * constructor của người dùng, không dùng FAL (Update ghi flash thô qua
  * lt_ota), nên chạy trước mọi ctor khác là an toàn.
  */
+// Cơ chế bootguard + pre-ctor chỉ tồn tại trên LibreTiny (linker .init_array, ln_kv, lt_ota)
+#if defined(LT_ARD_HAS_SERIAL)
+
 #include <Arduino.h>
 #include "compat/log.h"
 #include "compat/task.h"
@@ -51,10 +54,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Update.h>
-#include <sdk_private.h>
 
-// Cơ chế bootguard + pre-ctor chỉ tồn tại trên LibreTiny (linker .init_array, ln_kv, lt_ota)
-#if defined(LT_ARD_HAS_SERIAL)
+#include <sdk_private.h>
 
 
 

@@ -16,18 +16,21 @@ void RelayController::begin(int relayPin, int triacGatePin) {
     _triacGatePin = triacGatePin;
 
     pinMode(_relayPin, OUTPUT);
-    pinMode(_triacGatePin, OUTPUT);
-
     digitalWrite(_relayPin, LOW);
-    digitalWrite(_triacGatePin, LOW);
+    if (_triacGatePin >= 0) {
+        pinMode(_triacGatePin, OUTPUT);
+        digitalWrite(_triacGatePin, LOW);
+    }
 }
 
 void RelayController::_triacFire() {
+    if (_triacGatePin < 0) return;
     digitalWrite(_triacGatePin, HIGH);
     _triacOn = true;
 }
 
 void RelayController::_triacOff() {
+    if (_triacGatePin < 0) return;
     digitalWrite(_triacGatePin, LOW);
     _triacOn = false;
 }

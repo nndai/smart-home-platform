@@ -1,7 +1,14 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "generic-ln882h.h"
+// ── Pins + tham số riêng theo profile (build_flags: -DPROFILE_PUMP / -DPROFILE_SWITCH) ──
+#if defined(PROFILE_PUMP)
+#include "profiles/pump/pins.h"
+#elif defined(PROFILE_SWITCH)
+#include "profiles/switch/pins.h"
+#else
+#error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH trong build_flags"
+#endif
 
 // ── Version ──
 #define FIRMWARE_VERSION   "1.0.0"
@@ -11,15 +18,6 @@
 #else
 #define CHIP_MODEL       "LN882HK"
 #endif
-// ── LN882H Pin Definitions ──
-#define PIN_BL0937_CF      PIN_PB04  // PB04  - BL0937 CF  (power pulse, interrupt)
-#define PIN_BL0937_CF1     PIN_PB05  // PB05  - BL0937 CF1 (current/voltage pulse, interrupt)
-#define PIN_BL0937_SEL     PIN_PB06  // PB06  - BL0937 SEL (current/voltage select)
-#define PIN_NTC_ADC        PIN_PA04  // PA04  - NTC 10k thermistor (ADC-capable pin)
-#define PIN_RELAY          PIN_PB03  // PB03  - Relay control
-#define PIN_TRIAC_GATE     PIN_PA08  // PA08  - TRIAC gate control
-#define PIN_LED            PIN_PA06  // PA06  - Status LED (active LOW)
-#define PIN_BUTTON         PIN_PA07  // PA07  - Push button (active LOW, pull-up)
 
 // ── Network ──
 #define WEBSOCKET_PORT      82
@@ -39,31 +37,6 @@
 #define DEFAULT_DEBUG_IP        {192, 168, 137, 111}
 #define DEFAULT_DEBUG_GATEWAY   {192, 168, 137, 1}
 #define DEFAULT_DEBUG_NETMASK   {255, 255, 255, 0}
-
-// ── BL0937 Defaults ──
-#define CURRENT_MIN_INTERVAL_MS   500     // interval tối thiểu giữa 2 lần tính dòng điện
-
-// ── Default Current Thresholds (mA) ──
-#define DEFAULT_THRESH_OFF          100     // <100mA  = not running
-#define DEFAULT_THRESH_NO_WATER     2000    // <2000mA = no water (dry run)
-#define DEFAULT_THRESH_RUNNING      5000    // <5000mA = normal running
-#define DEFAULT_THRESH_OVERLOAD     20000   // >20000mA = overload/short
-
-// ── Default Timeouts (ms) ──
-#define DEFAULT_NO_WATER_TIMEOUT    7000   // 7s dry run => auto off
-#define DEFAULT_OVERLOAD_TIMEOUT    1000    // 1s overload => auto off
-
-// ── Default Pump Mode ──
-#define DEFAULT_PUMP_MODE          true
-#define PUMP_CRITICAL_PERCENT      125     // dòng >= 125% ngưỡng running -> critical
-
-// ── NTC Thermistor (10k + 10k series) ──
-#define NTC_SERIES_RESISTOR     10000.0f    // 10k series resistor
-#define NTC_NOMINAL_RES         10000.0f    // 10k at 25°C
-#define NTC_NOMINAL_TEMP        25.0f       // 25°C
-#define NTC_B_VALUE             3950.0f     // Beta coefficient
-#define NTC_ADC_MAX             4095.0f     // 12-bit ADC
-#define NTC_VREF                3.3f        // Reference voltage
 
 // ── System / RTOS ──
 #define WDT_TIMEOUT_MS            15000   // watchdog timeout
@@ -89,7 +62,7 @@
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
 
 
-// ── OTA khẩn cấp bằng tay (OtaBootGuard, xem src/OtaBootGuard.cpp) ──
+// ── OTA khẩn cấp bằng tay (OtaBootGuard, xem src/chip/ota_bootguard.cpp) ──
 // Cách dùng: 2 lần boot power-on + giữ nút (lần 2 giữ >= OTA_BTN_HOLD_MS rồi
 // nhả trong OTA_BTN_RELEASE_MS) -> nối WiFi debug, tải DEFAULT_OTA_URL
 // (phải là file .uf2, không cần Content-Length), nạp rồi khởi động lại.

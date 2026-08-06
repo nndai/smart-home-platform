@@ -1,9 +1,9 @@
+// Chỉ LibreTiny cần hook này (ESP32 core đã tự định nghĩa)
+#if defined(LT_ARD_HAS_SERIAL)
+
 #include <Arduino.h>
 #include "compat/log.h"
 #include "compat/task.h"
-
-// Chỉ LibreTiny cần hook này (ESP32 core đã tự định nghĩa)
-#if defined(LT_ARD_HAS_SERIAL)
 
 extern "C" void vApplicationMallocFailedHook(void) {
     printf("[FATAL] Malloc Failed\n");

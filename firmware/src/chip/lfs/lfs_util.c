@@ -1,3 +1,5 @@
+﻿// Chi tên LibreTiny (ESP32 dùng LittleFS cua core) — xem platformio.ini
+#if defined(LT_ARD_HAS_SERIAL)
 /*
  * lfs util functions
  *
@@ -33,5 +35,7 @@ uint32_t lfs_crc(uint32_t crc, const void *buffer, size_t size) {
 }
 #endif
 
+
+#endif
 
 #endif

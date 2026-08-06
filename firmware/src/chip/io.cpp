@@ -26,16 +26,45 @@ void reclaimRelayGpio() {
 float readWifiTempC() {
     return 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
 }
+
+uint32_t systemChipId() {
+    return ESP.getChipId();
+}
+
+const char* systemResetReason() {
+    return ESP.getResetReason().c_str();
+}
+
+size_t heapMinFree() {
+    return (size_t)lt_heap_get_min_free();
+}
 }
 
 // ── MCU khác: không cần ──
 #else
+#include <esp_system.h>
+#include <esp_heap_caps.h>
+
 namespace chip {
 void reclaimRelayGpio() {
 }
 
 float readWifiTempC() {
     return 0.0f;
+}
+
+uint32_t systemChipId() {
+    return (uint32_t)(ESP.getEfuseMac() >> 32);
+}
+
+const char* systemResetReason() {
+    static char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)esp_reset_reason());
+    return buf;
+}
+
+size_t heapMinFree() {
+    return heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
 }
 }
 #endif

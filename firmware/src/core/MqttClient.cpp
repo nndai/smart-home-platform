@@ -85,7 +85,7 @@ bool MqttClient::loop() {
     if (_useTls) {
         int avail = _wifiClientTls.available();
         if (avail < 0) {
-            _wifiClientTls.LwIPClient::stop();
+            compat::tlsReset(_wifiClientTls);
             return false;
         }
     }

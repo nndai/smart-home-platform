@@ -27,9 +27,10 @@ int scanGetResults(ScanResult* out, int maxCount) {
 }
 }
 
-// ── MCU khác: WiFi.scanResult(i) (API Arduino chuẩn) ──
+// ── MCU khác: API scan Arduino chuẩn ──
 #else
 #include <WiFi.h>
+#include <string.h>
 
 namespace chip {
 int scanGetResults(ScanResult* out, int maxCount) {
@@ -37,12 +38,21 @@ int scanGetResults(ScanResult* out, int maxCount) {
     if (count < 0) return 0;
     int n = count < maxCount ? count : maxCount;
     for (int i = 0; i < n; i++) {
+#if defined(ARDUINO_ARCH_ESP8266)
         auto info = WiFi.scanResult(i);
         strncpy(out[i].ssid, info.SSID.c_str(), sizeof(out[i].ssid) - 1);
-        out[i].ssid[sizeof(out[i].ssid) - 1] = '\0';
         out[i].rssi = info.RSSI;
         memcpy(out[i].bssid, info.BSSID, 6);
         out[i].isEncrypt = (info.encryptionType != WIFI_AUTH_OPEN);
+#else
+        String ssid = WiFi.SSID(i);
+        strncpy(out[i].ssid, ssid.c_str(), sizeof(out[i].ssid) - 1);
+        out[i].rssi = WiFi.RSSI(i);
+        uint8_t* bssid = WiFi.BSSID(i);
+        if (bssid) memcpy(out[i].bssid, bssid, 6);
+        out[i].isEncrypt = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+#endif
+        out[i].ssid[sizeof(out[i].ssid) - 1] = '\0';
     }
     return n;
 }

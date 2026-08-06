@@ -1,7 +1,7 @@
-#pragma once
+﻿#pragma once
 #include <Arduino.h>
 #include <FS.h>
-#include <LittleFS.h>
+#include "compat/fs.h"
 
 class DataManager {
 public:

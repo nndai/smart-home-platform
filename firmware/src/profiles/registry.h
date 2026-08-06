@@ -2,18 +2,24 @@
 
 #include "core/DeviceDriver.h"
 
-// ── Chọn driver theo profile (nơi #ifdef duy nhất của toàn project) ──
+// ── Chọn config type + driver theo profile (nơi #ifdef duy nhất của project) ──
 #if defined(PROFILE_PUMP)
+#include "profiles/pump/PumpConfig.h"
 #include "profiles/pump/PumpDriver.h"
-// #elif defined(PROFILE_SWITCH)
-// #include "profiles/switch/SwitchDriver.h"
+using ProfileConfig = PumpConfig;
+#elif defined(PROFILE_SWITCH)
+#include "profiles/switch/SwitchConfig.h"
+#include "profiles/switch/SwitchDriver.h"
+using ProfileConfig = SwitchConfig;
+#else
+#error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH trong build_flags"
 #endif
 
 inline DeviceDriver* createDriver() {
 #if defined(PROFILE_PUMP)
     return new PumpDriver();
-// #elif defined(PROFILE_SWITCH)
-//     return new SwitchDriver();
+#elif defined(PROFILE_SWITCH)
+    return new SwitchDriver();
 #endif
     return nullptr;
 }

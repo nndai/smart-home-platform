@@ -1,3 +1,5 @@
+﻿// Chi tên LibreTiny (ESP32 dùng LittleFS cua core) — xem platformio.ini
+#if defined(LT_ARD_HAS_SERIAL)
 /*
  * The little filesystem
  *
@@ -6556,3 +6558,5 @@ int lfs_migrate(lfs_t *lfs, const struct lfs_config *cfg) {
 }
 #endif
 
+
+#endif

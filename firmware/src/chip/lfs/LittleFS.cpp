@@ -1,3 +1,5 @@
+﻿// Chi tên LibreTiny (ESP32 dùng LittleFS cua core) — xem platformio.ini
+#if defined(LT_ARD_HAS_SERIAL)
 #include "LittleFS.h"
 
 
@@ -417,3 +419,5 @@ LittleFSFileImpl::operator bool() {
     LOG_LITTLEFS( "bool: path='%s' opened=%d", _path.get(), _opened);
     return _opened;
 }
+
+#endif

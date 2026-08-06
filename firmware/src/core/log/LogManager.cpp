@@ -1,5 +1,5 @@
-#include "LogManager.h"
-#include <LittleFS.h>
+﻿#include "LogManager.h"
+#include "compat/fs.h"
 #include <Config.h>
 
 LogManager::LogManager()

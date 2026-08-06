@@ -1,5 +1,5 @@
-#include "core/FileBrowser.h"
-#include <LittleFS.h>
+﻿#include "core/FileBrowser.h"
+#include "compat/fs.h"
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
 #include <vector>

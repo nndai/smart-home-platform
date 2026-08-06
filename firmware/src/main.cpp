@@ -1,4 +1,4 @@
-#include <Arduino.h>
+﻿#include <Arduino.h>
 #include "compat/log.h"
 #include "compat/task.h"
 #include <Config.h>
@@ -24,7 +24,7 @@
 
 
 // ── Global objects ──
-ConfigManagerT<PumpConfig> configManager;
+ConfigManagerT<ProfileConfig> configManager;
 DeviceDriver* g_driver = nullptr;
 LedController ledController;
 OneButton button;
@@ -34,7 +34,9 @@ LogManager logManager;
 WiFiUDP ntpUdp;
 NTPClient ntpClient(ntpUdp, 7 * 3600);
 OTAManager otaManager;
-CommandHandler commandHandler;
+CommandHandlerT<ProfileConfig> commandHandler;
+
+template class CommandHandlerT<ProfileConfig>;
 
 
 // ── Runtime connection mode ──
@@ -51,9 +53,9 @@ void ledTask(void* pvParams);
 void taskWdtFeed(void* pvParams);
 void taskStreamSender(void* pvParams);
 
-static void setupAP_WS(PumpConfig& cfg);
-static void setupSTA_MQTT(PumpConfig& cfg);
-static void setupDEBUG_WS(PumpConfig& cfg);
+static void setupAP_WS(ProfileConfig& cfg);
+static void setupSTA_MQTT(ProfileConfig& cfg);
+static void setupDEBUG_WS(ProfileConfig& cfg);
 static void onMqttMessage(const String& topic, const String& payload);
 static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
@@ -153,7 +155,7 @@ void setup() {
     if (!configManager.load(configManager.get())) {
         LT_IM(CFG, "No config found, using defaults");
     }
-    PumpConfig& cfg = configManager.get();
+    ProfileConfig& cfg = configManager.get();
 
     logManager.begin();
     logManager.setSysLogFileEnabled(cfg.connMode != ConnMode::DEBUG_WS && cfg.sysLogFileEnabled);
@@ -226,7 +228,7 @@ void loop() {
 
 // ── Connection setup functions ──
 
-void setupWiFiSTA(PumpConfig& cfg) {
+void setupWiFiSTA(ProfileConfig& cfg) {
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("iphone");
     if (g_connMode == ConnMode::STA_MQTT) {
@@ -242,7 +244,7 @@ void setupWiFiSTA(PumpConfig& cfg) {
     }
 }
 
-static void setupAP_WS(PumpConfig& cfg) {
+static void setupAP_WS(ProfileConfig& cfg) {
     LT_IM(NET, "AP mode: SSID=%s", cfg.apSSID);
     g_connMode = ConnMode::AP_WS;
 
@@ -260,7 +262,7 @@ static void setupAP_WS(PumpConfig& cfg) {
     wsServer.setBinaryCallback(onWsBinary);
 }
 
-static void setupSTA_MQTT(PumpConfig& cfg) {
+static void setupSTA_MQTT(ProfileConfig& cfg) {
     LT_IM(NET, "STA+MQTT mode: connecting to %s", cfg.wifiSSID);
     g_connMode = ConnMode::STA_MQTT;
     setupWiFiSTA(cfg);
@@ -273,7 +275,7 @@ static void setupSTA_MQTT(PumpConfig& cfg) {
 
 }
 
-static void setupDEBUG_WS(PumpConfig& cfg) {
+static void setupDEBUG_WS(ProfileConfig& cfg) {
     LT_IM(NET, "Debug mode: connecting to %s", cfg.debugSSID);
     LT_IM(NET, "Debug mode: IP %d.%d.%d.%d", cfg.debugIp[0], cfg.debugIp[1], cfg.debugIp[2], cfg.debugIp[3]);
     g_connMode = ConnMode::DEBUG_WS;
@@ -418,8 +420,8 @@ void taskStreamSender(void* pvParams) {
     TickType_t lastWake = xTaskGetTickCount();
 
     while (1) {
-        commandHandler.sendStream(CommandHandler::STREAM_STATUS);
-        commandHandler.sendStream(CommandHandler::STREAM_SYSINFO);
+        commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_STATUS);
+        commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_SYSINFO);
         vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(2000));
     }
 }
@@ -532,7 +534,7 @@ static void onButtonLongPressStart() {
 
     if(step == 0) {
         LT_IM(BTN, "Button long press: Reset WiFi");
-        PumpConfig cfg = configManager.get();
+        ProfileConfig cfg = configManager.get();
         cfg.connMode = ConnMode::AP_WS;
         configManager.save(cfg);
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -540,7 +542,7 @@ static void onButtonLongPressStart() {
     }
     else if (step == 1) {
         LT_IM(BTN, "Button long press: Enter DEBUG mode");
-        PumpConfig cfg = configManager.get();
+        ProfileConfig cfg = configManager.get();
         cfg.connMode = ConnMode::DEBUG_WS;
         configManager.save(cfg);
         vTaskDelay(pdMS_TO_TICKS(1000));
