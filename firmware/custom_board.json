@@ -1,0 +1,21 @@
+{
+  "flash": {
+    "boot": "0x000000+0x06000",
+    "part_table": "0x006000+0x01000",
+    "app": "0x007000+0x0B9000",
+    "ota": "0x0C0000+0x0B9000",
+    "ln_nvds": "0x179000+0x03000",
+    "ln_kv": "0x17C000+0x04000",
+    "kvs": "0x180000+0x08000",
+    "userdata": "0x188000+0x078000"
+  },
+  "upload": {
+    "maximum_size": 757760,
+    "maximum_ram_size": 302080,
+    "flash_size": 2097152,
+    "require_upload_port": true,
+    "speed": 921600,
+    "protocol": "uart",
+    "protocols": ["uart"]
+  }
+}

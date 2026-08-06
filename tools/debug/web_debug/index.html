@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remote Pump Debug Tool</title>
+  <meta name="description" content="WebSocket debug tool for Remote Pump LN882H — logs, file browser, OTA firmware upload." />
+
+  <!-- TailwindCSS v3 CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+          },
+          colors: {
+            surface: {
+              50:  '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              700: '#1e2030',
+              800: '#181a2a',
+              850: '#14162a',
+              900: '#0f1020',
+              950: '#0a0b14',
+            },
+            accent: {
+              DEFAULT: '#6366f1',
+              light:   '#818cf8',
+              dark:    '#4f46e5',
+              glow:    'rgba(99,102,241,0.15)',
+            },
+            status: {
+              ok:      '#22c55e',
+              warn:    '#f59e0b',
+              error:   '#ef4444',
+              info:    '#06b6d4',
+            }
+          },
+          boxShadow: {
+            glow:     '0 0 20px rgba(99,102,241,0.15)',
+            'glow-sm':'0 0 10px rgba(99,102,241,0.1)',
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4,0,0.6,1) infinite',
+            'slide-up':   'slideUp .3s ease-out',
+            'fade-in':    'fadeIn .25s ease-out',
+          },
+          keyframes: {
+            slideUp: {
+              '0%':   { transform: 'translateY(8px)', opacity: 0 },
+              '100%': { transform: 'translateY(0)',    opacity: 1 },
+            },
+            fadeIn: {
+              '0%':   { opacity: 0 },
+              '100%': { opacity: 1 },
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body class="bg-surface-950 text-gray-200 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- ═══════════════ TOP BAR — Connection ═══════════════ -->
+  <header id="connection-bar" class="flex-shrink-0 bg-surface-900/80 backdrop-blur-xl border-b border-white/5 px-4 pt-2">
+    <div class="flex items-center justify-between max-w-[1400px] mx-auto">
+      <!-- Logo -->
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center shadow-glow-sm">
+          <i data-lucide="cpu" class="w-4 h-4 text-white"></i>
+        </div>
+        <span class="text-sm font-semibold tracking-wide text-white hidden sm:inline">RemotePump</span>
+      </div>
+
+      <!-- Tab bar -->
+      <nav id="tab-bar" class="flex flex-1 pt-1 justify-start items-end gap-1 self-stretch overflow-x-auto overflow-y-hidden hide-scrollbar pl-6 relative">
+        <div id="tab-indicator" class="absolute bottom-0 h-0.5 bg-accent transition-all duration-300 ease-out z-10" style="width: 0; left: 0;"></div>
+        
+        <button class="tab-btn active p-2 text-sm text-accent font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap relative z-20" data-tab="dashboard" onclick="app.switchTab('dashboard')">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">Dashboard</span>
+        </button>
+        <button class="tab-btn p-2 text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1.5 whitespace-nowrap relative z-20" data-tab="logs" onclick="app.switchTab('logs')">
+          <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">Logs</span>
+        </button>
+        <button class="tab-btn p-2 text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1.5 whitespace-nowrap relative z-20" data-tab="files" onclick="app.switchTab('files')">
+          <i data-lucide="folder-tree" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">Files</span>
+        </button>
+        <button class="tab-btn p-2 text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1.5 whitespace-nowrap relative z-20" data-tab="system" onclick="app.switchTab('system')">
+          <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">System</span>
+        </button>
+        <button class="tab-btn p-2 text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1.5 whitespace-nowrap relative z-20" data-tab="settings" onclick="app.switchTab('settings')">
+          <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">Settings</span>
+        </button>
+      </nav>
+
+      <!-- Right side: Status and Connect button -->
+      <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+        <!-- Status pill -->
+        <div id="status-pill" class="flex items-center justify-center gap-1.5 w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-surface-800 border border-white/5">
+          <span id="status-dot" class="w-2.5 h-2.5 sm:w-2 sm:h-2 rounded-full bg-red-500"></span>
+          <span id="status-text" class="text-xs font-medium text-gray-400 hidden sm:inline">Disconnected</span>
+        </div>
+
+        <!-- Connect button -->
+        <button id="btn-connect" onclick="app.toggleConnect()"
+                class="relative px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200
+                       bg-accent hover:bg-accent-dark text-white shadow-glow-sm hover:shadow-glow
+                       active:scale-95">
+          <span id="btn-connect-text">Connect</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+  <main class="flex-1 flex flex-col overflow-hidden min-h-0 max-w-[1400px] w-full mx-auto">
+
+
+
+    <!-- Tab panels -->
+    <div id="tab-panels" class="flex-1 overflow-hidden px-4 pt-2 pb-0 min-h-0">
+
+      <!-- ─── Dashboard Tab ─── -->
+      <section id="panel-dashboard" class="tab-panel active flex flex-col h-full min-h-0 gap-4 overflow-y-auto p-4 animate-fade-in">
+        <!-- Connection lost overlay/banner -->
+        <div id="dash-conn-lost" class="hidden bg-red-500/20 border border-red-500/50 text-red-200 p-3 rounded-xl flex items-center justify-between">
+           <div class="flex items-center gap-2">
+             <i data-lucide="wifi-off" class="w-5 h-5"></i>
+             <span class="text-sm font-medium">Connection Lost! Retrying...</span>
+           </div>
+           <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+        </div>
+
+        <!-- Main Control Card -->
+        <div class="bg-surface-900/60 backdrop-blur border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 relative overflow-hidden">
+           <div class="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent pointer-events-none"></div>
+           
+           <h2 class="text-lg font-medium text-gray-300">Pump Control</h2>
+           
+           <div class="flex items-center gap-6">
+              <!-- Big Toggle Button -->
+              <button id="btn-pump-toggle" class="relative group flex items-center justify-center w-32 h-32 rounded-full shadow-lg transition-colors duration-200 bg-surface-800 border-4 border-gray-600 hover:border-accent">
+                 <!-- State Ring -->
+                 <div id="pump-ring" class="absolute inset-0 rounded-full border-4 border-transparent transition-colors duration-200 pointer-events-none"></div>
+                 
+                 <div class="flex flex-col items-center gap-2 relative z-10">
+                    <i id="pump-icon" data-lucide="power" class="w-10 h-10 text-gray-400 transition-colors duration-200"></i>
+                    <span id="pump-label" class="text-sm font-bold text-gray-400 uppercase tracking-widest transition-colors duration-200">OFF</span>
+                 </div>
+                 <!-- Loading spinner -->
+                 <div id="pump-spinner" class="hidden absolute inset-0 bg-surface-800/80 rounded-full flex items-center justify-center backdrop-blur-sm z-20">
+                    <i data-lucide="loader-2" class="w-8 h-8 text-accent animate-spin"></i>
+                 </div>
+              </button>
+           </div>
+           <div class="text-xs font-medium text-gray-500 tracking-wider">STATUS: <span id="dash-state-text" class="text-gray-300">UNKNOWN</span></div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+           <!-- metric cards -->
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i>Voltage</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-voltage" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">V</span>
+              </div>
+           </div>
+           
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="activity" class="w-3.5 h-3.5"></i>Current</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-current" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">A</span>
+              </div>
+           </div>
+
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="battery-charging" class="w-3.5 h-3.5"></i>Power</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-power" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">W</span>
+              </div>
+           </div>
+
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="leaf" class="w-3.5 h-3.5"></i>Energy</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-energy" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">kWh</span>
+              </div>
+           </div>
+
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="thermometer" class="w-3.5 h-3.5"></i>Temperature</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-temp" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">°C</span>
+              </div>
+           </div>
+
+           <div class="bg-surface-900/40 border border-white/5 p-4 rounded-xl flex flex-col">
+              <span class="text-xs text-gray-500 flex items-center gap-1.5"><i data-lucide="wifi" class="w-3.5 h-3.5"></i>Signal</span>
+              <div class="flex items-baseline gap-1 mt-1">
+                 <span id="dash-val-rssi" class="text-2xl font-semibold text-gray-100">--</span>
+                 <span class="text-xs text-gray-500">dBm</span>
+              </div>
+           </div>
+        </div>
+      </section>
+
+      <!-- ─── Logs Tab ─── -->
+      <section id="panel-logs" class="tab-panel hidden flex flex-col h-full min-h-0 gap-2 animate-fade-in">
+        <div id="log-container" class="flex-1 overflow-y-auto rounded-xl bg-surface-900/60 backdrop-blur border border-white/5 p-3 font-mono text-xs leading-relaxed scroll-smooth select-text">
+          <div id="log-content"></div>
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+          <button onclick="app.clearLog()" class="icon-btn" title="Clear logs">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Clear</span>
+          </button>
+          <label class="flex items-center gap-1.5 text-xs text-gray-500 ml-auto cursor-pointer select-none">
+            <input id="auto-scroll" type="checkbox" checked class="accent-accent w-3.5 h-3.5 rounded" />
+            Auto-scroll
+          </label>
+        </div>
+      </section>
+
+      <!-- ─── Files Tab ─── -->
+      <section id="panel-files" class="tab-panel flex flex-col h-full min-h-0 gap-2 animate-fade-in" style="display:none">
+        <!-- Breadcrumb + FS info -->
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <div id="file-breadcrumb" class="flex items-center gap-1 text-xs font-mono text-gray-400 flex-1 min-w-0 truncate">
+            <i data-lucide="hard-drive" class="w-3.5 h-3.5 text-gray-500 flex-shrink-0"></i>
+            <span>/</span>
+          </div>
+          <span id="fs-info" class="text-[11px] text-gray-500 flex-shrink-0"></span>
+        </div>
+
+        <!-- File content area -->
+        <div id="file-content-area" class="flex-1 overflow-y-auto rounded-xl bg-surface-900/60 backdrop-blur border border-white/5">
+          <!-- Directory listing or file view rendered here -->
+          <div id="file-list" class="p-2"></div>
+          <div id="file-viewer" class="hidden p-3 select-text">
+            <pre id="file-viewer-content" class="font-mono text-xs text-gray-300 whitespace-pre-wrap break-all"></pre>
+          </div>
+        </div>
+
+        <!-- File actions bar -->
+        <div class="flex items-center gap-2 pb-1">
+          <button onclick="app.fileBrowser.refresh()" class="icon-btn" title="Refresh">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Refresh</span>
+          </button>
+          <button id="btn-file-delete" onclick="app.fileBrowser.deleteSelected()" class="icon-btn text-red-400/60 hover:text-red-400 disabled:opacity-30" disabled title="Delete">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Delete</span>
+          </button>
+          <div class="ml-auto flex items-center gap-2">
+            <button id="btn-file-open" onclick="app.fileBrowser.openSelected()" class="icon-btn disabled:opacity-30" disabled title="Open">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              <span>Open</span>
+            </button>
+            <button id="btn-file-download" onclick="app.fileBrowser.download()" class="icon-btn disabled:opacity-30" disabled title="Download">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>Download</span>
+            </button>
+            <button id="btn-file-back" onclick="app.fileBrowser.goBack()" class="icon-btn" title="Back">
+              <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+              <span>Back</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── System Tab ─── -->
+      <section id="panel-system" class="tab-panel flex flex-col h-full min-h-0 gap-2 animate-fade-in" style="display:none">
+        <!-- Field checkboxes -->
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 flex-shrink-0 bg-surface-900/40 rounded-lg px-3 py-2 border border-white/5">
+          <label class="debug-field-label"><input type="checkbox" value="system"  checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> system</label>
+          <label class="debug-field-label"><input type="checkbox" value="memory"  checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> memory</label>
+          <label class="debug-field-label"><input type="checkbox" value="tasks"   checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> tasks</label>
+          <label class="debug-field-label"><input type="checkbox" value="wifi"    checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> wifi</label>
+          <label class="debug-field-label"><input type="checkbox" value="storage" checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> storage</label>
+          <label class="debug-field-label"><input type="checkbox" value="pump"    checked class="debug-field accent-accent w-3.5 h-3.5 rounded" /> pump</label>
+        </div>
+
+        <!-- Button bar -->
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button onclick="app.debugInfo.refresh()" class="icon-btn">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Refresh</span>
+          </button>
+          <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+            <input id="debug-auto" type="checkbox" class="accent-accent w-3.5 h-3.5 rounded" onchange="app.debugInfo.toggleAuto()" />
+            Auto 3s
+          </label>
+          <span id="debug-status" class="ml-auto text-[11px] text-gray-500"></span>
+        </div>
+
+        <!-- Display -->
+        <div id="debug-display" class="flex-1 overflow-y-auto min-h-0 rounded-xl bg-surface-900/60 backdrop-blur border border-white/5 p-4 font-mono text-xs text-gray-300 select-text">
+          <span class="text-gray-500 italic">Click Refresh to fetch debug info</span>
+        </div>
+      </section>
+
+      <!-- ─── Settings Tab ─── -->
+      <section id="panel-settings" class="tab-panel flex flex-col h-full min-h-0 overflow-y-auto p-4 animate-fade-in" style="display:none">
+        
+        <!-- Protocol Selection -->
+        <div class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4">
+          <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <i data-lucide="network" class="w-4 h-4 text-accent"></i> Connection Protocol
+          </h3>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="protocol" value="ws" checked class="accent-accent w-4 h-4" onchange="app.updateSettingsUI()" />
+              <span class="text-sm text-gray-400">WebSocket</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="protocol" value="mqtt" class="accent-accent w-4 h-4" onchange="app.updateSettingsUI()" />
+              <span class="text-sm text-gray-400">MQTT</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- WS Settings -->
+        <div id="settings-ws" class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+          <h3 class="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+            <i data-lucide="radio" class="w-4 h-4 text-accent"></i> WebSocket Configuration
+          </h3>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-gray-500">Device WS URL</label>
+            <input id="ws-url" type="text" value="ws://192.168.137.111:82"
+                   class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+          </div>
+        </div>
+
+        <!-- MQTT Settings -->
+        <div id="settings-mqtt" class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4 flex flex-col gap-3 hidden">
+          <h3 class="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+            <i data-lucide="radio-receiver" class="w-4 h-4 text-accent"></i> MQTT Configuration
+          </h3>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Broker IP / Domain</label>
+              <input id="mqtt-broker" type="text" placeholder="e.g. 192.168.1.100 or test.mosquitto.org"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Port</label>
+              <input id="mqtt-port" type="number" placeholder="1883" value="1883"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Username (Optional)</label>
+              <input id="mqtt-user" type="text" placeholder="username"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Password (Optional)</label>
+              <input id="mqtt-pass" type="password" placeholder="password"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Publish Topic (Tx)</label>
+              <input id="mqtt-topic-pub" type="text" placeholder="pump/cmd" value="pump/cmd"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">Subscribe Topic (Rx)</label>
+              <input id="mqtt-topic-sub" type="text" placeholder="pump/log" value="pump/log"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-gray-500">OTA Chunk Topic</label>
+              <input id="mqtt-topic-ota" type="text" placeholder="pump/otachunk" value="pump/otachunk"
+                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+          </div>
+        </div>
+
+        <!-- System Settings -->
+        <div class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4 flex flex-col gap-3 mb-4">
+          <h3 class="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+            <i data-lucide="cpu" class="w-4 h-4 text-accent"></i> System
+          </h3>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-gray-500">Firmware Path (.uf2 / .bin)</label>
+            <div class="relative">
+              <i data-lucide="file-code" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"></i>
+              <input id="fw-path" type="text" value="D:/projects/RemotePumpLN882H/.pio/build/generic-ln882h/firmware.uf2"
+                     placeholder="D:/path/to/firmware.uf2"
+                     class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ═══════════════ BOTTOM BAR — Command + Upload ═══════════════ -->
+  <footer class="flex-shrink-0 bg-surface-900/80 backdrop-blur-xl border-t border-white/5 px-4 py-3">
+    <div class="max-w-[1400px] mx-auto flex flex-col gap-2">
+
+      <!-- Progress bar (hidden by default) -->
+      <div id="upload-progress" class="hidden animate-slide-up">
+        <div class="flex items-center gap-3">
+          <div class="flex-1 h-2 rounded-full bg-surface-800 overflow-hidden">
+            <div id="progress-bar" class="h-full rounded-full bg-gradient-to-r from-accent to-purple-500 transition-all duration-300 ease-out" style="width:0%"></div>
+          </div>
+          <span id="progress-text" class="text-[11px] font-mono text-gray-400 min-w-[180px] text-right">0%</span>
+        </div>
+      </div>
+
+      <!-- Command row -->
+      <div class="flex items-center gap-3">
+        <div class="flex-1 relative">
+          <i data-lucide="chevron-right" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600"></i>
+          <input id="cmd-input" type="text"
+                 placeholder='{"cmd":"getStatus"}'
+                 class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm font-mono
+                        text-gray-300 placeholder-gray-600 focus:outline-none focus:border-accent/50
+                        focus:ring-1 focus:ring-accent/30 transition-all duration-200"
+                 onkeydown="if(event.key==='Enter')app.sendCmd()" />
+        </div>
+        <button id="btn-send" onclick="app.sendCmd()" disabled
+                class="px-4 py-2 rounded-lg text-sm font-semibold bg-surface-800 border border-white/10
+                       text-gray-400 hover:text-white hover:border-accent/40 hover:bg-accent/10
+                       disabled:opacity-30 disabled:pointer-events-none transition-all duration-200 active:scale-95">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            Send
+          </div>
+        </button>
+        <button id="btn-upload" onclick="app.startUpload()" disabled
+                class="px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-purple-600/80 to-accent/80
+                       border border-white/10 text-white hover:from-purple-600 hover:to-accent
+                       disabled:opacity-30 disabled:pointer-events-none transition-all duration-200 active:scale-95">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span id="btn-upload-text">Upload Firmware</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ═══════════════ Toast container ═══════════════ -->
+  <div id="toast-container" class="fixed top-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"></div>
+
+  <!-- JS Modules -->
+  <script src="js/utils.js?v=5"></script>
+  <script src="js/websocket.js?v=5"></script>
+  <script src="js/logger.js?v=5"></script>
+  <script src="js/file-browser.js?v=5"></script>
+  <script src="js/debug-info.js?v=5"></script>
+  <script src="js/uploader.js?v=5"></script>
+  <script src="js/dashboard.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
