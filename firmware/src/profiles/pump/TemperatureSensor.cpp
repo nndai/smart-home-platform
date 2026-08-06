@@ -1,4 +1,4 @@
-#include "TemperatureSensor.h"
+#include "profiles/pump/TemperatureSensor.h"
 #include <Config.h>
 
 TemperatureSensor::TemperatureSensor()

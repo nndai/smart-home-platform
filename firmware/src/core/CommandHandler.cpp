@@ -1,6 +1,6 @@
-#include "CommandHandler.h"
+#include "core/CommandHandler.h"
 #include <mbedtls/base64.h>
-#include "BuildInfo.h"
+#include "core/BuildInfo.h"
 
 extern "C" {
 struct ln_list_s {

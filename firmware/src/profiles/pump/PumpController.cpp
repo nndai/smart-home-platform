@@ -1,5 +1,4 @@
-#include "PumpController.h"
-#include "RelayController.h"
+#include "profiles/pump/PumpController.h"
 #include <Config.h>
 
 PumpController::PumpController()

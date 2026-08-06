@@ -1,4 +1,4 @@
-#include "CurrentSensor.h"
+#include "profiles/pump/CurrentSensor.h"
 #include <Config.h>
 
 volatile uint32_t CurrentSensor::s_cfPulses = 0;

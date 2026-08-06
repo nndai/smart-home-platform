@@ -1,4 +1,4 @@
-#include "RelayController.h"
+#include "core/devices/RelayController.h"
 
 RelayController::RelayController()
     : _relayPin(-1)

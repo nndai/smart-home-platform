@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <functional>
 
-#include "RelayController.h"
+#include "core/devices/RelayController.h"
 
 enum class PumpState {
     OFF,

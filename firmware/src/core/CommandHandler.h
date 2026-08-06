@@ -9,15 +9,15 @@
 #include <semphr.h>
 #include <LittleFS.h>
 
-#include "ConfigManager.h"
-#include "CurrentSensor.h"
-#include "TemperatureSensor.h"
-#include "PumpController.h"
-#include "MqttClient.h"
-#include "WebSocketServer.h"
-#include "log/LogManager.h"
-#include "OTAManager.h"
-#include "FileBrowser.h"
+#include "core/ConfigManager.h"
+#include "profiles/pump/CurrentSensor.h"
+#include "profiles/pump/TemperatureSensor.h"
+#include "profiles/pump/PumpController.h"
+#include "core/MqttClient.h"
+#include "core/WebSocketServer.h"
+#include "core/log/LogManager.h"
+#include "core/OTAManager.h"
+#include "core/FileBrowser.h"
 
 class CommandHandler {
 public:

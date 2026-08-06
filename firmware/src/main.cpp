@@ -10,19 +10,19 @@
 #include <WDT.h>
 #include <sdk_private.h>
 
-#include "ConfigManager.h"
-#include "CurrentSensor.h"
-#include "TemperatureSensor.h"
-#include "RelayController.h"
-#include "LedController.h"
+#include "core/ConfigManager.h"
+#include "profiles/pump/CurrentSensor.h"
+#include "profiles/pump/TemperatureSensor.h"
+#include "core/devices/RelayController.h"
+#include "core/LedController.h"
 #include <OneButton.h>
-#include "PumpController.h"
-#include "MqttClient.h"
-#include "WebSocketServer.h"
-#include "log/LogManager.h"
-#include "OTAManager.h"
-#include "CommandHandler.h"
-#include "BuildInfo.h"
+#include "profiles/pump/PumpController.h"
+#include "core/MqttClient.h"
+#include "core/WebSocketServer.h"
+#include "core/log/LogManager.h"
+#include "core/OTAManager.h"
+#include "core/CommandHandler.h"
+#include "core/BuildInfo.h"
 #include "utils/power_mgmt/ln_pm.h"
 #include <hal/hal_gpio.h>
 
