@@ -4,6 +4,8 @@
 #if defined(LT_ARD_HAS_SERIAL)
 #include <sdk_private.h>
 
+extern "C" uint16_t cal_adc_read(adc_ch_t ch);
+
 namespace chip {
 void reclaimRelayGpio() {
     uint32_t bases[2] = { GPIOB_BASE, GPIOA_BASE };
@@ -20,12 +22,20 @@ void reclaimRelayGpio() {
         hal_gpio_pin_reset(bases[i], pins[i]);
     }
 }
+
+float readWifiTempC() {
+    return 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
+}
 }
 
 // ── MCU khác: không cần ──
 #else
 namespace chip {
 void reclaimRelayGpio() {
+}
+
+float readWifiTempC() {
+    return 0.0f;
 }
 }
 #endif

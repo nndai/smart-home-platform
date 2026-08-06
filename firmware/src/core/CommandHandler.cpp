@@ -3,8 +3,9 @@
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
 #include "profiles/pump/PumpConfig.h"
-
-extern "C" uint16_t cal_adc_read(adc_ch_t ch);
+#include "compat/wifi_scan.h"
+#include "chip/scan.h"
+#include "chip/io.h"
 
 extern ConnMode g_connMode;
 
@@ -645,7 +646,7 @@ void CommandHandler::_cmdGetSystemInfo(const String& source, const JsonDocument&
         case ConnMode::STA_MQTT:  w["connMode"] = "sta_mqtt"; break;
         case ConnMode::DEBUG_WS:  w["connMode"] = "debug_ws"; break;
         }
-        w["temperature"] = 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
+        w["temperature"] = chip::readWifiTempC();
     }
 
     if (has("storage")) {
@@ -689,37 +690,32 @@ void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payl
             JsonDocument doc;
             doc["cmd"] = "scanWifi";
 
-            int16_t count = WiFi.scanComplete();
+            int16_t count = compat::scanComplete();
             if (count >= 0) {
-                ln_list_t *list = NULL;
-                uint8_t apCount = 0;
-                wifi_manager_get_ap_list(&list, &apCount);
+                chip::ScanResult results[40];
+                int n = chip::scanGetResults(results, 40);
                 JsonArray nets = doc["networks"].to<JsonArray>();
-                int idx = 0;
-                ap_info_node_t *pnode;
-                LN_LIST_FOR_EACH_ENTRY(pnode, ap_info_node_t, list, list) {
-                    if (idx >= count) break;
-                    ap_info_t *ap = &pnode->info;
-                    JsonObject n = nets.add<JsonObject>();
-                    n["name"] = ap->ssid;
-                    n["rssi"] = (int32_t)ap->rssi;
+                for (int i = 0; i < n && i < count; i++) {
+                    JsonObject obj = nets.add<JsonObject>();
+                    obj["name"] = results[i].ssid;
+                    obj["rssi"] = results[i].rssi;
                     char bssid[18];
                     snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
-                             ap->bssid[0], ap->bssid[1], ap->bssid[2],
-                             ap->bssid[3], ap->bssid[4], ap->bssid[5]);
-                    n["bssid"] = bssid;
-                    n["isEncrypt"] = (ap->authmode != 0);
-                    idx++;
+                        results[i].bssid[0], results[i].bssid[1], results[i].bssid[2],
+                        results[i].bssid[3], results[i].bssid[4], results[i].bssid[5]);
+                    obj["bssid"] = bssid;
+                    obj["isEncrypt"] = results[i].isEncrypt;
                 }
                 doc["status"] = "ok";
-            } else {
+            }
+            else {
                 doc["status"] = "error";
                 doc["message"] = "Scan failed";
             }
 
             serializeJson(doc, _scanResultJson);
             _scanResultReady = true;
-            WiFi.scanDelete();
+            compat::scanDelete();
 
             JsonDocument notify;
             notify["cmd"] = "scanWifi";
@@ -728,9 +724,8 @@ void CommandHandler::_cmdScanWifi(const String& source, const JsonDocument& payl
         }, ARDUINO_EVENT_WIFI_SCAN_DONE);
     }
 
-    LT_IM(CMD, "Starting async WiFi scan (raw SDK RSSI)...");
-    WiFi.scanDelete();
-    WiFi.scanNetworks(true, false, false, 200);
+    LT_IM(CMD, "Starting async WiFi scan...");
+    compat::scanStart();
 
     resp["status"] = "ok";
     resp["message"] = "Scan started";
