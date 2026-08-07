@@ -113,7 +113,7 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
 
 | Việc | Công cụ |
 |---|---|
-| Đọc anchor → deviceId (`dev-...`), SSID AP cố định `RP-{4hex}` (từ deviceId) | `tools/` script (đọc qua serial/đã biết ở flash) |
+| Đọc anchor → deviceId (`dev-...`), SSID AP cố định `myhome-{model}-{4hex}` (từ deviceId + profile) | `tools/` script (đọc qua serial/đã biết ở flash) |
 | Sinh `deviceSecret` (32B) + `controlKey` | script |
 | Tạo credential HiveMQ `device-{deviceId}` / password = secret, permission `devices/{deviceId}/#` | HiveMQ console (dán — HiveMQ free không REST API) |
 | Inject config (credential, AP SSID/pass) vào partition config | script |
@@ -130,10 +130,10 @@ sequenceDiagram
     participant S as Supabase (edge fn)
     participant H as HiveMQ
 
-    Note over D: Boot đầu: đọc anchor → deviceId<br/>giải mã deviceSecret (AES-GCM(KDF(anchor)))<br/>→ pairingState = UNPROVISIONED → AP "RP-XXXX" (ch.1)
+    Note over D: Boot đầu: đọc anchor → deviceId<br/>giải mã deviceSecret (AES-GCM(KDF(anchor)))<br/>→ pairingState = UNPROVISIONED → AP "myhome-pump-XXXX" (ch.1)
     U->>D: Nhấn nút 5s (hoặc tự vào AP khi chưa provisioned)
-    A->>A: "Thêm thiết bị" → scan WiFi (Android API)<br/>lọc SSID prefix "RP-" → danh sách thiết bị
-    A-->>U: [RP-4A3F: RemotePump #1, RP-9C11: RemotePump #2]
+    A->>A: "Thêm thiết bị" → scan WiFi (Android API)<br/>lọc SSID prefix "myhome-" + model → danh sách thiết bị
+    A-->>U: [myhome-pump-4A3F: RemotePump #1, myhome-pump-9C11: RemotePump #2]
     U->>A: Chọn 1 thiết bị
     A->>D: WifiNetworkSpecifier → dialog hệ thống →<br/>phone kết nối AP thiết bị (tự về WiFi nhà khi xong)
     A->>D: WS: getConfig → {deviceId, profile, pairingState}
@@ -161,7 +161,7 @@ sequenceDiagram
 ```
 
 - `pair` chỉ được xử lý khi `connMode == AP_WS` (chặn từ MQTT/STA — bảo mật)
-- AP SSID format cố định `RP-{4hex}` do firmware tự build từ deviceId (không phải config tay) → app lọc được
+- AP SSID format cố định `myhome-{model}-{4hex}` do firmware tự build từ profile + anchor (không phải config tay) → app lọc được
 
 ### 4.3 Bằng chứng proximity & an toàn
 
@@ -234,7 +234,7 @@ graph TD
     end
     MQTT["MqttClient: topic /devices/{id}/{cmd,up}<br/>envelope + verify seq/ts/hmac"] --> Identity
     CMD["CommandHandler: pair, identify, setRelay, setLevel,<br/>setSpeed, getStatus, getConfig..."] --> Capability
-    PAIR["Pairing Portal AP_WS: SSID RP-XXXX<br/>scanWifi (danh sách MCU) + nhận WiFi + controlKey"]
+    PAIR["Pairing Portal AP_WS: SSID myhome-{model}-XXXX<br/>scanWifi (danh sách MCU) + nhận WiFi + controlKey"]
 ```
 
 **Thêm thiết bị mới = thêm 1 profile + cấu hình pin** — không sửa core.
@@ -264,9 +264,9 @@ Data:
 | Phase | Nội dung | Deliverable |
 |---|---|---|
 | **P1** | Hạ tầng cloud | Supabase project + SQL migration (schema+RLS+edge fn `claim_device`); tạo credential `app-family` trong HiveMQ console; script test MQTT trong `tools/` |
-| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`RP-XXXX`, `pair` command, scanWifi trong AP); envelope seq/ts/hmac; MQTT per-device auth + topic mới; revocation khi re-pair; verify scan khi đang ở AP mode |
+| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`myhome-{model}-XXXX`, `pair` command, scanWifi trong AP); envelope seq/ts/hmac; MQTT per-device auth + topic mới; revocation khi re-pair; verify scan khi đang ở AP mode |
 | **P3** | Firmware profiles | SWITCH/DIMMER/FAN (cùng codebase, build thử ESP32); PUMP giữ nguyên |
-| **P4** | App core | Login; Device List + Add Device (scan AP `RP-` prefix → WifiNetworkSpecifier → chọn WiFi từ danh sách MCU → claim); refactor repository/navigation |
+| **P4** | App core | Login; Device List + Add Device (scan AP `myhome-` prefix → WifiNetworkSpecifier → chọn WiFi từ danh sách MCU → claim); refactor repository/navigation |
 | **P5** | App device UI | Màn hình theo capability; quản lý thiết bị |
 | **P6** | Chia sẻ & hoàn thiện | Invite/roles; OTA qua Supabase Storage; cảnh báo clone (offline bất thường/seq lệch); tài liệu |
 

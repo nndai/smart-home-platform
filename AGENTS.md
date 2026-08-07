@@ -26,3 +26,4 @@ tools/.venv/Scripts/pip install -r tools/requirements.txt
 
 - Không commit secret (HiveMQ credentials, SUPABASE keys) — xem `.env.example`
 - Firmware chỉ phụ thuộc MQTT (HiveMQ); Supabase chỉ phục vụ app
+- Tuyệt đối không sửa thư viện core (Arduino, FreeRTOS, ESP-IDF, LN882H SDK, LibreTiny SDK) — chỉ sửa code trong `src/` và `include/`
