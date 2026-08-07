@@ -1,3 +1,0 @@
-#pragma once
-#define BUILD_UNIX_TIME 1786078192u
-#define BUILD_STR "2026-08-07 11:49:52"
