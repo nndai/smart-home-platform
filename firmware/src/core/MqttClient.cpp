@@ -22,7 +22,7 @@ bool MqttClient::begin(const char* server, uint16_t port,
     _port = port;
     _user = user ? user : "";
     _pass = pass ? pass : "";
-    _clientId = clientId ? clientId : DEVICE_NAME;
+    _clientId = clientId ? clientId : "unknown_client";
     _topic = topic ? topic : "pump";
     _useTls = (port != DEFAULT_MQTT_PORT);
     _mqtt.setServer(server, port);

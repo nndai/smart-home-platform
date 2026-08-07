@@ -10,15 +10,6 @@
 #error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH trong build_flags"
 #endif
 
-// ── Version ──
-#define FIRMWARE_VERSION   "1.0.0"
-#define DEVICE_NAME        "RemotePump"
-#ifdef MCU
-#define CHIP_MODEL       MCU
-#else
-#define CHIP_MODEL       "LN882HK"
-#endif
-
 // ── Network ──
 #define WEBSOCKET_PORT      82
 

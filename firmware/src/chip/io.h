@@ -11,6 +11,7 @@ void reclaimRelayGpio();
 float readWifiTempC();
 
 // ── Thông tin hệ thống (getSystemInfo của CommandHandler) ──
+const char* chipModelName();      // LT: lt_cpu_get_model_code(); ESP32: ESP.getChipModel(); ESP8266: "ESP8266"
 uint32_t systemChipId();          // LT: ESP.getChipId(); ESP32: từ eFuse MAC
 const char* systemResetReason();  // LT: ESP.getResetReason(); ESP32: esp_reset_reason_str()
 size_t heapMinFree();             // LT: lt_heap_get_min_free(); ESP32: heap_caps minimum

@@ -606,10 +606,9 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
     if (has("system")) {
         JsonObject sys = resp["system"].to<JsonObject>();
         sys["chipId"] = chip::systemChipId();
-        sys["chipModel"] = CHIP_MODEL;
+        sys["chipModel"] = chip::chipModelName();
         sys["cpuFreq"] = ESP.getCpuFreqMHz();
         sys["sdkVersion"] = ESP.getSdkVersion();
-        sys["firmwareVersion"] = FIRMWARE_VERSION;
         sys["buildTime"] = buildStr();
         sys["buildUnixTime"] = buildUnixTime();
         sys["uptime"] = millis() / 1000;

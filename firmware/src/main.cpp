@@ -85,7 +85,7 @@ void setup() {
 
     delay(10);
     LT_IM(SYS, "=== Remote Pump Controller LN882H ===");
-    LT_IM(SYS, "FW Version: %s (build %s, %u)", FIRMWARE_VERSION, buildStr(), (unsigned)buildUnixTime());
+    LT_IM(SYS, "FW Build: %s", buildStr());
 
     //Watchdog: 15s timeout, feeder task feed mỗi 2s
     if (compat::wdtEnable(WDT_TIMEOUT_MS)) {
@@ -270,7 +270,7 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
     chip::reclaimRelayGpio();
 
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser, cfg.mqttPass,
-        DEVICE_NAME, cfg.mqttTopic);
+        "unknown_client", cfg.mqttTopic);
     mqttClient.setCallback(onMqttMessage);
 
 }
