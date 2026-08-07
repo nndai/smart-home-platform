@@ -1,8 +1,12 @@
 #pragma once
 
-// ── Pins + tham số riêng của profile PUMP (LN882H) ──
+// ── Pins + tham số riêng của profile PUMP ──
 // Được include bởi include/Config.h khi build với -DPROFILE_PUMP.
+// Bảng chân tách theo nền tảng: cùng 1 profile pump chạy trên nhiều MCU.
+
+// ── LibreTiny (LN882H) ──
 // PIN_PAxx/PIN_PBxx đến từ board header của LibreTiny (chỉ có trên LT).
+#if defined(LT_ARD_HAS_SERIAL)
 #include "generic-ln882h.h"
 
 // ── LN882H Pin Definitions ──
@@ -14,6 +18,19 @@
 #define PIN_TRIAC_GATE     PIN_PA08  // PA08  - TRIAC gate control
 #define PIN_LED            PIN_PA06  // PA06  - Status LED (active LOW)
 #define PIN_BUTTON         PIN_PA07  // PA07  - Push button (active LOW, pull-up)
+
+// ── MCU khác (ESP32...) ──
+#else
+
+#define PIN_BL0937_CF      4   // GPIO4  - BL0937 CF  (power pulse, interrupt)
+#define PIN_BL0937_CF1     5   // GPIO5  - BL0937 CF1 (current/voltage pulse, interrupt)
+#define PIN_BL0937_SEL     18  // GPIO18 - BL0937 SEL (current/voltage select)
+#define PIN_NTC_ADC        36  // GPIO36 - NTC 10k thermistor (ADC1, không xung đột WiFi)
+#define PIN_RELAY          23  // GPIO23 - Relay control
+#define PIN_TRIAC_GATE     -1  // -1 = không dùng triac (RelayController hỗ trợ)
+#define PIN_LED            2   // GPIO2  - Status LED (active LOW)
+#define PIN_BUTTON         0   // GPIO0  - Push button (active LOW, pull-up)
+#endif
 
 // ── BL0937 Defaults ──
 #define CURRENT_MIN_INTERVAL_MS   500     // interval tối thiểu giữa 2 lần tính dòng điện
