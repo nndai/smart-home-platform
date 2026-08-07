@@ -69,12 +69,8 @@
 // ── FreeRTOS task config ──
 #define TASK_NETWORK_STACK       4096
 #define TASK_NETWORK_PRIO        3
-#define TASK_SENSOR_STACK        512
+#define TASK_SENSOR_STACK        2024
 #define TASK_SENSOR_PRIO         4
-#define TASK_BUTTON_STACK        1024
-#define TASK_BUTTON_PRIO         1
-#define TASK_LED_STACK           512
-#define TASK_LED_PRIO            1
 #define TASK_NTPCLIENT_STACK     512
 
 #endif // CONFIG_H

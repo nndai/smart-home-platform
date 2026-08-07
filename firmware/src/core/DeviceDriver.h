@@ -4,8 +4,17 @@
 #include <functional>
 
 #include "core/ConfigManager.h"
-#include "core/LedController.h"
 #include "core/log/LogManager.h"
+
+// ── Dịch vụ core cấp cho driver: log, lưu/reset config, gửi phản hồi ──
+// LED/nút nhấn KHÔNG nằm ở đây: chúng là phần cứng của thiết bị, driver tự khai
+// báo + tự quản (vd pump 1 LED 1 button, fan 5 LED 2 button, thêm bớt tùy profile).
+struct DriverServices {
+    LogManager* log = nullptr;
+    std::function<bool()> saveConfig;
+    std::function<void()> resetConfig;
+    std::function<void(const String&)> sendResponse;
+};
 
 // ── Interface thiết bị: core gọi mù, profile hiện thực ──
 // main.cpp + CommandHandler chỉ thao tác qua interface này,
@@ -36,9 +45,8 @@ public:
     // Đọc field thiết bị từ payload. Trả về true nếu có thay đổi.
     virtual bool setConfig(const JsonDocument& payload, JsonDocument& resp) = 0;
 
-    // UI hooks (default no-op cho thiết bị không có)
-    virtual void setLed(LedController* led) { (void)led; }
-    virtual void setLog(LogManager* log) { (void)log; }
+    // UI hooks: core cấp services; driver tự gắn callbacks button/LED (hành vi riêng từng device).
+    virtual void setServices(const DriverServices& svc) { (void)svc; }
     virtual bool isRelayOn() { return false; }
     virtual void setRelay(bool on) { (void)on; }
 };

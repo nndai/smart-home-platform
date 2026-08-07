@@ -15,7 +15,7 @@ public:
 
     bool isRelayOn() override { return _relay.getState(); }
     void setRelay(bool on) override { on ? _relay.turnOn() : _relay.turnOff(); }
-    void setLog(LogManager* log) { _log = log; }
+    void setServices(const DriverServices& svc) override { _log = svc.log; }
 
 private:
     RelayController _relay;

@@ -1,9 +1,29 @@
 #include "profiles/pump/PumpDriver.h"
 
+void PumpDriver::setServices(const DriverServices& svc) {
+    _log = svc.log;
+    _saveConfig = svc.saveConfig;
+    _resetConfig = svc.resetConfig;
+    _sendResponse = svc.sendResponse;
+
+    _menuSteps[0] = { "Reset WiFi", [this]() { _menuResetWiFi(); } };
+    _menuSteps[1] = { "DEBUG mode", [this]() { _menuDebugMode(); } };
+    _menuSteps[2] = { "Factory reset", [this]() { _menuFactoryReset(); } };
+}
+
 void PumpDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
     _cfg = static_cast<PumpConfig*>(&cfg);
     _saveFn = saveFn;
     PumpConfig& c = *_cfg;
+
+    // ── UI: LED + nút nhấn (riêng của pump, tự quản trong driver) ──
+    _led.begin(PIN_LED, LED_ACTIVE_LOW);
+    _button.setup(PIN_BUTTON, INPUT_PULLUP, BUTTON_ACTIVE_LOW);
+    _button.setPressMs(BUTTON_LONG_PRESS_MS);
+    _button.attachClick([](void* p) { static_cast<PumpDriver*>(p)->_onButtonClick(); }, this);
+    _button.attachDoubleClick([](void* p) { static_cast<PumpDriver*>(p)->_onButtonDoubleClick(); }, this);
+    _button.attachLongPressStart([](void* p) { static_cast<PumpDriver*>(p)->_onButtonLongPressStart(); }, this);
+    _menu.begin(&_led, _menuSteps, 3, BUTTON_LONG_PRESS_MS, BUTTON_CONFIRM_TIMEOUT_MS);
 
     _current.begin(PIN_BL0937_CF, PIN_BL0937_CF1, PIN_BL0937_SEL);
     if (isnan(c.cCal) || isnan(c.vCal) || isnan(c.pCal)) {
@@ -37,6 +57,10 @@ void PumpDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
 }
 
 void PumpDriver::loop(uint32_t nowMs) {
+    _button.tick();
+    _led.update();
+    _menu.tick(_button.debouncedValue());
+
     if (nowMs - _lastSensorLoop >= 1000) {
         _current.loop();
         _lastSensorLoop = nowMs;
@@ -270,25 +294,24 @@ void PumpDriver::_handleCalibrate(const JsonDocument& payload, JsonDocument& res
 void PumpDriver::_onPumpState(PumpState state, float current, bool isOn, const char* msg) {
     (void)current;
     (void)msg;
-    if (!_led) return;
 
     if (state == PumpState::DRY_RUN) {
-        _led->blink(500);
+        _led.blink(500);
     }
     else if (state == PumpState::OVERLOAD) {
-        _led->blink(200);
+        _led.blink(200);
     }
     else if (state == PumpState::HIGH_CURRENT) {
-        _led->blink(2, 500, 3000);
+        _led.blink(2, 500, 3000);
     }
     else if (state == PumpState::CRITICAL_CURRENT) {
-        _led->blink(3, 200, 1000);
+        _led.blink(3, 200, 1000);
     }
     else if (isOn == false) {
-        _led->off();
+        _led.off();
     }
     else if (isOn == true) {
-        _led->on();
+        _led.on();
     }
 }
 
@@ -332,4 +355,54 @@ void PumpDriver::_energyTick() {
         _lastPumpTimeAdd = now;
         _log->addPumpTime(3600000UL);
     }
+}
+
+// ── Hành vi nút nhấn (riêng của pump) ──
+
+void PumpDriver::_onButtonClick() {
+    bool on = !_pump.isOn();
+    setRelay(on);
+    if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_BUTTON, on);
+
+    JsonDocument resp;
+    resp["cmd"] = "setRelay";
+    resp["status"] = "ok";
+    resp["state"] = on ? "on" : "off";
+    String json;
+    serializeJson(resp, json);
+    if (_sendResponse) {
+        _sendResponse(json);
+    }
+}
+
+void PumpDriver::_onButtonDoubleClick() {
+    LT_IM(BTN, "Button double click");
+}
+
+void PumpDriver::_onButtonLongPressStart() {
+    LT_IM(BTN, "Button long press start");
+    _menu.start();
+}
+
+void PumpDriver::_menuResetWiFi() {
+    LT_IM(BTN, "Button long press: Reset WiFi");
+    _cfg->connMode = ConnMode::AP_WS;
+    if (_saveConfig) _saveConfig();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP.restart();
+}
+
+void PumpDriver::_menuDebugMode() {
+    LT_IM(BTN, "Button long press: Enter DEBUG mode");
+    _cfg->connMode = ConnMode::DEBUG_WS;
+    if (_saveConfig) _saveConfig();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP.restart();
+}
+
+void PumpDriver::_menuFactoryReset() {
+    LT_IM(BTN, "Button long press: Factory reset");
+    if (_resetConfig) _resetConfig();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP.restart();
 }

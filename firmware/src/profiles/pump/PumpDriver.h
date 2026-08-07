@@ -1,6 +1,9 @@
 #pragma once
 
 #include "core/DeviceDriver.h"
+#include "core/ButtonMenu.h"
+#include "core/LedController.h"
+#include <OneButton.h>
 #include "core/log/LogManager.h"
 #include "profiles/pump/CurrentSensor.h"
 #include "profiles/pump/TemperatureSensor.h"
@@ -19,21 +22,29 @@ public:
     bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
     void getSysInfo(JsonDocument& resp) override;
 
-    void setLed(LedController* led) override { _led = led; }
+    void setServices(const DriverServices& svc) override;
     bool isRelayOn() override { return _pump.isOn(); }
     void setRelay(bool on) override { on ? _pump.turnOn() : _pump.turnOff(); }
-    void setLog(LogManager* log) { _log = log; }
 
 private:
     CurrentSensor _current;
     TemperatureSensor _temp;
     RelayController _relay;
     PumpController _pump;
+    ButtonMenu _menu;
+
+    // ── UI riêng của pump: 1 LED trạng thái + 1 nút nhấn ──
+    // Thêm LED/button nữa (vd PIN_LED2) = thêm 1 member + 2 dòng (begin/update).
+    LedController _led;
+    OneButton _button;
 
     PumpConfig* _cfg = nullptr;
     ConfigSaveFn _saveFn;
-    LedController* _led = nullptr;
     LogManager* _log = nullptr;
+    std::function<bool()> _saveConfig;
+    std::function<void()> _resetConfig;
+    std::function<void(const String&)> _sendResponse;
+    ButtonMenu::Step _menuSteps[3];
 
     // ── Nhịp nội bộ ──
     unsigned long _lastSensorLoop = 0;
@@ -46,4 +57,12 @@ private:
     void _onPumpState(PumpState state, float current, bool isOn, const char* msg);
     void _energyTick();
     void _handleCalibrate(const JsonDocument& payload, JsonDocument& resp);
+
+    // ── Hành vi nút nhấn (riêng của pump) ──
+    void _onButtonClick();
+    void _onButtonDoubleClick();
+    void _onButtonLongPressStart();
+    void _menuResetWiFi();
+    void _menuDebugMode();
+    void _menuFactoryReset();
 };

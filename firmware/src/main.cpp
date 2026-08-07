@@ -8,8 +8,6 @@
 #include "compat/wdt.h"
 
 #include "core/ConfigManager.h"
-#include "core/LedController.h"
-#include <OneButton.h>
 #include "core/MqttClient.h"
 #include "core/WebSocketServer.h"
 #include "core/log/LogManager.h"
@@ -26,8 +24,6 @@
 // ── Global objects ──
 ConfigManagerT<ProfileConfig> configManager;
 DeviceDriver* g_driver = nullptr;
-LedController ledController;
-OneButton button;
 MqttClient mqttClient;
 WebSocketServer wsServer(WEBSOCKET_PORT);
 LogManager logManager;
@@ -48,8 +44,6 @@ void taskWsLoop(void* pvParams);
 void taskMqttLoop(void* pvParams);
 void taskNtpUpdate(void* pvParams);
 void driverTask(void* pvParams);
-void buttonTask(void* pvParams);
-void ledTask(void* pvParams);
 void taskWdtFeed(void* pvParams);
 void taskStreamSender(void* pvParams);
 
@@ -59,9 +53,6 @@ static void setupDEBUG_WS(ProfileConfig& cfg);
 static void onMqttMessage(const String& topic, const String& payload);
 static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
-static void onButtonClick();
-static void onButtonDoubleClick();
-static void onButtonLongPressStart();
 static void sendResponse(const String& target, const String& json);
 void setLogMqttEnable(bool enable);
 bool isLogMqttEnabled();
@@ -181,12 +172,20 @@ void setup() {
 
     // Driver thiết bị (theo profile) — wiring + calib + relayStartMode nằm trong driver
     g_driver = createDriver();
-    g_driver->setLed(&ledController);
-    g_driver->setLog(&logManager);
+    g_driver->setServices({
+        &logManager,
+        [&]() { return configManager.save(); },
+        [&]() { configManager.reset(); },
+        [](const String& json) {
+            if (g_connMode == ConnMode::STA_MQTT) {
+                mqttClient.publish(String(configManager.get().mqttTopic), json);
+            }
+            else {
+                wsServer.broadcast(json);
+            }
+        },
+    });
     g_driver->begin(configManager.get(), [&]() { return configManager.save(); });
-
-    ledController.begin(PIN_LED, LED_ACTIVE_LOW);
-    button.setup(PIN_BUTTON, INPUT_PULLUP, BUTTON_ACTIVE_LOW);
 
     otaManager.begin();
 
@@ -214,8 +213,6 @@ void setup() {
     }
 
     xTaskCreate(driverTask, "driver", TASK_SENSOR_STACK, NULL, TASK_SENSOR_PRIO, NULL);
-    xTaskCreate(buttonTask, "button", TASK_BUTTON_STACK, NULL, TASK_BUTTON_PRIO, NULL);
-    xTaskCreate(ledTask, "led", TASK_LED_STACK, NULL, TASK_LED_PRIO, NULL);
     xTaskCreate(taskStreamSender, "stream", 1000, NULL, tskIDLE_PRIORITY + 2, NULL);
 
     LT_IM(SYS, "System ready!");
@@ -426,33 +423,6 @@ void taskStreamSender(void* pvParams) {
     }
 }
 
-// ── Button Task ──
-void buttonTask(void* pvParams) {
-    (void)pvParams;
-    TickType_t lastWake = xTaskGetTickCount();
-
-    button.attachClick(onButtonClick);
-    button.attachDoubleClick(onButtonDoubleClick);
-    button.attachLongPressStart(onButtonLongPressStart);
-    button.setPressMs(BUTTON_LONG_PRESS_MS);
-
-    while (1) {
-        button.tick();
-        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(20));
-    }
-}
-
-void ledTask(void* pvParams) {
-    (void)pvParams;
-    TickType_t lastWake = xTaskGetTickCount();
-
-    while (1) {
-        ledController.update();
-        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
-    }
-}
-
-
 // ── Callbacks ──
 
 static void onMqttMessage(const String& topic, const String& payload) {
@@ -475,86 +445,6 @@ static void onWsBinary(const String& clientId, const uint8_t* data, size_t len) 
             otaManager.writeError();
         }
     }
-}
-
-static void onButtonClick() {
-    bool on = !g_driver->isRelayOn();
-    g_driver->setRelay(on);
-    //LT_IM(BTN, "Button click: Turn %s", on ? "ON" : "OFF");
-    logManager.logToggle(LogManager::ToggleSource::TOGGLE_BUTTON, on);
-    JsonDocument resp;
-    resp["cmd"] = "setRelay";
-    resp["status"] = "ok";
-    resp["state"] = on ? "on" : "off";
-    String json;
-    serializeJson(resp, json);
-
-    if (g_connMode == ConnMode::STA_MQTT) {
-        sendResponse("mqtt", json);
-        return;
-    }
-
-    sendResponse("ws", json);
-}
-
-static void onButtonDoubleClick() {
-    LT_IM(BTN, "Button double click");
-}
-
-static void onButtonLongPressStart() {
-    LT_IM(BTN, "Button long press start");
-
-    uint32_t startTime = millis();
-    uint8_t step = 0;
-
-    ledController.blink(100);
-    while (digitalRead(PIN_BUTTON) == LOW) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        if (millis() - startTime >= BUTTON_LONG_PRESS_MS) {
-            ledController.off();
-            startTime = millis();
-
-            while (millis() - startTime < BUTTON_CONFIRM_TIMEOUT_MS) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                if (digitalRead(PIN_BUTTON) == HIGH) {
-                    break;
-                }
-            }
-
-            if(digitalRead(PIN_BUTTON) == HIGH) {
-                break;
-            }
-
-            step++;
-            ledController.blink(step * 200);
-            startTime = millis();
-        }
-    }
-    ledController.off();
-
-    if(step == 0) {
-        LT_IM(BTN, "Button long press: Reset WiFi");
-        ProfileConfig cfg = configManager.get();
-        cfg.connMode = ConnMode::AP_WS;
-        configManager.save(cfg);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP.restart();
-    }
-    else if (step == 1) {
-        LT_IM(BTN, "Button long press: Enter DEBUG mode");
-        ProfileConfig cfg = configManager.get();
-        cfg.connMode = ConnMode::DEBUG_WS;
-        configManager.save(cfg);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP.restart();
-    }
-    else if (step == 2) {
-        LT_IM(BTN, "Button long press: Factory reset");
-        configManager.reset();
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP.restart();
-    }
-    LT_IM(BTN, "Button long press: No action for step %d", step);
 }
 
 static void sendResponse(const String& target, const String& json) {
