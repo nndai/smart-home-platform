@@ -27,18 +27,18 @@ namespace chip {
         return 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
     }
 
-const char* chipModelName() {
+String chipModelName() {
     String cpu_name = lt_cpu_get_model_code();
     cpu_name.toUpperCase();
-    return cpu_name.c_str();
+    return cpu_name;
 }
 
     uint32_t systemChipId() {
         return ESP.getChipId();
     }
 
-    const char* systemResetReason() {
-        return ESP.getResetReason().c_str();
+    String systemResetReason() {
+        return ESP.getResetReason();
     }
 
     size_t heapMinFree() {
@@ -60,13 +60,12 @@ namespace chip {
     }
 
 #if defined(ARDUINO_ARCH_ESP8266)
-    const char* chipModelName() {
+    String chipModelName() {
         return "ESP8266";
     }
 #else
-    const char* chipModelName() {
-        static String model = ESP.getChipModel();
-        return model.c_str();
+    String chipModelName() {
+        return ESP.getChipModel();
     }
 #endif
 
@@ -74,7 +73,7 @@ namespace chip {
         return (uint32_t)(ESP.getEfuseMac() >> 32);
     }
 
-    const char* systemResetReason() {
+    String systemResetReason() {
         esp_reset_reason_t reason = esp_reset_reason();
         switch (reason) {
         case ESP_RST_UNKNOWN:
