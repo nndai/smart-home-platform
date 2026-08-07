@@ -25,17 +25,21 @@ typedef struct {
 
 void softApStart(const char* ssid, const char* pass, uint8_t channel) {
     static uint8_t psk[40] = { 0 };
-    ln_psk_calc(ssid, pass, psk, sizeof(psk));
+    bool open = (pass == nullptr || pass[0] == '\0');
+
+    if (!open) {
+        ln_psk_calc(ssid, pass, psk, sizeof(psk));
+    }
 
     static uint8_t ap_mac[6];
     WiFi.softAPmacAddress(ap_mac);
 
     static ap_cfg_manual_t ap_cfg;
     ap_cfg.ssid = (char*)ssid;
-    ap_cfg.pwd = (char*)pass;
+    ap_cfg.pwd = (char*)(open ? "" : pass);
     ap_cfg.bssid = ap_mac;
     ap_cfg.channel = channel;
-    ap_cfg.authmode = 3;    // WPA2_PSK
+    ap_cfg.authmode = open ? 0 : 3; // 0=OPEN, 3=WPA2_PSK
     ap_cfg.beacon_interval = 5000;
     ap_cfg.psk_value = psk;
 

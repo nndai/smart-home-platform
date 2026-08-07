@@ -19,10 +19,12 @@ CommandHandlerT<T>::CommandHandlerT()
 
 template <typename T>
 void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
-    OTAManager* ota) {
+    OTAManager* ota, DeviceIdentity* identity, const char* profile) {
     _cfg = cfg;
     _log = log;
     _ota = ota;
+    _identity = identity;
+    _profile = profile ? profile : "unknown";
 }
 
 template <typename T>
@@ -107,6 +109,8 @@ void CommandHandlerT<T>::_handleCommand(const String& source, const JsonDocument
     else if (cmdStr == "otaChunk") _cmdOtaChunk(source, payload, resp);
     else if (cmdStr == "scanWifi") _cmdScanWifi(source, payload, resp);
     else if (cmdStr == "getScanWifiData") _cmdGetScanWifiData(source, payload, resp);
+    else if (cmdStr == "pair") _cmdPair(source, payload, resp);
+    else if (cmdStr == "provision") _cmdProvision(source, payload, resp);
     else if (cmdStr == "listDir" || cmdStr == "readFile" || cmdStr == "fileInfo" || cmdStr == "deleteItem" || cmdStr == "fsInfo" || cmdStr == "downloadFile") {
         _handleFileCommand(source, cmdStr, payload, reqId);
         return;
@@ -186,20 +190,28 @@ void CommandHandlerT<T>::_cmdGetConfig(const String& source, const JsonDocument&
     // Connection mode
     resp["connMode"] = (int)c.connMode;
 
-    // MQTT
+    // MQTT — topic là "devices/{deviceId}" (chuẩn phase 2, không cấu hình tay)
     resp["mqttServer"] = c.mqttServer;
     resp["mqttPort"] = c.mqttPort;
     resp["mqttUser"] = c.mqttUser;
     resp["mqttPass"] = strlen(c.mqttPass) > 0 ? "********" : "";
-    resp["mqttTopic"] = c.mqttTopic;
+    if (_identity) {
+        resp["mqttTopic"] = String("devices/") + _identity->deviceId();
+    } else {
+        resp["mqttTopic"] = "";
+    }
 
     // WiFi
     resp["wifiSSID"] = c.wifiSSID;
     resp["wifiPass"] = strlen(c.wifiPass) > 0 ? "********" : "";
-    resp["apSSID"] = c.apSSID;
-    resp["apPass"] = strlen(c.apPass) > 0 ? "********" : "";
     resp["debugSSID"] = c.debugSSID;
     resp["debugPass"] = strlen(c.debugPass) > 0 ? "********" : "";
+
+    // Danh tính + pairing (AP SSID tự suy ra từ deviceId — không cấu hình tay)
+    resp["deviceId"] = _identity ? _identity->deviceId() : "";
+    resp["apSSID"] = _identity ? _identity->apSSID() : "";
+    resp["profile"] = _profile;
+    resp["pairingState"] = (_identity && _identity->isProvisioned()) ? "provisioned" : "unprovisioned";
 
     // Debug network settings
     char ipBuf[16];
@@ -258,11 +270,9 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         changed = true; 
         needReboot = true;
     }
-    if (payload["mqttTopic"].is<const char*>()) { 
-        strlcpy(c.mqttTopic, payload["mqttTopic"], sizeof(c.mqttTopic)); 
-        changed = true; 
-        needReboot = true;
-    }
+    // mqttTopic KHÔNG cấu hình tay nữa (chuẩn "devices/{deviceId}") — field config
+    // giữ lại chỉ để không phá blob layout config cũ.
+    // if (payload["mqttTopic"].is<const char*>()) { ... }
 
     // WiFi STA settings
     if (payload["wifiSSID"].is<const char*>()) { 
@@ -274,18 +284,6 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         strlcpy(c.wifiPass, payload["wifiPass"], sizeof(c.wifiPass)); 
         changed = true; 
         needReboot = true;
-    }
-
-    // WiFi AP settings
-    if (payload["apSSID"].is<const char*>()) { 
-        strlcpy(c.apSSID, payload["apSSID"], sizeof(c.apSSID)); 
-        changed = true; 
-        needReboot = true;
-    }
-    if (payload["apPass"].is<const char*>()) { 
-        strlcpy(c.apPass, payload["apPass"], sizeof(c.apPass)); 
-        changed = true; 
-        needReboot = true; 
     }
 
     // WiFi DEBUG settings
@@ -300,12 +298,12 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         needReboot = true;
     }
 
-    // Pump settings → driver
+    // Settings riêng của thiết bị → driver (pump thresholds, calib...)
     if (_driver && _driver->setConfig(payload, resp)) {
         changed = true;
     }
 
-    // Relay start mode
+    // Relay start mode (dùng chung mọi profile relay)
     if (payload["relayStartMode"].is<unsigned int>()) {
         int v = payload["relayStartMode"].as<int>();
         if (v >= 0 && v <= 2) { 
@@ -430,10 +428,11 @@ template <typename T>
 void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp) {
     (void)payload;
     _cfg->reset();
+    if (_identity) _identity->reset();
     resp["status"] = "ok";
     resp["message"] = "Factory reset. Rebooting...";
     _sendResponse(source, resp);
-    LT_IM(CMD, "Factory reset");
+    LT_IM(CMD, "Factory reset (config + identity)");
     delay(1000);
     ESP.restart();
 }
@@ -789,9 +788,102 @@ void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const JsonDoc
     _scanResultJson = "";
 }
 
+// ── Pairing: app chọn WiFi nhà gửi qua → lưu → reboot sang STA_MQTT ──
+// Chỉ chấp nhận khi đang AP_WS (chặn từ MQTT/STA — bảo mật).
 template <typename T>
-void CommandHandlerT<T>::_handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId) {
-    String path = payload["path"] | String("/");
+void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+    if (g_connMode != ConnMode::AP_WS) {
+        resp["status"] = "error";
+        resp["message"] = "Pairing only allowed in AP mode";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    const char* ssid = payload["wifiSsid"];
+    if (!ssid || strlen(ssid) == 0) {
+        resp["status"] = "error";
+        resp["message"] = "Missing or invalid 'wifiSsid'";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    if (!_identity) {
+        resp["status"] = "error";
+        resp["message"] = "Identity unavailable";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    // controlKey do APP sinh — thiết bị lưu lại để phase 2 ký envelope.
+    // getConfig KHÔNG trả controlKey nữa: ai nối AP open cũng chỉ đọc được
+    // thông tin công khai (deviceId/apSSID), không lấy được khóa.
+    const char* ck = payload["controlKey"].is<const char*>() ? payload["controlKey"].as<const char*>() : "";
+    if (strlen(ck) == 0 || !_identity->setControlKeyHex(ck)) {
+        resp["status"] = "error";
+        resp["message"] = "Missing or invalid 'controlKey' (need 64 hex chars)";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    T& c = _cfg->get();
+    strlcpy(c.wifiSSID, ssid, sizeof(c.wifiSSID));
+    const char* pass = payload["wifiPass"].is<const char*>() ? payload["wifiPass"].as<const char*>() : "";
+    strlcpy(c.wifiPass, pass, sizeof(c.wifiPass));
+    c.connMode = ConnMode::STA_MQTT;
+    _cfg->save(c);
+
+    resp["status"] = "ok";
+    resp["message"] = "Pairing saved. Rebooting...";
+    resp["deviceId"] = _identity ? _identity->deviceId() : "";
+    resp["pairingState"] = (_identity && _identity->isProvisioned()) ? "provisioned" : "unprovisioned";
+    _sendResponse(source, resp);
+
+    LT_IM(CMD, "Pairing: ssid=%s connMode=STA_MQTT, rebooting", ssid);
+    delay(800);
+    ESP.restart();
+}
+
+// ── Provision (factory): inject/đổi deviceSecret + controlKey ──
+// Chỉ chấp nhận khi đang AP_WS (proximity). Hex 64 ký tự; bỏ trống = giữ nguyên.
+template <typename T>
+void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+    if (g_connMode != ConnMode::AP_WS) {
+        resp["status"] = "error";
+        resp["message"] = "Provision only allowed in AP mode";
+        _sendResponse(source, resp);
+        return;
+    }
+    if (!_identity) {
+        resp["status"] = "error";
+        resp["message"] = "Identity unavailable";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    if (payload["deviceSecret"].is<const char*>() && !_identity->setSecretHex(payload["deviceSecret"].as<const char*>())) {
+        resp["status"] = "error";
+        resp["message"] = "Invalid deviceSecret (need 64 hex chars)";
+        _sendResponse(source, resp);
+        return;
+    }
+    if (payload["controlKey"].is<const char*>() && !_identity->setControlKeyHex(payload["controlKey"].as<const char*>())) {
+        resp["status"] = "error";
+        resp["message"] = "Invalid controlKey (need 64 hex chars)";
+        _sendResponse(source, resp);
+        return;
+    }
+
+    resp["status"] = "ok";
+    resp["deviceId"] = _identity->deviceId();
+    resp["pairingState"] = _identity->isProvisioned() ? "provisioned" : "unprovisioned";
+    String ck;
+    if (_identity->controlKeyHex(ck)) resp["controlKey"] = ck;
+    LT_IM(CMD, "Provision: deviceId=%s state=%s", _identity->deviceId(), _identity->isProvisioned() ? "provisioned" : "unprovisioned");
+    _sendResponse(source, resp);
+}
+
+template <typename T>
+void CommandHandlerT<T>::_handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId) {    String path = payload["path"] | String("/");
 
     String json;
     if (cmd == "listDir") {

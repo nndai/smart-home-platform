@@ -9,6 +9,7 @@
 
 #include "core/ConfigManager.h"
 #include "core/DeviceDriver.h"
+#include "core/DeviceIdentity.h"
 #include "core/MqttClient.h"
 #include "core/WebSocketServer.h"
 #include "core/log/LogManager.h"
@@ -30,7 +31,8 @@ public:
     };
 
     CommandHandlerT();
-    void begin(ConfigManagerT<T>* cfg, LogManager* log, OTAManager* ota);
+    void begin(ConfigManagerT<T>* cfg, LogManager* log, OTAManager* ota,
+               DeviceIdentity* identity, const char* profile);
     void setDriver(DeviceDriver* driver) { _driver = driver; }
     void setResponseCallback(ResponseCallback cb);
     void handleCommand(const String& source, const String& json);
@@ -45,6 +47,8 @@ private:
     DeviceDriver* _driver = nullptr;
     LogManager* _log;
     OTAManager* _ota;
+    DeviceIdentity* _identity = nullptr;
+    String _profile;
     ResponseCallback _responseCb;
 
     // ── Streams: deadline & source riêng cho mỗi loại ──
@@ -80,6 +84,8 @@ private:
     void _cmdOtaChunk(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp);
+    void _cmdPair(const String& source, const JsonDocument& payload, JsonDocument& resp);
+    void _cmdProvision(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId = "");
 };
 

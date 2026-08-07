@@ -23,3 +23,14 @@ inline DeviceDriver* createDriver() {
 #endif
     return nullptr;
 }
+
+// Tên profile (chuỗi công khai, gửi trong getConfig/pair)
+inline const char* profileName() {
+#if defined(PROFILE_PUMP)
+    return "pump";
+#elif defined(PROFILE_SWITCH)
+    return "switch";
+#else
+    return "unknown";
+#endif
+}

@@ -19,10 +19,6 @@ struct DeviceConfig {
     char wifiSSID[32] = "";
     char wifiPass[64] = "";
 
-    // ── WiFi AP ──
-    char apSSID[32] = DEFAULT_AP_SSID;
-    char apPass[64] = DEFAULT_AP_PASSWORD;
-
     // ── WiFi DEBUG ──
     char debugSSID[32] = DEFAULT_DEBUG_SSID;
     char debugPass[64] = DEFAULT_DEBUG_PASSWORD;
@@ -35,9 +31,9 @@ struct DeviceConfig {
     uint16_t mqttPort = DEFAULT_MQTT_PORT;
     char mqttUser[32] = "";
     char mqttPass[32] = "";
-    char mqttTopic[64] = DEFAULT_MQTT_TOPIC;
+    char mqttTopic[64] = DEFAULT_MQTT_TOPIC;  // legacy — không dùng (topic chuẩn "devices/{deviceId}")
 
-    // ── Relay startup mode (OFF=0 / ON=1 / LAST=2) ──
+    // ── Relay startup mode (OFF=0 / ON=1 / LAST=2) — dùng chung mọi profile relay ──
     RelayStartMode relayStartMode = RelayStartMode::OFF;
 
     // ── Sys log file ──

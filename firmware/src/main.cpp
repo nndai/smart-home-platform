@@ -8,6 +8,7 @@
 #include "compat/wdt.h"
 
 #include "core/ConfigManager.h"
+#include "core/DeviceIdentity.h"
 #include "core/MqttClient.h"
 #include "core/WebSocketServer.h"
 #include "core/log/LogManager.h"
@@ -23,6 +24,7 @@
 
 // ── Global objects ──
 ConfigManagerT<ProfileConfig> configManager;
+DeviceIdentity g_identity;
 DeviceDriver* g_driver = nullptr;
 MqttClient mqttClient;
 WebSocketServer wsServer(WEBSOCKET_PORT);
@@ -37,6 +39,12 @@ template class CommandHandlerT<ProfileConfig>;
 
 // ── Runtime connection mode ──
 ConnMode g_connMode = ConnMode::AP_WS;
+
+// ── MQTT topic chuẩn (phase 2): devices/{deviceId}/cmd|up|log ──
+// (field config mqttTopic cũ không dùng nữa — giữ để không phá blob layout)
+static String mqttBaseTopic() {
+    return String("devices/") + g_identity.deviceId();
+}
 
 // ── Forward declarations ──
 void taskWifiConnect(void* pvParams);
@@ -153,6 +161,9 @@ void setup() {
     logManager.setSysLogFileLevel(cfg.sysLogFileLevel);
     logCaptureFlushFile(&logManager);
 
+    // Danh tính thiết bị: deviceId + secret/controlKey mã hóa (sinh lần boot đầu)
+    g_identity.begin(profileName());
+
     s_logCb = [](const String& line) {
         JsonDocument logJson;
         logJson["cmd"] = "log";
@@ -163,7 +174,7 @@ void setup() {
             wsServer.broadcast(json);
         }
         if (_logMqttActive) {
-            mqttClient.publish(String(configManager.get().mqttTopic), json);
+            mqttClient.publish(mqttBaseTopic() + "/log", json);
         }
         };
     logManager.setLogCallback(s_logCb);
@@ -175,10 +186,10 @@ void setup() {
     g_driver->setServices({
         &logManager,
         [&]() { return configManager.save(); },
-        [&]() { configManager.reset(); },
+        [&]() { configManager.reset(); g_identity.reset(); },
         [](const String& json) {
             if (g_connMode == ConnMode::STA_MQTT) {
-                mqttClient.publish(String(configManager.get().mqttTopic), json);
+                mqttClient.publish(mqttBaseTopic() + "/up", json);
             }
             else {
                 wsServer.broadcast(json);
@@ -189,7 +200,7 @@ void setup() {
 
     otaManager.begin();
 
-    commandHandler.begin(&configManager, &logManager, &otaManager);
+    commandHandler.begin(&configManager, &logManager, &otaManager, &g_identity, profileName());
     commandHandler.setDriver(g_driver);
     commandHandler.setResponseCallback(sendResponse);
 
@@ -197,7 +208,11 @@ void setup() {
     //ln_pm_sleep_mode_set(LIGHT_SLEEP);
 
     // Connection-specific setup
-    switch (cfg.connMode) {
+    // Device luôn tự sinh secret+controlKey lúc boot đầu (isProvisioned()=true),
+    // nên AP pairing portal myhome-<model>-XXXX được điều khiển bằng connMode default=AP_WS
+    // (device mới / sau factoryReset). STA_MQTT chỉ khi đã pair thành công.
+    ConnMode bootMode = cfg.connMode;
+    switch (bootMode) {
     case ConnMode::AP_WS:
         setupAP_WS(cfg);
         xTaskCreate(taskWsLoop, "ws", TASK_NETWORK_STACK, NULL, TASK_NETWORK_PRIO, NULL);
@@ -242,7 +257,7 @@ void setupWiFiSTA(ProfileConfig& cfg) {
 }
 
 static void setupAP_WS(ProfileConfig& cfg) {
-    LT_IM(NET, "AP mode: SSID=%s", cfg.apSSID);
+    LT_IM(NET, "AP mode: SSID=%s (open)", g_identity.apSSID());
     g_connMode = ConnMode::AP_WS;
 
     WiFi.mode(WIFI_AP);
@@ -250,7 +265,7 @@ static void setupAP_WS(ProfileConfig& cfg) {
         IPAddress(cfg.debugGateway[0], cfg.debugGateway[1], cfg.debugGateway[2], cfg.debugGateway[3]),
         IPAddress(cfg.debugNetmask[0], cfg.debugNetmask[1], cfg.debugNetmask[2], cfg.debugNetmask[3]));
 
-    chip::softApStart(cfg.apSSID, cfg.apPass);
+    chip::softApStart(g_identity.apSSID(), "", 1);
 
     chip::reclaimRelayGpio();
 
@@ -266,8 +281,9 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
+    String clientId = String("device-") + g_identity.deviceId();
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser, cfg.mqttPass,
-        "unknown_client", cfg.mqttTopic);
+        clientId.c_str(), mqttBaseTopic().c_str());
     mqttClient.setCallback(onMqttMessage);
 
 }
@@ -347,6 +363,7 @@ void taskMqttLoop(void* pvParams) {
     (void)pvParams;
     TickType_t lastWake = xTaskGetTickCount();
     bool logLostConnection = false;
+    bool announceSent = false;
 
     while (1) {
         compat::wdtFeed();
@@ -354,11 +371,27 @@ void taskMqttLoop(void* pvParams) {
         if (!connected && !logLostConnection) {
             LT_E("MQTT connection lost. Attempting to reconnect...");
             logLostConnection = true;
+            announceSent = false;
         }
         else if (connected && logLostConnection) {
             LT_I("MQTT reconnected");
             logLostConnection = false;
         }
+
+        // Lần đầu lên kênh: announce retained — app phát hiện thiết bị online (phase 2)
+        if (connected && !announceSent) {
+            JsonDocument doc;
+            doc["cmd"] = "announce";
+            doc["deviceId"] = g_identity.deviceId();
+            doc["profile"] = profileName();
+            String json;
+            serializeJson(doc, json);
+            if (mqttClient.publish(mqttBaseTopic() + "/up", json, true)) {
+                announceSent = true;
+                LT_IM(NET, "Announce published on %s/up", mqttBaseTopic().c_str());
+            }
+        }
+
         vTaskDelayUntil(&lastWake, otaManager.isRunning() ? pdMS_TO_TICKS(10) : pdMS_TO_TICKS(50));
     }
 }
@@ -450,7 +483,7 @@ static void onWsBinary(const String& clientId, const uint8_t* data, size_t len) 
 static void sendResponse(const String& target, const String& json) {
 
     if (target == "mqtt") {
-        mqttClient.publish(configManager.get().mqttTopic, json);
+        mqttClient.publish(mqttBaseTopic() + "/up", json);
     }
     if (target == "ws") {
         wsServer.broadcast(json);

@@ -17,6 +17,8 @@ struct PumpConfig : public DeviceConfig {
     // ── Device mode ──
     bool pumpMode = DEFAULT_PUMP_MODE;
 
+    // (relayStartMode kế thừa từ DeviceConfig — dùng chung mọi profile relay)
+
     // ── BL0937 calibration coefficients (NAN = use HW defaults) ──
     double cCal = NAN;   // current coefficient
     double vCal = NAN;   // voltage coefficient

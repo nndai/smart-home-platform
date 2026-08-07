@@ -18,10 +18,6 @@
 #define PATH_LOG_DIR        "/logs/"
 #define PATH_LOG_FILE       "/logs/log.txt"
 
-// ── Default WiFi AP ──
-#define DEFAULT_AP_SSID     "REMOTE PUMP"
-#define DEFAULT_AP_PASSWORD "12345678"
-
 // ── Default WiFi DEBUG ──
 #define DEFAULT_DEBUG_SSID      "DESKTOP-P5540"
 #define DEFAULT_DEBUG_PASSWORD  "aaaaaaaa"
