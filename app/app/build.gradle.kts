@@ -15,6 +15,7 @@ val mqttTopic = localProps.getProperty("MQTT_TOPIC", "pump")
 val websocketUrl = localProps.getProperty("WEBSOCKET_URL", "")
 val supabaseUrl = localProps.getProperty("SUPABASE_URL", "")
 val supabaseKey = localProps.getProperty("SUPABASE_KEY", "")
+val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
 android {
     namespace = "com.nndai.myhome"
     compileSdk = 36
@@ -36,6 +37,7 @@ android {
         buildConfigField("String", "WEBSOCKET_URL", "\"$websocketUrl\"")
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {
@@ -94,6 +96,12 @@ dependencies {
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
     implementation(libs.ktor.client.android)
+
+    // Google Sign-In & Credential Manager
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services)
+    implementation(libs.googleid)
+    implementation(libs.play.services.auth)
 
     // Test dependencies removed as requested
 }
