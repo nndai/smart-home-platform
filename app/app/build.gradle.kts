@@ -13,7 +13,8 @@ val mqttUsername = localProps.getProperty("MQTT_USERNAME", "")
 val mqttPassword = localProps.getProperty("MQTT_PASSWORD", "")
 val mqttTopic = localProps.getProperty("MQTT_TOPIC", "pump")
 val websocketUrl = localProps.getProperty("WEBSOCKET_URL", "")
-
+val supabaseUrl = localProps.getProperty("SUPABASE_URL", "")
+val supabaseKey = localProps.getProperty("SUPABASE_KEY", "")
 android {
     namespace = "com.nndai.myhome"
     compileSdk = 36
@@ -33,6 +34,8 @@ android {
         buildConfigField("String", "MQTT_PASSWORD", "\"$mqttPassword\"")
         buildConfigField("String", "MQTT_TOPIC", "\"$mqttTopic\"")
         buildConfigField("String", "WEBSOCKET_URL", "\"$websocketUrl\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
     }
 
     buildTypes {
@@ -87,10 +90,10 @@ dependencies {
     // OkHttp
     implementation(libs.okhttp)
 
-    // Supabase (Temporary commented out)
-    // implementation(libs.supabase.gotrue)
-    // implementation(libs.supabase.postgrest)
-    // implementation(libs.ktor.client.android)
+    // Supabase
+    implementation(libs.supabase.auth)
+    implementation(libs.supabase.postgrest)
+    implementation(libs.ktor.client.android)
 
     // Test dependencies removed as requested
 }

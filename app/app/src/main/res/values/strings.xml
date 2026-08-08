@@ -6,7 +6,7 @@
     <string name="nav_settings">Settings</string>
     <string name="nav_system">System</string>
 
-    <string name="app_name">Remote Pump</string>
+    <string name="app_name">My Home</string>
 
     <!-- Dashboard - Fault Dialogs -->
     <string name="fault_dry_run_title">DRY RUN WARNING</string>

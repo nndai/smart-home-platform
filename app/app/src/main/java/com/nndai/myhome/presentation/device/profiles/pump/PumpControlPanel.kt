@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nndai.myhome.R
 import com.nndai.myhome.data.model.PumpState
+import com.nndai.myhome.data.model.PumpStatus
 import com.nndai.myhome.presentation.device.components.ConnectionBanner
 import com.nndai.myhome.presentation.device.components.PumpControlButton
 import com.nndai.myhome.presentation.device.components.StatusCard
@@ -499,7 +500,7 @@ fun DashboardScreenPreview() {
         )
         DashboardScreenContent(
             status = fakeStatus,
-            connectionState = com.nndai.myhome.data.model.ConnectionState.CONNECTED,
+            connectionState = com.nndai.myhome.data.model.ConnectionState.Connected("Mock"),
             isToggling = false,
             onToggle = {},
             onReconnect = {},
