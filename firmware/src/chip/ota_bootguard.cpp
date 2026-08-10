@@ -211,19 +211,15 @@ static bool otaDownloadAndFlash(const char* url) {
     uint8_t buf[OTA_CHUNK_SIZE];
     size_t written = 0;
     bool ledOn = false;
-    uint32_t lastLed = millis();
 
     while (http.connected() && written < (size_t)total) {
-        if (millis() - lastLed >= 50) {
-            ledOn = !ledOn;
-            otaLedSet(ledOn);
-            lastLed = millis();
-        }
-
+        
         size_t avail = stream->available();
         if (avail > 0) {
             size_t n = stream->readBytes(buf, std::min(avail, sizeof(buf)));
             if (n > 0) written += Update.write(buf, n);
+            ledOn = !ledOn;
+            otaLedSet(ledOn);
         } else {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
