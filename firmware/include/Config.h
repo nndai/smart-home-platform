@@ -13,6 +13,9 @@
 // ── Network ──
 #define WEBSOCKET_PORT      82
 
+// ── SoftAP (chế độ AP_WS / cấu hình) ──
+#define DEFAULT_AP_PASSWORD     "123456789"
+
 // ── File Paths (LittleFS) ──
 #define PATH_CONFIG_FILE    "/config.json"
 #define PATH_LOG_DIR        "/logs/"

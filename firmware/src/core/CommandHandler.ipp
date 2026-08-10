@@ -720,14 +720,14 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
             (void)info;
             _scanPending = false;
 
-            JsonDocument doc;
-            doc["cmd"] = "scanWifi";
+            _scanResultDoc.clear();
+            _scanResultDoc["cmd"] = "scanWifi";
 
             int16_t count = compat::scanComplete();
             if (count >= 0) {
                 chip::ScanResult results[40];
                 int n = chip::scanGetResults(results, 40);
-                JsonArray nets = doc["networks"].to<JsonArray>();
+                JsonArray nets = _scanResultDoc["networks"].to<JsonArray>();
                 for (int i = 0; i < n && i < count; i++) {
                     JsonObject obj = nets.add<JsonObject>();
                     obj["name"] = results[i].ssid;
@@ -739,16 +739,16 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
                     obj["bssid"] = bssid;
                     obj["isEncrypt"] = results[i].isEncrypt;
                 }
-                doc["status"] = "ok";
+                _scanResultDoc["status"] = "ok";
             }
             else {
-                doc["status"] = "error";
-                doc["message"] = "Scan failed";
+                _scanResultDoc["status"] = "error";
+                _scanResultDoc["message"] = "Scan failed";
             }
 
-            serializeJson(doc, _scanResultJson);
             _scanResultReady = true;
             compat::scanDelete();
+            compat::scanRestore();   // no-op (AP không bao giờ bị tắt khi scan)
 
             JsonDocument notify;
             notify["cmd"] = "scanWifi";
@@ -758,11 +758,16 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     }
 
     LT_IM(CMD, "Starting async WiFi scan...");
-    compat::scanStart();
+    bool wifiDrop = compat::scanWillDrop();
+    
 
     resp["status"] = "ok";
     resp["message"] = "Scan started";
+    resp["wifiDrop"] = wifiDrop;
     _sendResponse(source, resp);
+
+    vTaskDelay(100);
+    compat::scanStart();
 }
 
 template <typename T>
@@ -784,8 +789,15 @@ void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const JsonDoc
     }
 
     _scanResultReady = false;
-    _sendResponse(source, _scanResultJson);
-    _scanResultJson = "";
+
+    // Merge kết quả scan vào resp (đã có cmd + reqId từ _handleCommand) —
+    // app match response theo reqId, thiếu reqId → timeout 20s.
+    for (JsonPair kv : _scanResultDoc.as<JsonObject>()) {
+        resp[kv.key()] = kv.value();
+    }
+    _scanResultDoc.clear();
+
+    _sendResponse(source, resp);
 }
 
 // ── Pairing: app chọn WiFi nhà gửi qua → lưu → reboot sang STA_MQTT ──

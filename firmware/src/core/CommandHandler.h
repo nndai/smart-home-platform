@@ -59,7 +59,7 @@ private:
     bool _scanPending = false;
     uint16_t _scanEventHandlerId = 0;
     String _scanSource;
-    String _scanResultJson;
+    JsonDocument _scanResultDoc;
     bool _scanResultReady = false;
 
     void _sendResponse(const String& source, const JsonDocument& doc);

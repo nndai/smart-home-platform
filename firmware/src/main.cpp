@@ -257,15 +257,19 @@ void setupWiFiSTA(ProfileConfig& cfg) {
 }
 
 static void setupAP_WS(ProfileConfig& cfg) {
-    LT_IM(NET, "AP mode: SSID=%s (open)", g_identity.apSSID());
+    const char* apPass = DEFAULT_AP_PASSWORD; // WPA2 mặc định
+    LT_IM(NET, "AP mode: SSID=%s %s", g_identity.apSSID(), apPass ? "(WPA2)" : "(open)");
     g_connMode = ConnMode::AP_WS;
 
     WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(IPAddress(cfg.debugIp[0], cfg.debugIp[1], cfg.debugIp[2], cfg.debugIp[3]),
-        IPAddress(cfg.debugGateway[0], cfg.debugGateway[1], cfg.debugGateway[2], cfg.debugGateway[3]),
+    WiFi.softAPConfig(
+        IPAddress(cfg.debugIp[0], cfg.debugIp[1], cfg.debugIp[2], cfg.debugIp[3]),
+        IPAddress(cfg.debugIp[0], cfg.debugIp[1], cfg.debugIp[2], cfg.debugIp[3]),
         IPAddress(cfg.debugNetmask[0], cfg.debugNetmask[1], cfg.debugNetmask[2], cfg.debugNetmask[3]));
 
-    chip::softApStart(g_identity.apSSID(), "", 1);
+    //WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
+
+    chip::softApStart(g_identity.apSSID(), apPass, 1);
 
     chip::reclaimRelayGpio();
 
@@ -281,8 +285,13 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
+    // MQTT auth per-device (docs §3.3): username = device-{deviceId}, password = deviceSecret
+    // (firmware tự sinh — không còn credential tĩnh nào trong config)
     String clientId = String("device-") + g_identity.deviceId();
-    mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser, cfg.mqttPass,
+    String deviceSecret;
+    g_identity.secretHex(deviceSecret);
+    mqttClient.begin(cfg.mqttServer, cfg.mqttPort,
+        clientId.c_str(), deviceSecret.c_str(),
         clientId.c_str(), mqttBaseTopic().c_str());
     mqttClient.setCallback(onMqttMessage);
 
@@ -343,6 +352,7 @@ void taskWsLoop(void* pvParams) {
         switch (g_connMode) {
         case ConnMode::DEBUG_WS:
             wsServer.handle();
+            chip::scanPumpDoneEvent();
             if (!logCaptureIsDone() && wsServer.clientCount() > 0 && s_logCb) {
                 logCaptureFlushCallback(s_logCb);
             }
@@ -351,6 +361,7 @@ void taskWsLoop(void* pvParams) {
 
         case ConnMode::AP_WS:
             wsServer.handle();
+            chip::scanPumpDoneEvent();
             break;
         }
 
