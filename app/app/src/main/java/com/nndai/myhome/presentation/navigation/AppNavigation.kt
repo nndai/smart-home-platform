@@ -23,8 +23,8 @@ import com.nndai.myhome.data.repository.AuthRepository
 import com.nndai.myhome.data.repository.DeviceManagerRepository
 import com.nndai.myhome.presentation.auth.LoginScreen
 import com.nndai.myhome.presentation.device.DeviceDetailScreen
-import com.nndai.myhome.presentation.device.management.AddDeviceScreen
 import com.nndai.myhome.presentation.main.MainScreen
+import com.nndai.myhome.presentation.pairing.PairingFlowScreen
 import kotlinx.coroutines.launch
 
 @Composable
@@ -129,12 +129,14 @@ fun AppNavigation(
             )
         }
 
-        composable("add_device") {
-            AddDeviceScreen(
+        composable("pairing") {
+            PairingFlowScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onDeviceAdded = { name, profile, deviceId ->
+                onPairComplete = { deviceId, profile, name, controlKeyHex ->
                     coroutineScope.launch {
-                        deviceRepository.addDevice(name, profile, deviceId)
+                        if (isLoggedIn) {
+                            deviceRepository.addDevice(name, profile, deviceId, controlKeyHex)
+                        }
                         navController.popBackStack()
                     }
                 }

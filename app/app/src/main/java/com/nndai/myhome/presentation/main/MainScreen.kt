@@ -149,7 +149,7 @@ fun MainScreen(
                     deviceRepository = deviceRepository,
                     isLoggedIn = isLoggedIn,
                     onNavigateToLogin = { parentNavController.navigate("login") },
-                    onAddDeviceClick = { parentNavController.navigate("add_device") },
+                    onAddDeviceClick = { parentNavController.navigate("pairing") },
                     onNavigateToDevice = { deviceId, profile ->
                         parentNavController.navigate("device/$deviceId/$profile")
                     }

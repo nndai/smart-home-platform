@@ -57,6 +57,7 @@ fun DeviceManagementScreen(
     onNavigateToDevice: (String, String) -> Unit
 ) {
     val devices by deviceRepository.devices.collectAsState()
+    val lastError by deviceRepository.lastError.collectAsState()
 
     Scaffold(
         floatingActionButton = {
@@ -113,8 +114,28 @@ fun DeviceManagementScreen(
                 }
             }
 
-            // Empty state
-            if (devices.isEmpty()) {
+            // Error state
+            if (lastError != null) {
+                Spacer(modifier = Modifier.height(48.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DeviceUnknown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Text(
+                        text = lastError.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else if (devices.isEmpty()) {
                 Spacer(modifier = Modifier.height(48.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),

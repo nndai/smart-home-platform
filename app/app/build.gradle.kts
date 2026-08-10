@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId = "com.nndai.myhome"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
