@@ -90,3 +90,6 @@ desktop.ini
 
 # Generated build timestamp header
 firmware/include/build_time.h
+
+# OpenCode
+.opencode

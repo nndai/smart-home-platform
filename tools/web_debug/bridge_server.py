@@ -32,8 +32,8 @@ WS_PORT = 8080
 
 # --- HTTP Server (Background Thread) ---
 def run_http_server():
-    # Phục vụ thư mục web_debug
-    web_dir = os.path.join(os.path.dirname(__file__), "web_debug")
+    # Phục vụ thư mục web
+    web_dir = os.path.join(os.path.dirname(__file__), "web")
     os.chdir(web_dir)
     
     class QuietHandler(http.server.SimpleHTTPRequestHandler):
