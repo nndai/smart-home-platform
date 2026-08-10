@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -53,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -148,6 +151,7 @@ fun PairingFlowScreen(
 
                 is PairingState.WifiList -> WifiSelectContent(
                     networks = current.networks,
+                    onRescan = { viewModel.scanWifiOnDevice() },
                     onConnect = { ssid, pass -> viewModel.pair(ssid, pass) }
                 )
 
@@ -356,6 +360,7 @@ private fun ProgressContent(message: String, detail: String) {
 @Composable
 private fun WifiSelectContent(
     networks: List<WifiNetworkInfo>,
+    onRescan: () -> Unit,
     onConnect: (ssid: String, pass: String) -> Unit
 ) {
     var selected by remember { mutableStateOf<String?>(null) }
@@ -363,19 +368,38 @@ private fun WifiSelectContent(
     var connecting by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Chọn WiFi nhà", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "Thiết bị quét được ${networks.size} mạng — chọn mạng nhà bạn",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Chọn WiFi nhà", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Thiết bị quét được ${networks.size} mạng — chọn mạng nhà bạn",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onRescan) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Quét lại")
+            }
+        }
 
         if (networks.isEmpty()) {
-            Text(
-                "Thiết bị không quét được mạng nào — hãy thử lại",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Thiết bị không quét được mạng nào — hãy thử lại",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                OutlinedButton(onClick = onRescan) {
+                    Text("Quét lại")
+                }
+            }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
                 items(networks) { network ->
@@ -403,29 +427,37 @@ private fun WifiSelectContent(
                         ) {
                             Icon(
                                 imageVector = if (network.encrypted) Icons.Filled.WifiLock else Icons.Filled.Wifi,
-                                contentDescription = null,
-                                tint = if (network.encrypted) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                                contentDescription = if (network.encrypted) "Encrypted WiFi" else "Open WiFi",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = network.name,
                                     style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (network.bssid.isNotBlank()) {
+                                    Text(
+                                        text = network.bssid.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                WifiSignalBars(rssi = network.rssi)
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (network.encrypted) "Bảo mật" else "Mở (không cần mật khẩu)",
+                                    text = "${network.rssi} dBm",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text(
-                                text = "${network.rssi} dBm",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
@@ -460,6 +492,62 @@ private fun WifiSelectContent(
             Text(
                 text = if (connecting) "Đang kết nối..." else "Connect",
                 fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun WifiSignalBars(
+    rssi: Int,
+    modifier: Modifier = Modifier
+) {
+    val activeLevel = when {
+        rssi >= -55 -> 4
+        rssi >= -67 -> 3
+        rssi >= -78 -> 2
+        else -> 1
+    }
+
+    val activeColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+
+    androidx.compose.foundation.Canvas(
+        modifier = modifier.size(20.dp)
+    ) {
+        val strokeWidth = 2.dp.toPx()
+        val centerX = size.width / 2f
+        val centerY = size.height - strokeWidth / 2f
+
+        val dotRadius = strokeWidth * 0.9f
+        drawCircle(
+            color = if (activeLevel >= 1) activeColor else inactiveColor,
+            radius = dotRadius,
+            center = androidx.compose.ui.geometry.Offset(centerX, centerY - dotRadius)
+        )
+
+        val radii = listOf(
+            strokeWidth * 2.6f,
+            strokeWidth * 4.4f,
+            strokeWidth * 6.2f
+        )
+
+        for (i in 0 until 3) {
+            val level = i + 2
+            val r = radii[i]
+            val color = if (activeLevel >= level) activeColor else inactiveColor
+
+            drawArc(
+                color = color,
+                startAngle = 225f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = androidx.compose.ui.geometry.Offset(centerX - r, (centerY - dotRadius) - r),
+                size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = strokeWidth,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
             )
         }
     }

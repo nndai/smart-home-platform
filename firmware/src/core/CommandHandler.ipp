@@ -753,6 +753,7 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
             JsonDocument notify;
             notify["cmd"] = "scanWifi";
             notify["status"] = "completed";
+            vTaskDelay(100);
             _sendResponse(_scanSource, notify);
         }, ARDUINO_EVENT_WIFI_SCAN_DONE);
     }

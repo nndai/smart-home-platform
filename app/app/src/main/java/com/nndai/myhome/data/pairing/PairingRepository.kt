@@ -24,7 +24,8 @@ import kotlinx.serialization.json.put
 data class WifiNetworkInfo(
     val name: String,
     val rssi: Int,
-    val encrypted: Boolean
+    val encrypted: Boolean,
+    val bssid: String = ""
 )
 
 sealed interface PairingState {
@@ -160,7 +161,11 @@ class PairingRepository(
     }
 
     fun scanWifiOnDevice() {
-        val current = _state.value as? PairingState.DeviceReady ?: return
+        val current = when (val s = _state.value) {
+            is PairingState.DeviceReady -> s
+            is PairingState.WifiList -> PairingState.DeviceReady(s.deviceId, s.profile, "")
+            else -> return
+        }
         Log.d(TAG, "scanWifiOnDevice(): device=${current.deviceId}")
         setState(PairingState.ScanningWifi(current.deviceId, current.profile))
         scope.launch {
@@ -309,7 +314,8 @@ class PairingRepository(
             WifiNetworkInfo(
                 name = name,
                 rssi = obj["rssi"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-                encrypted = obj["isEncrypt"]?.jsonPrimitive?.booleanOrNull ?: false
+                encrypted = obj["isEncrypt"]?.jsonPrimitive?.booleanOrNull ?: false,
+                bssid = obj["bssid"]?.jsonPrimitive?.content ?: ""
             )
         }
     }
