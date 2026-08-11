@@ -113,8 +113,8 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
 
 - App Android open-source: **không nhúng credential MQTT vào APK/BuildConfig**. Khi pair, app gọi RPC `get_mqtt_credential()` (SECURITY DEFINER, chỉ `authenticated`) lấy `device-family` rồi gửi kèm trong lệnh `pair` → thiết bị lưu vào config. Firmware fallback sang per-device nếu chưa có credential shared.
 - Migration: `supabase/migrations/0003_mqtt_shared_credential.sql`; seed 1 lần: `tools/seed_mqtt_credential.ps1`.
-- **Lưu trữ:** app chỉ cache credential trong RAM (không ghi prefs); Supabase `app_secrets` chứa pass plaintext (RLS + HTTPS, chấp nhận ở quy mô $0); thiết bị lưu `mqttPass` dạng **mã hóa AES-256-GCM, key = SHA-256(deviceId)** (`mqttPassEnc` trong KV `app_cfg`) — flash không chứa plaintext.
-- App **kết nối MQTT trực tiếp** (kênh điều khiển `MqttDeviceChannel`, credential từ RPC chỉ cache RAM) — không qua Edge Function bridge.
+- **Lưu trữ:** app lưu credential vào **Android Keystore** (persist an toàn, không phải SharedPreferences); khi mở app → lấy từ Keystore trước để connect nhanh, đồng thời sync background với Supabase (`syncWithRemote()`). Supabase `app_secrets` chứa pass plaintext (RLS + HTTPS, chấp nhận ở quy mô $0); thiết bị lưu `mqttPass` dạng **mã hóa AES-256-GCM, key = SHA-256(deviceId)** (`mqttPassEnc` trong KV `app_cfg`) — flash không chứa plaintext.
+- App **kết nối MQTT trực tiếp** (kênh điều khiển `MqttDeviceChannel`, credential từ Keystore/RPC) — không qua Edge Function bridge.
 - **Bước tay duy nhất (2 phút, 1 lần cho cả gia đình):** HiveMQ Serverless free **không có REST API** (chỉ Starter trả phí) → tạo credential `device-family` (permission `devices/+/#`) trong console rồi seed vào Supabase — thiết bị mới không bao giờ phải chạm console. Kịch bản bán thiết bị sau này: self-host EMQX 5 (có REST API tạo credential per-device, cô lập + tự động $0) — firmware giữ fallback per-device nên gần như không đổi.
 
 ## 4. Flow "Thêm thiết bị" (pairing — 2 bước: phone scan → MCU scan)
@@ -136,26 +136,24 @@ sequenceDiagram
     actor U as Người dùng
     participant D as Thiết bị (chưa pair)
     participant A as App Android
-    participant S as Supabase (edge fn)
+    participant S as Supabase (RPC)
     participant H as HiveMQ
 
     Note over D: Boot đầu: đọc anchor → deviceId<br/>connMode default = AP_WS → AP "myhome-pump-XXXX" (open)<br/>(isProvisioned() luôn đúng — không dùng để ép AP, xem IDENTITY §3)
     U->>D: Nhấn nút 5s (hoặc tự vào AP khi chưa provisioned)
-    A->>A: "Thêm thiết bị" → scan WiFi (Android API)<br/>lọc SSID prefix "myhome-" + model → danh sách thiết bị
-    A-->>U: [myhome-pump-4A3F: RemotePump #1, myhome-pump-9C11: RemotePump #2]
-    U->>A: Chọn 1 thiết bị
-    A->>D: WifiNetworkSpecifier → dialog hệ thống →<br/>phone kết nối AP thiết bị (tự về WiFi nhà khi xong)
+    U->>A: Bấm [＋] → WifiNetworkSpecifier(prefix="myhome-")<br/>Android OS hiện popup chọn thiết bị (không cần màn hình scan riêng)
+    A->>D: OS kết nối AP thiết bị (tự về WiFi nhà khi xong)
     A->>D: WS: getConfig → {deviceId, profile, pairingState}
     A->>D: WS: scanWifi → MCU scan 2.4GHz (đã có sẵn)
     D-->>A: Danh sách WiFi mà MCU nhìn thấy [{ssid, rssi, secure}]
     U->>A: Chọn WiFi nhà từ danh sách MCU + nhập mật khẩu
-    A->>D: WS: pair {wifiSsid, wifiPass, controlKey} (chỉ chấp nhận khi AP_WS)
+    A->>D: WS: pair {wifiSsid, wifiPass, controlKey,<br/>mqttServer, mqttPort, mqttUser, mqttPass} (chỉ chấp nhận khi AP_WS)
     D->>D: Lưu config, connMode=STA_MQTT, reboot
-    D->>H: Connect MQTT bằng credential per-device → publish announce retained<br/>devices/{id}/up {cmd:"announce", profile}
-    A->>S: claim_device(deviceId, profile, name, controlKey) — SQL function RPC<br/>(app đã biết deviceId từ WS getConfig; tự claim nếu đã đăng nhập)
+    D->>H: Connect MQTT bằng credential shared device-family → publish announce retained<br/>devices/{id}/up {cmd:"announce", profile}
+    A->>A: Chờ ~3.5s để phone nối lại WiFi nhà / 4G
+    A->>S: claim_device(deviceId, profile, name, controlKey) — SQL function RPC<br/>(ghi đè ownership nếu thiết bị đã active; chủ cũ → TRANSFERRED)
     S-->>A: OK + ghi danh bạ (controlKey RLS: chỉ OWNER/ADMIN đọc lại)
     A-->>U: ✅ Đã thêm thiết bị
-    Note over A,S: Phase 2 xác nhận online: EF get_device_state<br/>đọc retained /up qua MQTT → trả về app
 ```
 
 ### 4.2 Command protocol (WS pairing portal)
@@ -164,7 +162,9 @@ sequenceDiagram
 // App → device (AP_WS mode):
 { "cmd": "getConfig" }                                   // đã có
 { "cmd": "scanWifi" } → { "cmd": "getScanWifiData" }     // đã có, MCU scan async
-{ "cmd": "pair", "payload": { "wifiSsid": "Nha-Toi", "wifiPass": "...", "controlKey": "hex64" } }
+{ "cmd": "pair", "payload": { "wifiSsid": "Nha-Toi", "wifiPass": "...",
+    "controlKey": "hex64", "mqttServer": "...", "mqttPort": "8883",
+    "mqttUser": "device-family", "mqttPass": "..." } }
 ```
 
 - `pair` chỉ được xử lý khi `connMode == AP_WS` (chặn từ MQTT/STA — bảo mật)
@@ -173,7 +173,7 @@ sequenceDiagram
 ### 4.3 Bằng chứng proximity & an toàn
 
 - **Proximity**: phải ở gần thiết bị (AP 2.4GHz phạm vi ~10m) + announce chỉ đến từ WiFi nhà → bỏ `pairingCode` (thiết bị không màn hình không hiển thị được)
-- `claim_device` rate limit; chỉ 1 owner; re-pair (factory reset) → revocation server-side
+- `claim_device` ghi đè ownership khi re-pair: chủ cũ → `TRANSFERRED` trong `device_members` (mất quyền điều khiển, bấm xóa = dọn rác DB); chủ mới → `OWNER` + control_key mới (xem migration 0005)
 - Thiết bị chưa provisioned: **deny mặc định** — chỉ mở WS pairing, không có quyền gì trên cloud
 
 ## 5. Flow điều khiển & chia sẻ
@@ -182,19 +182,20 @@ sequenceDiagram
 sequenceDiagram
     participant U as User (member)
     participant A as App
-    participant S as Supabase (RPC + Edge Function)
     participant H as HiveMQ
     participant D as Thiết bị
     U->>A: Bật công tắc đèn
     A->>A: Kiểm tra quyền (viewer? → chặn ở UI)
-    A->>S: RPC send_command(deviceId, seq, ts, cmd, payload) — RLS: member
-    S->>S: Edge Function lấy controlKey (server-side) → ký HMAC → publish
-    S->>H: publish devices/dev-xxx/cmd {seq, ts, cmd:setRelay, payload:{on:true}, hmac}
+    A->>A: Ký HMAC-SHA256(controlKey, seq|ts|cmd|payload)
+    A->>H: publish devices/dev-xxx/cmd {seq, ts, cmd:setRelay, payload:{on:true}, hmac}
+    Note over A,H: MQTT trực tiếp (credential device-family từ Android Keystore)
     H->>D: chuyển tiếp
     D->>D: Verify seq/ts/HMAC → relay ON
     D->>H: publish devices/dev-xxx/up {cmd:getStatus, relay:on, ...} (retained)
-    A->>S: RPC get_device_state(deviceId) — EF đọc retained /up → trả UI
+    A->>H: subscribe devices/dev-xxx/up → cập nhật UI realtime
 ```
+
+> **Lưu ý:** App kết nối MQTT **trực tiếp** qua credential `device-family` (cached trong Android Keystore). Edge Function bridge (`send_command`/`get_device_state`) vẫn nằm trong kế hoạch Phase 6 cho chia sẻ thiết bị (member không có controlKey → server ký HMAC thay).
 
 ## 6. Phân quyền & chia sẻ
 
@@ -216,11 +217,12 @@ graph LR
 devices         (id uuid pk, device_id text unique, profile text, name text,
                  owner_id uuid → auth.users, status text, control_key bytea,
                  created_at timestamptz)
-device_members  (device_id fk, user_id fk, role text, pk(device_id,user_id))
+device_members  (device_id fk, user_id fk, role text CHECK(OWNER/ADMIN/MEMBER/VIEWER/TRANSFERRED),
+                 pk(device_id,user_id))
 invites         (code text pk, device_id fk, role text, expires_at timestamptz)
 ```
 
-RLS: select/update qua `device_members`; cột `control_key` có policy riêng — **chỉ OWNER/ADMIN đọc** (VIEWER không lấy được key → không ký lệnh); insert = chỉ SQL function `claim_device` (SECURITY DEFINER, gọi qua RPC — không phải edge fn); invite chỉ owner.
+RLS: select/update qua `device_members`; cột `control_key` có policy riêng — **chỉ OWNER/ADMIN đọc** (VIEWER không lấy được key → không ký lệnh); insert = chỉ SQL function `claim_device` (SECURITY DEFINER, ghi đè ownership khi re-pair — xem 0005); `remove_device` (SECURITY DEFINER): chủ cũ (TRANSFERRED) bấm xóa → dọn dòng rác; owner bấm xóa → cascade xóa thiết bị; invite chỉ owner.
 
 ## 7. Firmware — kiến trúc
 
@@ -261,8 +263,8 @@ Màn hình:
 
 Data:
   Room (danh bạ cache) + Supabase REST (danh bạ, quyền)
-  Điều khiển/trạng thái qua Supabase RPC (send_command / get_device_state → Edge Function bridge) — KHÔNG MQTT trực tiếp (open-source)
-  Thay config local.properties cứng → registry động
+  Điều khiển/trạng thái qua MQTT trực tiếp (credential device-family cached trong Android Keystore)
+  MQTT credential: Keystore → connect nhanh; background sync với Supabase RPC get_mqtt_credential()
 ```
 
 ## 9. OTA
@@ -290,8 +292,8 @@ Data:
 
 - HiveMQ free: 1 bước tay 1 lần cho cả gia đình (credential shared `device-family`); 100 connections — dư cho gia đình. Kịch bản bán thiết bị → self-host EMQX 5 (REST API tạo credential per-device)
 - Supabase free: pause sau 7 ngày không hoạt động → thiết bị không phụ thuộc (thiết kế tách lớp)
-- **App không MQTT trực tiếp** (open-source an toàn) → lệnh điều khiển +1-3s latency do Edge Function cold start; trạng thái đọc qua retained `/up` (poll) — chấp nhận với app gia đình
-- Edge Function không persistent → không subscribe MQTT lâu dài; mỗi lệnh = 1 kết nối ngắn (HiveMQ 100 connections dư)
+- **App MQTT trực tiếp** (credential `device-family` không nhúng trong APK — lấy qua RPC `get_mqtt_credential()`, cached trong Android Keystore) → latency thấp, realtime subscribe trạng thái thiết bị
+- Edge Function bridge dành cho Phase 6 chia sẻ thiết bị: member không có controlKey → server ký HMAC thay (hiện chưa triển khai)
 - Broker ACL coarse cho `app-family` → phân quyền chi tiết enforce ở Supabase RLS (control_key: OWNER/ADMIN) + UI (viewer ẩn nút)
 - LN882H không secure boot → chống "kẻ có chip thật + recompile" dựa cloud detection; ESP32 có thể nâng cấp secure boot v2 (tùy chọn)
 - Android 10+: kết nối AP thiết bị luôn có 1 dialog xác nhận của hệ thống (`WifiNetworkSpecifier` — ràng buộc OS, không bypass); cần permission vị trí (Android <13) / `NEARBY_WIFI_DEVICES` (13+); scan khi đang nối WiFi khác có thể hạn chế channel → AP thiết bị cố định channel 1

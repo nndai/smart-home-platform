@@ -66,7 +66,8 @@ Factory (flash firmware mới)
 AP pairing portal "myhome-pump-XXXX" (open, model theo profile)
    │  app kết nối AP → getConfig (deviceId, pairingState) → scanWifi → pair
    ▼
-pair { wifiSsid, wifiPass, controlKey }   ← controlKey do APP sinh, hex 64
+pair { wifiSsid, wifiPass, controlKey, mqttServer, mqttPort, mqttUser, mqttPass }
+   │  controlKey do APP sinh, hex 64; mqtt credential = device-family từ Keystore/Supabase
    │  thiết bị lưu controlKey → connMode = STA_MQTT → reboot
    ▼
 STA_MQTT (phase 2: MQTT + envelope HMAC(controlKey))
@@ -88,15 +89,15 @@ Mọi lệnh chỉ được chấp nhận khi `g_connMode == AP_WS` — từ STA
 |---|---|---|---|
 | `getConfig` | luôn (trong AP) | — | `deviceId`, `apSSID`, `profile`, `pairingState`, `connMode`, cấu hình WiFi/MQTT (ẩn mật khẩu). **KHÔNG còn `controlKey`** |
 | `scanWifi` | AP_WS | — | danh sách WiFi lân cận |
-| `pair` | AP_WS | `wifiSsid` (bắt buộc), `wifiPass` (tùy chọn), **`controlKey` (bắt buộc, hex 64)** | `status`, `deviceId` → reboot sang STA_MQTT |
+| `pair` | AP_WS | `wifiSsid` (bắt buộc), `wifiPass` (tùy chọn), **`controlKey` (bắt buộc, hex 64)**, `mqttServer`, `mqttPort`, `mqttUser`, `mqttPass` (credential shared) | `status`, `deviceId` → reboot sang STA_MQTT |
 | `provision` (factory) | AP_WS | `deviceSecret`, `controlKey` (mỗi field tùy chọn, hex 64; bỏ trống = giữ nguyên) | `status`, `deviceId`, `pairingState` |
 | `factoryReset` | AP_WS | — | reset config + identity → về unpaired |
 
 **Luồng pair chuẩn (app):**
-1. App sinh `controlKey` 32B ngẫu nhiên (giữ cục bộ, sau lưu Supabase)
-2. Nối WiFi `myhome-<model>-XXXX` (lọc prefix `myhome-` + model trong app) → `getConfig` (lấy `deviceId`, xác nhận unprovisioned)
-3. `pair { wifiSsid, wifiPass, controlKey }` → chờ reboot
-4. Nối lại WiFi nhà; phase 2: app nhận `up` retained từ thiết bị để xác nhận đã online
+1. App sinh `controlKey` 32B ngẫu nhiên (giữ cục bộ SharedPreferences, sau lưu Supabase)
+2. Bấm [＋] → `WifiNetworkSpecifier(prefix="myhome-")` → Android OS hiện popup chọn thiết bị → `getConfig` (lấy `deviceId`, xác nhận profile)
+3. `pair { wifiSsid, wifiPass, controlKey, mqttServer, mqttPort, mqttUser, mqttPass }` → chờ reboot
+4. Nối lại WiFi nhà (~3.5s delay); `claim_device` lên Supabase (ghi đè ownership nếu đã active, chủ cũ → TRANSFERRED)
 
 ---
 
@@ -121,7 +122,7 @@ Mọi lệnh chỉ được chấp nhận khi `g_connMode == AP_WS` — từ STA
 | STA connect fail (nhập sai wifi) → retry vô hạn, không fallback AP | UX | Phase sau: fallback AP sau N lần fail |
 | Kẻ có máy thật (đọc được anchor) | Chấp nhận | Mô hình: không chống attacker có hardware access vật lý |
 | ESP32 dùng MAC eFuse 6B (lệch plan 8B `esp_efuse_get_chip_serial_number` — API không tồn tại trong IDF 4.4/Arduino core 3.x) | Chấp nhận | Anchor khác độ dài giữa chip, nhưng mọi suy diễn đều qua SHA-256(anchor) rồi cắt đều (deviceId 6B, key encrypt: toàn bộ hash) nên format đồng nhất |
-| `pair` ghi đè `controlKey` cũ | Chấp nhận | Re-pair = xoay quyền điều khiển; app cũ mất quyền ký (phase 2: cập nhật Supabase, server-side revocation khi re-pair) |
+| `pair` ghi đè `controlKey` cũ | Đã triển khai | Re-pair = xoay quyền điều khiển; `claim_device` (migration 0005) ghi đè owner_id + control_key, chủ cũ → role `TRANSFERRED` trong `device_members`, chủ cũ bấm xóa → dọn dòng rác DB (`remove_device`) |
 
 ---
 
@@ -134,4 +135,4 @@ Mọi lệnh chỉ được chấp nhận khi `g_connMode == AP_WS` — từ STA
 | `deviceId` | Topic `devices/{deviceId}/cmd` (app→device), `devices/{deviceId}/up` (retained, device→app); clientId cố định để chống chạy 2 thiết bị cùng danh tính |
 | Supabase | App lưu `deviceId` + `controlKey` (RLS); revocation khi re-pair; credential MQTT shared trong `app_secrets` (RPC `get_mqtt_credential`) |
 
-**Trạng thái code:** phase 1 đã đủ (sinh + lưu + đọc + pair/provision/getConfig). Đã triển khai: clientId `device-{deviceId}`, topic chuẩn `devices/{deviceId}/cmd|up|log` (field config `mqttTopic` legacy không dùng nữa), **announce** retained khi connect MQTT (`{cmd:"announce", deviceId, profile}`), **envelope seq/ts/hmac + `controlKey` verify** (mọi lệnh MQTT không có envelope hợp lệ bị drop), MQTT auth: credential shared `device-family` do app gửi trong `pair` (fallback `device-{id}`/`deviceSecret` nếu chưa có), **`mqttPass` mã hóa AES-256-GCM khi lưu flash** (key = SHA-256(deviceId), field `mqttPassEnc`; load tự giải mã + migrate blob legacy plaintext), **`deviceId` = `dev-` + hex(SHA-256(anchor))[:12]** (gộp entropy 2 nền MCU). Chưa làm: chặn lệnh nguy hiểm theo cấp quyền qua MQTT, revocation server-side khi re-pair.
+**Trạng thái code:** phase 1 đã đủ (sinh + lưu + đọc + pair/provision/getConfig). Đã triển khai: clientId `device-{deviceId}`, topic chuẩn `devices/{deviceId}/cmd|up|log` (field config `mqttTopic` legacy không dùng nữa), **announce** retained khi connect MQTT (`{cmd:"announce", deviceId, profile}`), **envelope seq/ts/hmac + `controlKey` verify** (mọi lệnh MQTT không có envelope hợp lệ bị drop), MQTT auth: credential shared `device-family` do app gửi trong `pair` (fallback `device-{id}`/`deviceSecret` nếu chưa có), **`mqttPass` mã hóa AES-256-GCM khi lưu flash** (key = SHA-256(deviceId), field `mqttPassEnc`; load tự giải mã + migrate blob legacy plaintext), **`deviceId` = `dev-` + hex(SHA-256(anchor))[:12]** (gộp entropy 2 nền MCU), **revocation server-side khi re-pair** (`claim_device` ghi đè owner + TRANSFERRED + `remove_device`). Chưa làm: chặn lệnh nguy hiểm theo cấp quyền qua MQTT, Edge Function bridge cho chia sẻ thiết bị.
