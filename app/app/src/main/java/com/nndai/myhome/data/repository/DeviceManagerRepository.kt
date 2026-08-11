@@ -31,10 +31,20 @@ sealed class ClaimError(message: String, cause: Throwable? = null) : Exception(m
 class DeviceManagerRepository(context: Context) {
     private val supabaseDb = SupabaseConfig.client.postgrest
     private val pendingStore = PendingClaimStore(context)
-    private val _devices = MutableStateFlow<List<Device>>(emptyList())
+    private val localCache = com.nndai.myhome.data.local.LocalDeviceCache(context)
+
+    // Load cached devices instantly (<5ms) on cold start
+    private val _devices = MutableStateFlow<List<Device>>(localCache.getCachedDevices())
     val devices: StateFlow<List<Device>> = _devices.asStateFlow()
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
+    init {
+        val cached = localCache.getCachedDevices()
+        if (cached.isNotEmpty()) {
+            Log.d(TAG, "DeviceManagerRepository init: Loaded ${cached.size} device(s) from local cache.")
+        }
+    }
 
     suspend fun fetchDevices(): Result<Unit> {
         syncPendingClaims()
@@ -43,11 +53,25 @@ class DeviceManagerRepository(context: Context) {
 
     private suspend fun fetchDevicesInternal(): Result<Unit> {
         return try {
-            _lastError.value = null
+            val oldList = _devices.value
             val result = supabaseDb.from("devices")
                 .select(Columns.list("id", "device_id", "profile", "name", "owner_id", "status"))
                 .decodeList<Device>()
+
+            // Diffing: clean up unregistered devices from HandshakeManager
+            val oldIds = oldList.map { it.device_id }.toSet()
+            val newIds = result.map { it.device_id }.toSet()
+            val removedIds = oldIds - newIds
+
+            val handshakeMgr = com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager()
+            removedIds.forEach { id ->
+                Log.d(TAG, "Device $id removed remotely. Unregistering from HandshakeManager...")
+                handshakeMgr.unregisterDevice(id)
+            }
+
             _devices.value = result
+            // Update local cache for future fast boots
+            localCache.saveCachedDevices(result)
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e

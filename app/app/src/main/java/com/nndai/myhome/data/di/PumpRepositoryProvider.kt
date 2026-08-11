@@ -5,9 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.nndai.myhome.BuildConfig
 import com.nndai.myhome.data.local.MqttKeystoreStorage
-import com.nndai.myhome.data.remote.ChannelKind
 import com.nndai.myhome.data.remote.DeviceCommandEnvelope
-import com.nndai.myhome.data.remote.HybridDeviceChannel
 import com.nndai.myhome.data.remote.MqttCredentialRemoteDataSource
 import com.nndai.myhome.data.remote.MqttDeviceChannel
 import com.nndai.myhome.data.remote.PumpCommandDataSource
@@ -48,6 +46,12 @@ object PumpRepositoryProvider {
     @Volatile
     private var credentialRepository: MqttCredentialRepository? = null
 
+    @Volatile
+    private var mqttConnectionManager: com.nndai.myhome.data.remote.MqttConnectionManager? = null
+
+    @Volatile
+    private var deviceHandshakeManager: com.nndai.myhome.data.remote.DeviceHandshakeManager? = null
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var appContext: Context? = null
 
@@ -63,7 +67,35 @@ object PumpRepositoryProvider {
             Log.d(TAG, "init(): Android Keystore empty or invalid. Awaiting Supabase sync.")
         }
 
+        // Start background MQTT transport connection
+        provideMqttConnectionManager().connect()
+
+        // Init per-device handshake manager
+        provideDeviceHandshakeManager()
+
         startBackgroundCredentialSync()
+    }
+
+    fun provideMqttConnectionManager(): com.nndai.myhome.data.remote.MqttConnectionManager {
+        return mqttConnectionManager ?: synchronized(this) {
+            mqttConnectionManager ?: com.nndai.myhome.data.remote.MqttConnectionManager(
+                hostProvider = { getMqttHost() },
+                portProvider = { getMqttPort() },
+                usernameProvider = { getMqttUser() },
+                passwordProvider = { getMqttPass() },
+                scope = appScope
+            ).also { mqttConnectionManager = it }
+        }
+    }
+
+    fun provideDeviceHandshakeManager(): com.nndai.myhome.data.remote.DeviceHandshakeManager {
+        return deviceHandshakeManager ?: synchronized(this) {
+            deviceHandshakeManager ?: run {
+                val ctx = appContext ?: throw IllegalStateException("PumpRepositoryProvider.init() not called")
+                val connMgr = provideMqttConnectionManager()
+                com.nndai.myhome.data.remote.DeviceHandshakeManager(ctx, connMgr, appScope).also { deviceHandshakeManager = it }
+            }
+        }
     }
 
     fun provideCredentialRepository(): MqttCredentialRepository {
@@ -207,15 +239,8 @@ object PumpRepositoryProvider {
             urlProvider = { getWsUrl() },
             scope = appScope
         )
-        val hybrid = HybridDeviceChannel(
-            entries = listOf(
-                HybridDeviceChannel.ChannelEntry(ChannelKind.MQTT, mqttChannel),
-                HybridDeviceChannel.ChannelEntry(ChannelKind.WEBSOCKET, wsChannel)
-            ),
-            scope = appScope
-        )
-        val dataSource = PumpCommandDataSource(hybrid, appScope)
-        val pumpRepo = PumpRepository(dataSource, hybrid, appScope)
+        val dataSource = PumpCommandDataSource(mqttChannel, appScope)
+        val pumpRepo = PumpRepository(dataSource, mqttChannel, appScope)
         val logRepo = LogRepository(ctx, dataSource, appScope)
         logRepository = logRepo
         repository = pumpRepo

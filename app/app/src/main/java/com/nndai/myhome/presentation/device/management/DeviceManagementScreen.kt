@@ -33,6 +33,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import io.github.jan.supabase.auth.auth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -184,7 +186,49 @@ private fun DeviceListItem(
         "lamp", "switch" -> OrangeWarning
         else -> SecondaryText
     }
-    val isActive = device.status?.lowercase() == "active"
+    val currentUserId = remember {
+        try {
+            com.nndai.myhome.data.remote.SupabaseConfig.client.auth.currentSessionOrNull()?.user?.id
+        } catch (e: Exception) { null }
+    }
+    val isTransferred = device.isTransferred(currentUserId)
+
+    val handshakeMgr = remember { com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager() }
+    val healthStateFlow = remember(device.device_id) { handshakeMgr.registerDevice(device.device_id) }
+    val healthState by healthStateFlow.collectAsState()
+
+    val statusText: String
+    val statusColor: androidx.compose.ui.graphics.Color
+    val statusBg: androidx.compose.ui.graphics.Color
+
+    if (isTransferred) {
+        statusText = "Đã đổi chủ"
+        statusColor = androidx.compose.ui.graphics.Color(0xFF9C27B0)
+        statusBg = androidx.compose.ui.graphics.Color(0xFF9C27B0).copy(alpha = 0.12f)
+    } else {
+        when (healthState) {
+            is com.nndai.myhome.data.remote.DeviceHealthStatus.Online -> {
+                statusText = "Online"
+                statusColor = GreenOk
+                statusBg = GreenOk.copy(alpha = 0.12f)
+            }
+            is com.nndai.myhome.data.remote.DeviceHealthStatus.Handshaking -> {
+                statusText = "Connecting..."
+                statusColor = OrangeWarning
+                statusBg = OrangeWarning.copy(alpha = 0.12f)
+            }
+            is com.nndai.myhome.data.remote.DeviceHealthStatus.Offline -> {
+                statusText = "Offline"
+                statusColor = SecondaryText
+                statusBg = SecondaryText.copy(alpha = 0.1f)
+            }
+            else -> {
+                statusText = "Unknown"
+                statusColor = SecondaryText
+                statusBg = SecondaryText.copy(alpha = 0.1f)
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier
@@ -240,16 +284,16 @@ private fun DeviceListItem(
                 )
             }
 
-            // Status badge
+            // Real-Time Status badge
             Surface(
                 shape = MaterialTheme.shapes.extraSmall,
-                color = if (isActive) GreenOk.copy(alpha = 0.12f) else SecondaryText.copy(alpha = 0.1f),
+                color = statusBg,
             ) {
                 Text(
-                    text = if (isActive) "Online" else "Offline",
+                    text = statusText,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     fontWeight = FontWeight.Medium,
-                    color = if (isActive) GreenOk else SecondaryText,
+                    color = statusColor,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                 )
             }

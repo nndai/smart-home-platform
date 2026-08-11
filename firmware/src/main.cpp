@@ -1,4 +1,4 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
 #include "compat/log.h"
 #include "compat/task.h"
 #include <Config.h>
@@ -331,7 +331,6 @@ void taskMqttLoop(void* pvParams) {
     (void)pvParams;
     TickType_t lastWake = xTaskGetTickCount();
     bool logLostConnection = false;
-    bool announceSent = false;
 
     while (1) {
         compat::wdtFeed();
@@ -339,25 +338,10 @@ void taskMqttLoop(void* pvParams) {
         if (!connected && !logLostConnection) {
             LT_E("MQTT connection lost. Attempting to reconnect...");
             logLostConnection = true;
-            announceSent = false;
         }
         else if (connected && logLostConnection) {
             LT_I("MQTT reconnected");
             logLostConnection = false;
-        }
-
-        // Lần đầu lên kênh: announce retained — app phát hiện thiết bị online (phase 2)
-        if (connected && !announceSent) {
-            JsonDocument doc;
-            doc["cmd"] = "announce";
-            doc["deviceId"] = g_identity.deviceId();
-            doc["profile"] = profileName();
-            String json;
-            serializeJson(doc, json);
-            if (mqttClient.publish(mqttBaseTopic() + "/up", json, true)) {
-                announceSent = true;
-                LT_IM(NET, "Announce published on %s/up", mqttBaseTopic().c_str());
-            }
         }
 
         vTaskDelayUntil(&lastWake, otaManager.isRunning() ? pdMS_TO_TICKS(10) : pdMS_TO_TICKS(50));
