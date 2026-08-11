@@ -50,11 +50,11 @@ class DeviceApConnector(context: Context) {
                 Log.d(TAG, "onAvailable: extracted gateway='$gateway'")
                 if (gateway != null) {
                     val ok = runCatching {
-                        ConnectivityManager.setProcessDefaultNetwork(network)
-                        Log.d(TAG, "onAvailable: setProcessDefaultNetwork OK for $network")
+                        connectivityManager.bindProcessToNetwork(network)
+                        Log.d(TAG, "onAvailable: bindProcessToNetwork OK for $network")
                         true
                     }.getOrElse { e ->
-                        Log.e(TAG, "setProcessDefaultNetwork FAILED: ${e.message}", e)
+                        Log.e(TAG, "bindProcessToNetwork FAILED: ${e.message}", e)
                         false
                     }
                     if (!ok) {
@@ -78,10 +78,12 @@ class DeviceApConnector(context: Context) {
 
             override fun onLost(network: Network) {
                 Log.w(TAG, "onLost: network=$network")
+                runCatching { connectivityManager.bindProcessToNetwork(null) }
             }
 
             override fun onUnavailable() {
                 Log.e(TAG, "onUnavailable: cannot connect to AP (timeout/rejected)")
+                runCatching { connectivityManager.bindProcessToNetwork(null) }
                 onFailed("Không thể kết nối tới thiết bị. Hãy thử lại.")
             }
 
@@ -92,6 +94,70 @@ class DeviceApConnector(context: Context) {
         currentCallback = callback
         connectivityManager.requestNetwork(request, callback)
         Log.d(TAG, "connectToDeviceAp: requestNetwork submitted")
+    }
+
+    fun connectToAnyDeviceAp(
+        prefix: String = "myhome-",
+        password: String? = "123456789",
+        onConnected: (gatewayIp: String) -> Unit,
+        onFailed: (String) -> Unit
+    ) {
+        disconnect()
+
+        Log.d(TAG, "connectToAnyDeviceAp: requesting WifiNetworkSpecifier with prefix='$prefix'")
+
+        val builder = WifiNetworkSpecifier.Builder()
+            .setSsidPattern(android.os.PatternMatcher(prefix, android.os.PatternMatcher.PATTERN_PREFIX))
+
+        if (!password.isNullOrBlank()) {
+            builder.setWpa2Passphrase(password)
+        }
+        val specifier = builder.build()
+
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .setNetworkSpecifier(specifier)
+            .build()
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.d(TAG, "connectToAnyDeviceAp onAvailable: network=$network")
+                val linkProps = connectivityManager.getLinkProperties(network)
+                dumpLinkProperties(network, linkProps)
+                val gateway = linkProps?.routes
+                    ?.asSequence()
+                    ?.filter { it.hasGateway() }
+                    ?.firstOrNull()
+                    ?.gateway?.hostAddress
+                Log.d(TAG, "connectToAnyDeviceAp: extracted gateway='$gateway'")
+
+                if (gateway != null) {
+                    runCatching {
+                        connectivityManager.bindProcessToNetwork(network)
+                        Log.d(TAG, "connectToAnyDeviceAp: bindProcessToNetwork OK")
+                    }
+                    onConnected(gateway)
+                } else {
+                    onFailed("Không lấy được địa chỉ IP thiết bị")
+                }
+            }
+
+            override fun onUnavailable() {
+                Log.e(TAG, "connectToAnyDeviceAp onUnavailable: user cancelled or timeout")
+                runCatching { connectivityManager.bindProcessToNetwork(null) }
+                onFailed("Đã hủy hoặc không tìm thấy thiết bị")
+            }
+
+            override fun onLost(network: Network) {
+                Log.w(TAG, "connectToAnyDeviceAp onLost: network=$network")
+                runCatching { connectivityManager.bindProcessToNetwork(null) }
+            }
+        }
+
+        currentCallback = callback
+        connectivityManager.requestNetwork(request, callback)
+        Log.d(TAG, "connectToAnyDeviceAp: requestNetwork submitted")
     }
 
     private fun dumpLinkProperties(network: Network, lp: LinkProperties?) {
@@ -113,6 +179,10 @@ class DeviceApConnector(context: Context) {
             runCatching { connectivityManager.unregisterNetworkCallback(cb) }
             Log.d(TAG, "disconnect: unregistered callback")
             currentCallback = null
+        }
+        runCatching {
+            connectivityManager.bindProcessToNetwork(null)
+            Log.d(TAG, "disconnect: bindProcessToNetwork(null) — un-bound process from AP network")
         }
     }
 

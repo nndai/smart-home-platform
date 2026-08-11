@@ -17,11 +17,15 @@ class PairingViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startScan() = repository.startScan()
 
+    fun connectSystemChooser() = repository.connectSystemChooser()
+
     fun selectDevice(device: PairingDevice) = repository.selectDevice(device)
 
     fun scanWifiOnDevice() = repository.scanWifiOnDevice()
 
     fun pair(wifiSsid: String, wifiPass: String) = repository.pair(wifiSsid, wifiPass)
+
+    fun retryClaim() = repository.retryClaim()
 
     fun controlKeyFor(deviceId: String): String? = repository.controlKeyFor(deviceId)
 

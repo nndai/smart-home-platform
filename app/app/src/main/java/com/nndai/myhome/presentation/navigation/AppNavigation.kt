@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppNavigation(
     authRepository: AuthRepository = AuthRepository(),
-    deviceRepository: DeviceManagerRepository = DeviceManagerRepository(),
+    deviceRepository: DeviceManagerRepository = DeviceManagerRepository(LocalContext.current.applicationContext),
     navController: NavHostController = rememberNavController()
 ) {
     val isLoggedIn by authRepository.isLoggedIn.collectAsState()
@@ -132,13 +132,10 @@ fun AppNavigation(
         composable("pairing") {
             PairingFlowScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onPairComplete = { deviceId, profile, name, controlKeyHex ->
-                    coroutineScope.launch {
-                        if (isLoggedIn) {
-                            deviceRepository.addDevice(name, profile, deviceId, controlKeyHex)
-                        }
-                        navController.popBackStack()
-                    }
+                // Claim thiết bị (RPC claim_device) đã được xử lý tự động trong
+                // PairingRepository (retry + lưu tạm khi mất mạng) — chỉ quay lại.
+                onPairComplete = { _, _, _, _ ->
+                    navController.popBackStack()
                 }
             )
         }

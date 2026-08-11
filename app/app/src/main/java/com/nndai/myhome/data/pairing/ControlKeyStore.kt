@@ -12,6 +12,16 @@ class ControlKeyStore(context: Context) {
 
     fun get(deviceId: String): String? = prefs.getString(deviceId, null)
 
+    // ── Seq counter cho envelope lệnh (persist để không bị thiết bị từ chối
+    //    "stale seq" sau khi app restart — thiết bị persist last_seq) ──
+    fun getSeq(deviceId: String): Long = prefs.getLong("seq_$deviceId", 0L)
+
+    fun nextSeq(deviceId: String): Long {
+        val next = getSeq(deviceId) + 1
+        prefs.edit().putLong("seq_$deviceId", next).apply()
+        return next
+    }
+
     companion object {
         private val secureRandom = SecureRandom()
 

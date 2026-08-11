@@ -2,6 +2,12 @@ package com.nndai.myhome.data.pairing
 
 import android.content.Context
 import android.util.Log
+import com.nndai.myhome.BuildConfig
+import com.nndai.myhome.data.remote.SupabaseConfig
+import com.nndai.myhome.data.repository.DeviceManagerRepository
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -20,6 +26,10 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+
+import com.nndai.myhome.data.di.PumpRepositoryProvider
+import com.nndai.myhome.data.model.MqttCredential
+import com.nndai.myhome.data.repository.CredentialSyncResult
 
 data class WifiNetworkInfo(
     val name: String,
@@ -41,12 +51,35 @@ sealed interface PairingState {
         val networks: List<WifiNetworkInfo>
     ) : PairingState
     data object SendingPair : PairingState
-    data class Paired(
+    data class Claiming(
         val deviceId: String,
         val profile: String,
         val controlKeyHex: String
     ) : PairingState
+    data class Claimed(
+        val deviceId: String,
+        val profile: String,
+        val controlKeyHex: String
+    ) : PairingState
+    data class ClaimSavedOffline(
+        val deviceId: String,
+        val profile: String,
+        val controlKeyHex: String
+    ) : PairingState
+    data class ClaimFailed(
+        val deviceId: String,
+        val profile: String,
+        val controlKeyHex: String,
+        val message: String
+    ) : PairingState
     data class Failed(val message: String) : PairingState
+}
+
+sealed interface ClaimResult {
+    data object Success : ClaimResult
+    data object SavedOffline : ClaimResult
+    data object NeedsLogin : ClaimResult
+    data class Error(val message: String) : ClaimResult
 }
 
 class PairingRepository(
@@ -56,6 +89,7 @@ class PairingRepository(
     private val scanner = WifiDeviceScanner(context)
     private val connector = DeviceApConnector(context)
     private val keyStore = ControlKeyStore(context)
+    private val deviceManager = DeviceManagerRepository(context)
 
     val scanDevices: StateFlow<List<PairingDevice>> = scanner.devices
     val scanInProgress: StateFlow<Boolean> = scanner.scanning
@@ -66,12 +100,20 @@ class PairingRepository(
     private var ws: FirmwareWsClient? = null
     private var lastGateway: String? = null
 
+    // Credential MQTT shared (HiveMQ) — fetch từ Supabase RPC / Android Keystore khi còn mạng.
+    @Volatile
+    private var mqttCredential: MqttCredential? = null
+
     private fun setState(next: PairingState) {
         Log.d(TAG, "STATE: ${_state.value::class.simpleName} -> ${next::class.simpleName} ($next)")
         _state.value = next
     }
 
     init {
+        scope.launch {
+            mqttCredential = fetchMqttCredential()
+            Log.d(TAG, "init: mqttCredential pre-fetched = ${mqttCredential != null}")
+        }
         scope.launch {
             scanner.devices.collect { devices ->
                 if (_state.value is PairingState.ScanningDevices) {
@@ -85,6 +127,80 @@ class PairingRepository(
         Log.d(TAG, "startScan()")
         setState(PairingState.ScanningDevices(scanner.devices.value))
         scanner.startScan()
+        if (mqttCredential == null) {
+            scope.launch {
+                mqttCredential = fetchMqttCredential()
+                Log.d(TAG, "startScan(): mqttCredential fetched = ${mqttCredential != null}")
+            }
+        }
+    }
+
+    /**
+     * Lấy credential MQTT shared từ MqttCredentialRepository (Keystore / Supabase RPC).
+     */
+    private suspend fun fetchMqttCredential(): MqttCredential? {
+        val repo = PumpRepositoryProvider.provideCredentialRepository()
+        val cached = repo.getCachedCredential()
+        if (cached != null && cached.isValid()) {
+            // Instant return from Keystore, trigger background sync to check if remote changed
+            scope.launch { repo.syncWithRemote() }
+            return cached
+        }
+
+        return when (val result = repo.syncWithRemote()) {
+            is CredentialSyncResult.Updated -> result.newCredential
+            is CredentialSyncResult.Unchanged -> result.credential
+            is CredentialSyncResult.Failed -> null
+        }
+    }
+
+    fun connectSystemChooser() {
+        Log.d(TAG, "connectSystemChooser()")
+        setState(PairingState.ConnectingAp(PairingDevice("device", "myhome-*", 0, "")))
+        connector.connectToAnyDeviceAp(
+            prefix = "myhome-",
+            password = DEVICE_AP_PASSWORD,
+            onConnected = { gateway ->
+                Log.d(TAG, "connectSystemChooser: AP connected, gateway=$gateway — starting WS connect")
+                lastGateway = gateway
+                connectWsWithUnknownDevice(gateway)
+            },
+            onFailed = { message ->
+                Log.e(TAG, "connectSystemChooser: AP connect failed: $message")
+                setState(PairingState.Failed(message))
+            }
+        )
+    }
+
+    private fun connectWsWithUnknownDevice(gateway: String) {
+        scope.launch {
+            Log.d(TAG, "connectWsWithUnknownDevice(): gateway=$gateway")
+            val wsClient = connectWsWithRetry(gateway)
+            if (wsClient == null) {
+                connector.disconnect()
+                setState(PairingState.Failed("Không kết nối được tới thiết bị"))
+                return@launch
+            }
+            ws = wsClient
+            val config = wsClient.request("getConfig")
+            Log.d(TAG, "connectWsWithUnknownDevice(): getConfig response = $config")
+            val status = config?.get("status")?.jsonPrimitive?.content
+            if (config == null || status != "ok") {
+                wsClient.close()
+                connector.disconnect()
+                setState(PairingState.Failed("Không đọc được cấu hình thiết bị"))
+                return@launch
+            }
+            val deviceId = config["deviceId"]?.jsonPrimitive?.content ?: ""
+            val profile = config["profile"]?.jsonPrimitive?.content ?: "pump"
+            if (deviceId.isBlank()) {
+                wsClient.close()
+                connector.disconnect()
+                setState(PairingState.Failed("Thiết bị không trả về deviceId"))
+                return@launch
+            }
+            setState(PairingState.DeviceReady(deviceId, profile, "myhome-$profile"))
+        }
     }
 
     fun selectDevice(device: PairingDevice) {
@@ -323,14 +439,32 @@ class PairingRepository(
     fun pair(wifiSsid: String, wifiPass: String) {
         val current = _state.value as? PairingState.WifiList ?: return
         val wsClient = ws ?: return
-        Log.d(TAG, "pair(): ssid='$wifiSsid' (pass len=${wifiPass.length})")
+        val host = BuildConfig.MQTT_HOST
+        if (host.isBlank()) {
+            setState(PairingState.Failed("Chưa cấu hình MQTT_HOST trong local.properties"))
+            return
+        }
         setState(PairingState.SendingPair)
         scope.launch {
+            var cred = mqttCredential
+            if (cred == null || !cred.isValid()) {
+                cred = fetchMqttCredential()
+                mqttCredential = cred
+            }
+            if (cred == null || !cred.isValid()) {
+                setState(PairingState.Failed("Không tải được credential MQTT từ Supabase — kiểm tra đăng nhập và kết nối mạng"))
+                return@launch
+            }
+            Log.d(TAG, "pair(): ssid='$wifiSsid' (pass len=${wifiPass.length}) user=${cred.username}")
             val controlKey = ControlKeyStore.generateHex()
             val payload = buildJsonObject {
                 put("wifiSsid", wifiSsid)
                 put("wifiPass", wifiPass)
                 put("controlKey", controlKey)
+                put("mqttServer", host)
+                put("mqttPort", BuildConfig.MQTT_PORT)
+                put("mqttUser", cred.username)
+                put("mqttPass", cred.password)
             }
             val resp = wsClient.request("pair", payload)
             Log.d(TAG, "pair(): response = $resp")
@@ -340,8 +474,10 @@ class PairingRepository(
             wsClient.close()
             connector.disconnect()
             if (ok) {
-                Log.d(TAG, "pair(): SUCCESS deviceId=$deviceId")
-                setState(PairingState.Paired(deviceId, current.profile, controlKey))
+                Log.d(TAG, "pair(): SUCCESS deviceId=$deviceId — claiming device")
+                val name = displayName(current.profile)
+                setState(PairingState.Claiming(deviceId, current.profile, controlKey))
+                claimAndRoute(PendingClaim(deviceId, current.profile, name, controlKey))
             } else {
                 setState(PairingState.Failed(
                     resp?.get("message")?.jsonPrimitive?.content ?: "Cấu hình thất bại"
@@ -350,11 +486,72 @@ class PairingRepository(
         }
     }
 
+    fun retryClaim() {
+        val pending = lastPending ?: return
+        setState(PairingState.Claiming(pending.deviceId, pending.profile, pending.controlKeyHex ?: ""))
+        claimAndRoute(pending)
+    }
+
+    private var lastPending: PendingClaim? = null
+
+    private fun claimAndRoute(pending: PendingClaim) {
+        lastPending = pending
+        scope.launch {
+            when (val r = claimDevice(pending)) {
+                ClaimResult.Success -> setState(
+                    PairingState.Claimed(pending.deviceId, pending.profile, pending.controlKeyHex ?: "")
+                )
+                ClaimResult.SavedOffline -> setState(
+                    PairingState.ClaimSavedOffline(pending.deviceId, pending.profile, pending.controlKeyHex ?: "")
+                )
+                ClaimResult.NeedsLogin -> setState(
+                    PairingState.ClaimFailed(
+                        pending.deviceId, pending.profile, pending.controlKeyHex ?: "",
+                        "Cần đăng nhập để lưu thiết bị vào tài khoản — đăng nhập rồi bấm Thử lại"
+                    )
+                )
+                is ClaimResult.Error -> setState(
+                    PairingState.ClaimFailed(
+                        pending.deviceId, pending.profile, pending.controlKeyHex ?: "", r.message
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * Claim thiết bị lên Supabase. Retry tối đa ~90s cho lỗi mạng/DNS (phone
+     * vừa rời AP thiết bị, WiFi nhà chưa nối lại). Hết thời gian → lưu tạm
+     * cục bộ (PendingClaimStore), DeviceManagerRepository tự đồng bộ sau.
+     */
+    private suspend fun claimDevice(pending: PendingClaim): ClaimResult {
+        val session = SupabaseConfig.client.auth.sessionStatus.value
+        if (session !is SessionStatus.Authenticated) return ClaimResult.NeedsLogin
+
+        // Chờ 3.5s để Android OS khôi phục lại kết nối WiFi nhà / 4G sau khi rời AP thiết bị
+        delay(INITIAL_CLAIM_DELAY_MS)
+
+        val deadline = System.currentTimeMillis() + CLAIM_RETRY_TOTAL_MS
+        while (System.currentTimeMillis() < deadline) {
+            val r = deviceManager.addDevice(pending.name, pending.profile, pending.deviceId, pending.controlKeyHex)
+            if (r.isSuccess) return ClaimResult.Success
+            val cause = r.exceptionOrNull()
+            if (!DeviceManagerRepository.isTransientNetworkError(cause)) {
+                return ClaimResult.Error(cause?.message ?: "Không lưu được thiết bị")
+            }
+            Log.d(TAG, "claimDevice(): retrying for ${pending.deviceId}: ${cause?.message}")
+            delay(CLAIM_RETRY_STEP_MS)
+        }
+        // Hết thời gian chờ mạng → lưu tạm, đồng bộ khi có mạng
+        PendingClaimStore(context).add(pending)
+        Log.w(TAG, "claimDevice(): network timeout — saved pending ${pending.deviceId}")
+        return ClaimResult.SavedOffline
+    }
+
     fun controlKeyFor(deviceId: String): String? = keyStore.get(deviceId)
 
     fun retryFromFailure() {
-        Log.d(TAG, "retryFromFailure()")
-        setState(PairingState.Idle)
+        connectSystemChooser()
     }
 
     fun cleanup() {
@@ -368,5 +565,16 @@ class PairingRepository(
     companion object {
         private const val TAG = "MyHomePairing"
         const val DEVICE_AP_PASSWORD = "123456789"
+        private const val CLAIM_RETRY_TOTAL_MS = 90_000L
+        private const val CLAIM_RETRY_STEP_MS = 2_000L
+        private const val INITIAL_CLAIM_DELAY_MS = 3_500L
+    }
+
+    private fun displayName(profile: String): String = when (profile.lowercase()) {
+        "pump" -> "Máy bơm"
+        "switch" -> "Công tắc"
+        "fan" -> "Quạt"
+        "lamp" -> "Đèn"
+        else -> profile
     }
 }

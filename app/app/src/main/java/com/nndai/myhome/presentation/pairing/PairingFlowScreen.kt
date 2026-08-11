@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiLock
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -116,24 +118,33 @@ fun PairingFlowScreen(
                 .padding(horizontal = 16.dp)
         ) {
             when (val current = state) {
-                is PairingState.Idle -> IdleContent(
-                    permissionGranted = permissionGranted,
-                    onScanClick = {
-                        if (permissionGranted) viewModel.startScan()
-                        else permissionLauncher.launch(permission)
+                is PairingState.Idle -> {
+                    LaunchedEffect(permissionGranted) {
+                        if (permissionGranted) {
+                            viewModel.connectSystemChooser()
+                        } else {
+                            permissionLauncher.launch(permission)
+                        }
                     }
-                )
+                    ProgressContent(
+                        message = "Đang mở trình tìm kiếm thiết bị...",
+                        detail = "Chấp nhận pop-up hệ thống Android hiển thị trên màn hình để kết nối"
+                    )
+                }
 
-                is PairingState.ScanningDevices -> DeviceListContent(
-                    devices = current.devices,
-                    scanInProgress = scanInProgress,
-                    onRefresh = { viewModel.startScan() },
-                    onDeviceClick = { viewModel.selectDevice(it) }
-                )
+                is PairingState.ScanningDevices -> {
+                    LaunchedEffect(Unit) {
+                        viewModel.connectSystemChooser()
+                    }
+                    ProgressContent(
+                        message = "Đang tìm kiếm thiết bị MyHome...",
+                        detail = "Chấp nhận thông báo/pop-up hệ thống để kết nối thiết bị"
+                    )
+                }
 
                 is PairingState.ConnectingAp -> ProgressContent(
-                    message = "Đang kết nối tới ${current.device.ssid}...",
-                    detail = "Chấp nhận dialog kết nối WiFi của hệ thống"
+                    message = "Đang kết nối thiết bị MyHome...",
+                    detail = "Hãy nhấn 'Kết nối / Allow' trên pop-up của hệ thống Android"
                 )
 
                 is PairingState.DeviceReady -> LaunchedEffect(Unit) { viewModel.scanWifiOnDevice() }
@@ -160,12 +171,32 @@ fun PairingFlowScreen(
                     detail = "Thiết bị sẽ khởi động lại sau khi lưu cấu hình"
                 )
 
-                is PairingState.Paired -> SuccessContent(
+                is PairingState.Claiming -> ProgressContent(
+                    message = "Đang lưu thiết bị vào tài khoản...",
+                    detail = "Chờ điện thoại kết nối lại WiFi nhà"
+                )
+
+                is PairingState.Claimed -> SuccessContent(
                     deviceId = current.deviceId,
                     name = modelName(current.profile),
                     onDone = {
                         onPairComplete(current.deviceId, current.profile, modelName(current.profile), current.controlKeyHex)
                     }
+                )
+
+                is PairingState.ClaimSavedOffline -> SuccessContent(
+                    deviceId = current.deviceId,
+                    name = modelName(current.profile),
+                    offline = true,
+                    onDone = {
+                        onPairComplete(current.deviceId, current.profile, modelName(current.profile), current.controlKeyHex)
+                    }
+                )
+
+                is PairingState.ClaimFailed -> ErrorContent(
+                    message = current.message,
+                    onRetry = { viewModel.retryClaim() },
+                    onBack = onNavigateBack
                 )
 
                 is PairingState.Failed -> ErrorContent(
@@ -179,7 +210,11 @@ fun PairingFlowScreen(
 }
 
 @Composable
-private fun IdleContent(permissionGranted: Boolean, onScanClick: () -> Unit) {
+private fun IdleContent(
+    permissionGranted: Boolean,
+    onScanClick: () -> Unit,
+    onSystemChooserClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -213,11 +248,20 @@ private fun IdleContent(permissionGranted: Boolean, onScanClick: () -> Unit) {
         Button(
             onClick = onScanClick,
             modifier = Modifier
-                .fillMaxWidth(0.7f)
+                .fillMaxWidth(0.85f)
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text(if (permissionGranted) "Quét thiết bị" else "Cấp quyền & quét", fontWeight = FontWeight.Bold)
+            Text(if (permissionGranted) "Quét danh sách WiFi" else "Cấp quyền & quét", fontWeight = FontWeight.Bold)
+        }
+        OutlinedButton(
+            onClick = onSystemChooserClick,
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .height(48.dp),
+            shape = MaterialTheme.shapes.small
+        ) {
+            Text("Tìm & Kết nối qua System Popup", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -227,7 +271,8 @@ private fun DeviceListContent(
     devices: List<PairingDevice>,
     scanInProgress: Boolean,
     onRefresh: () -> Unit,
-    onDeviceClick: (PairingDevice) -> Unit
+    onDeviceClick: (PairingDevice) -> Unit,
+    onSystemChooserClick: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -256,7 +301,7 @@ private fun DeviceListContent(
             }
         } else if (devices.isEmpty()) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -267,16 +312,27 @@ private fun DeviceListContent(
                     modifier = Modifier.size(56.dp)
                 )
                 Text(
-                    text = if (scanInProgress) "Đang quét..." else "Không tìm thấy thiết bị",
+                    text = if (scanInProgress) "Đang quét..." else "Không tìm thấy thiết bị trong danh sách",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Đảm bảo thiết bị đang ở chế độ chờ ghép nối và bạn đang gần nó",
+                    text = "Điện thoại có thể bị khóa kênh Wi-Fi nhà. Hãy bấm nút bên dưới để mở System Popup quét toàn bộ 14 kênh sóng:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onSystemChooserClick,
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(48.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text("Tìm & Kết nối bằng System Popup 🚀", fontWeight = FontWeight.Bold)
+                }
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -557,6 +613,7 @@ private fun WifiSignalBars(
 private fun SuccessContent(
     deviceId: String,
     name: String,
+    offline: Boolean = false,
     onDone: () -> Unit
 ) {
     Column(
@@ -565,19 +622,27 @@ private fun SuccessContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Icon(
-            imageVector = Icons.Outlined.CheckCircle,
+            imageVector = if (offline) Icons.Outlined.Cloud else Icons.Outlined.CheckCircle,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = if (offline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(72.dp)
         )
-        Text("Ghép nối thành công", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (offline) "Ghép nối xong, chưa lưu vào tài khoản" else "Ghép nối thành công",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
         Text(
             text = "$name (${deviceId.takeLast(6)})",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Bạn sẽ thấy nó trong danh sách thiết bị.",
+            text = if (offline) {
+                "Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Chưa gửi được thông tin lên tài khoản vì mất mạng — sẽ tự động đồng bộ khi có mạng trở lại."
+            } else {
+                "Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Bạn sẽ thấy nó trong danh sách thiết bị."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

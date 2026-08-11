@@ -4,13 +4,12 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val localProps = gradleLocalProperties(rootDir, providers)
 val mqttHost = localProps.getProperty("MQTT_HOST", "")
 val mqttPort = localProps.getProperty("MQTT_PORT", "8883").toIntOrNull() ?: 8883
-val mqttUsername = localProps.getProperty("MQTT_USERNAME", "")
-val mqttPassword = localProps.getProperty("MQTT_PASSWORD", "")
 val mqttTopic = localProps.getProperty("MQTT_TOPIC", "pump")
 val websocketUrl = localProps.getProperty("WEBSOCKET_URL", "")
 val supabaseUrl = localProps.getProperty("SUPABASE_URL", "")
@@ -31,8 +30,6 @@ android {
 
         buildConfigField("String", "MQTT_HOST", "\"$mqttHost\"")
         buildConfigField("int", "MQTT_PORT", mqttPort.toString())
-        buildConfigField("String", "MQTT_USERNAME", "\"$mqttUsername\"")
-        buildConfigField("String", "MQTT_PASSWORD", "\"$mqttPassword\"")
         buildConfigField("String", "MQTT_TOPIC", "\"$mqttTopic\"")
         buildConfigField("String", "WEBSOCKET_URL", "\"$websocketUrl\"")
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")

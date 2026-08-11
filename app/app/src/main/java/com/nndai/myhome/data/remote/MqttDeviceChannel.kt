@@ -42,13 +42,17 @@ class MqttDeviceChannel(
     private val portProvider: () -> Int,
     private val usernameProvider: () -> String,
     private val passwordProvider: () -> String,
-    private val baseTopicProvider: () -> String,
+    private val deviceIdProvider: () -> String,
+    private val envelopeProvider: (String) -> String?,
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : DeviceChannel {
 
-    private val topicCmd get() = "${baseTopicProvider()}/cmd"
-    private val topicSubscribe get() = baseTopicProvider()
+    private val baseTopic get() = "devices/${deviceIdProvider()}"
+    private val topicCmd get() = "$baseTopic/cmd"
+    private val topicUp get() = "$baseTopic/up"
+    private val topicLog get() = "$baseTopic/log"
+    private val topicSubscribe get() = listOf(topicUp, topicLog)
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     override val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -78,7 +82,7 @@ class MqttDeviceChannel(
         override fun connectComplete(reconnect: Boolean, serverURI: String?) {
             Log.d(TAG, "connectComplete() reconnect=$reconnect uri=$serverURI")
             scope.launch(dispatcher) {
-                runCatching { client?.subscribe(topicSubscribe, 1) }
+                runCatching { topicSubscribe.forEach { client?.subscribe(it, 1) } }
                 // Transport is ready — broker connected, topic subscribed
                 _state.value = ConnectionState.TransportReady("MQTT")
                 startHandshake()
@@ -119,7 +123,7 @@ class MqttDeviceChannel(
             return
         }
         stopped = false
-        Log.d(TAG, "start() connecting to ${hostProvider()}:${portProvider()} topic=${baseTopicProvider()}")
+        Log.d(TAG, "start() connecting to ${hostProvider()}:${portProvider()} topic=$baseTopic")
         connectJob = scope.launch(dispatcher) {
             connectWithRetry()
         }
@@ -141,11 +145,15 @@ class MqttDeviceChannel(
     override suspend fun send(raw: String): Boolean {
         val current = client ?: return false
         if (!current.isConnected) return false
+        val enveloped = envelopeProvider(raw) ?: run {
+            Log.w(TAG, "send() cannot sign command (no controlKey?) — dropped")
+            return false
+        }
         return withContext(dispatcher) {
             runCatching {
-                val payload = raw.toByteArray(Charsets.UTF_8)
+                val payload = enveloped.toByteArray(Charsets.UTF_8)
                 current.publish(topicCmd, payload, 1, false)
-                Log.d(TAG, "send() publish ok to $topicCmd payload=${raw.take(200)}")
+                Log.d(TAG, "send() publish ok to $topicCmd payload=${enveloped.take(200)}")
                 true
             }.getOrElse {
                 Log.e(TAG, "send() publish failed", it)
@@ -183,8 +191,8 @@ class MqttDeviceChannel(
             client = mqttClient
             val options = buildOptions()
             mqttClient.connect(options)
-            mqttClient.subscribe(topicSubscribe, 1)
-            Log.d(TAG, "attemptConnect() broker connected, topic subscribed")
+            topicSubscribe.forEach { mqttClient.subscribe(it, 1) }
+            Log.d(TAG, "attemptConnect() broker connected, topics subscribed: $topicSubscribe")
             _state.value = ConnectionState.TransportReady("MQTT")
 //            startHandshake()
 //            startWatchdog()
@@ -219,7 +227,7 @@ class MqttDeviceChannel(
     private suspend fun disconnectInternal(reason: String?, emitState: Boolean = true) {
         val current = client
         if (current != null) {
-            runCatching { current.unsubscribe(topicSubscribe) }
+            topicSubscribe.forEach { runCatching { current.unsubscribe(it) } }
             runCatching { current.disconnectForcibly(1000, 1000) }
             runCatching { current.close() }
         }
@@ -334,13 +342,17 @@ class MqttDeviceChannel(
     }
 
     private fun isConfigValid(): Boolean {
-        return hostProvider().isNotBlank() && baseTopicProvider().isNotBlank() && portProvider() > 0
+        return hostProvider().isNotBlank() && deviceIdProvider().isNotBlank() && portProvider() > 0
     }
 
     private suspend fun publishInternal(raw: String): Boolean {
         val current = client ?: return false
+        val enveloped = envelopeProvider(raw) ?: run {
+            Log.w(TAG, "publishInternal() cannot sign command — dropped")
+            return false
+        }
         return runCatching {
-            current.publish(topicCmd, raw.toByteArray(Charsets.UTF_8), 1, false)
+            current.publish(topicCmd, enveloped.toByteArray(Charsets.UTF_8), 1, false)
             true
         }.getOrElse {
             Log.e(TAG, "publishInternal() failed", it)
