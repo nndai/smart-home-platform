@@ -22,8 +22,15 @@ python -m venv tools/.venv
 tools/.venv/Scripts/pip install -r tools/requirements.txt
 ```
 
+## Nguyên tắc viết code (Clean Code & Scalability)
+
+- **Clean Code & Đọc hiểu**: Viết code sạch, đặt tên biến/hàm rõ nghĩa. **Viết comment trong code bằng tiếng Anh (English comments)** để chuẩn hóa codebase quốc tế và dễ bảo trì.
+- **Dễ mở rộng & Thiết kế mô-đun**: Kiến trúc tuân thủ nguyên lý SOLID, giảm phụ thuộc trực tiếp (loose coupling). Chuẩn bị sẵn cấu trúc để dễ dàng thêm các tính năng mới trong tương lai.
+- **Chia file hợp lý**: Mỗi class/module có một trách nhiệm duy nhất (Single Responsibility). Tránh viết file monolithic quá lớn; chủ động chia tách file theo layer/component rõ ràng.
+
 ## Lưu ý
 
 - Không commit secret (HiveMQ credentials, SUPABASE keys) — xem `.env.example`
 - Firmware chỉ phụ thuộc MQTT (HiveMQ); Supabase chỉ phục vụ app
 - Tuyệt đối không sửa thư viện core (Arduino, FreeRTOS, ESP-IDF, LN882H SDK, LibreTiny SDK) — chỉ sửa code trong `src/` và `include/`
+
