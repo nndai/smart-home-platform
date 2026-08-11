@@ -17,7 +17,8 @@ struct PumpConfig : public DeviceConfig {
     // ── Device mode ──
     bool pumpMode = DEFAULT_PUMP_MODE;
 
-    // (relayStartMode kế thừa từ DeviceConfig — dùng chung mọi profile relay)
+    // ── Relay startup mode (OFF=0 / ON=1 / LAST=2) — riêng profile relay ──
+    RelayStartMode relayStartMode = RelayStartMode::OFF;
 
     // ── BL0937 calibration coefficients (NAN = use HW defaults) ──
     double cCal = NAN;   // current coefficient

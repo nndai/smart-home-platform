@@ -5,6 +5,7 @@
 #include <Config.h>
 #include "compat/log.h"
 #include "compat/kv.h"
+#include "core/Crypto.h"
 
 enum class ConnMode : uint8_t { AP_WS = 0, STA_MQTT, DEBUG_WS };
 enum class RelayStartMode : uint8_t { OFF = 0, ON, LAST };
@@ -30,17 +31,15 @@ struct DeviceConfig {
     char mqttServer[64] = "";
     uint16_t mqttPort = DEFAULT_MQTT_PORT;
     char mqttUser[32] = "";
-    char mqttPass[32] = "";
-    char mqttTopic[64] = DEFAULT_MQTT_TOPIC;  // legacy — không dùng (topic chuẩn "devices/{deviceId}")
 
-    // ── Relay startup mode (OFF=0 / ON=1 / LAST=2) — dùng chung mọi profile relay ──
-    RelayStartMode relayStartMode = RelayStartMode::OFF;
+    // ── MQTT pass mã hóa ──
+    // key = SHA-256(deviceId); layout blob = IV(16)+cipher(32)+tag(16)
+    bool mqttPassEncValid = false;
+    uint8_t mqttPassEnc[64] = {0};
 
     // ── Sys log file ──
     bool sysLogFileEnabled = true;
     uint8_t sysLogFileLevel = LT_LEVEL_DEBUG;
-
-    // Chỉ append field mới ở cuối struct, không chèn giữa.
 };
 
 // ── Quản lý config dạng blob KV (một key "app_cfg") ──
@@ -49,63 +48,83 @@ struct DeviceConfig {
 template <typename T = DeviceConfig>
 class ConfigManagerT {
 public:
+    // Seed derive key mã hoá mqttPass (deviceId) — gọi sau g_identity.begin(),
+    // TRƯỚC load() (xem main.cpp).
+    void setEncSeed(const char* seed) { _encSeed = seed; }
+
     bool load() { return load(_config); }
     bool load(T& cfg) {
+        cfg = T();
         size_t storedLen = 0;
         uint8_t buf[sizeof(T)];
-        int err = compat::kvGet(kvKey(), buf, sizeof(buf), &storedLen);
-        if (err == 1) {
-            cfg = T();
-            return false;
-        }
-        if (err == 3) {
+        KvError err = compat::kvGet(kvKey(), buf, sizeof(buf), &storedLen);
+        if (err == KvError::BufTooShort) {
+            // Blob mới hơn firmware hiện tại (storedLen > sizeof(T)) → đọc đầy đủ rồi cắt bớt.
             uint8_t* tmp = (uint8_t*)malloc(storedLen);
-            if (!tmp) {
-                cfg = T();
-                return false;
-            }
+            if (!tmp) return false;
             size_t got = 0;
-            int err2 = compat::kvGet(kvKey(), tmp, storedLen, &got);
-            if (err2 != 0) {
-                free(tmp);
-                cfg = T();
-                return false;
+            err = compat::kvGet(kvKey(), tmp, storedLen, &got);
+            if (err == KvError::Ok) {
+                memcpy(&cfg, tmp, sizeof(T));
             }
-            cfg = T();
-            memcpy(&cfg, tmp, sizeof(T));
             free(tmp);
+            if (err != KvError::Ok) return false;
+            _decryptPass(cfg);
             return true;
         }
-        if (err != 0) {
-            cfg = T();
-            return false;
-        }
-        cfg = T();
+        if (err != KvError::Ok) return false;  // NotExist (hoặc lỗi khác) → giữ defaults
         size_t copyLen = (storedLen < sizeof(T)) ? storedLen : sizeof(T);
         memcpy(&cfg, buf, copyLen);
+        _decryptPass(cfg);
         return true;
     }
 
     bool save() { return save(_config); }
     bool save(const T& cfg) {
-        return compat::kvSet(kvKey(), &cfg, sizeof(cfg)) == 0;
+        T tmp = cfg;
+        // Mã hoá mqttPass (bản rõ RAM) trước khi ghi flash — flash chỉ chứa bản mã.
+        if (_encSeed) {
+            if (_plainMqttPass[0] != '\0') {
+                uint8_t key[32];
+                if (crypto::cfgKeyFromSeed(_encSeed, key) && crypto::cfgEncryptPass(key, _plainMqttPass, tmp.mqttPassEnc)) {
+                    tmp.mqttPassEncValid = true;
+                }
+            } else {
+                // Pass bị xoá → phải xoá luôn bản mã cũ, không thì load lại trả pass cũ.
+                tmp.mqttPassEncValid = false;
+                memset(tmp.mqttPassEnc, 0, sizeof(tmp.mqttPassEnc));
+            }
+        }
+        return compat::kvSet(kvKey(), &tmp, sizeof(tmp)) == KvError::Ok;
     }
 
     bool reset() {
         _config = T();
-        compat::kvDel(kvKey());
-        return true;
+        memset(_plainMqttPass, 0, sizeof(_plainMqttPass));
+        return compat::kvDel(kvKey()) == KvError::Ok;
     }
 
     T& get() {
         return _config;
     }
 
+    // ── MQTT pass bản rõ — chỉ sống trong RAM, không bao giờ xuống flash ──
+    const char* passPlain() const { return _plainMqttPass; }
+
+    void setPassPlain(const char* p) {
+        if (!p) {
+            _plainMqttPass[0] = '\0';
+        } else {
+            strlcpy(_plainMqttPass, p, sizeof(_plainMqttPass));
+        }
+    }
+
     void print() {
         LT_IM(CFG, "── Config ──");
         LT_IM(CFG, "  WiFi: %s", _config.wifiSSID);
-        LT_IM(CFG, "  MQTT: %s:%d", _config.mqttServer, _config.mqttPort);
-        LT_IM(CFG, "  Topic: %s", _config.mqttTopic);
+        LT_IM(CFG, "  MQTT: %s:%d user=%s secPass=%s", _config.mqttServer, _config.mqttPort,
+            _config.mqttUser[0] ? _config.mqttUser : "(per-device)",
+            _config.mqttPassEncValid ? "enc" : "none");
         LT_IM(CFG, "  Log: logFile=%s level=%d",
             _config.sysLogFileEnabled ? "ON" : "OFF", _config.sysLogFileLevel);
         LT_IM(CFG, "  ConnMode: %s", getConnModeString(_config.connMode));
@@ -133,7 +152,27 @@ public:
 
 private:
     static const char* kvKey() { return "app_cfg"; }
+
+    // Giải mã mqttPass từ blob đã lưu vào bản rõ RAM.
+    void _decryptPass(T& cfg) {
+        if (!cfg.mqttPassEncValid) {
+            return;
+        }
+        uint8_t key[32];
+        char plain[32];
+        if (crypto::cfgKeyFromSeed(_encSeed, key) && crypto::cfgDecryptPass(key, cfg.mqttPassEnc, plain)) {
+            strlcpy(_plainMqttPass, plain, sizeof(_plainMqttPass));
+        } else {
+            // Không giải mã được (blob hỏng / key lệch) → bỏ pass, fallback per-device.
+            _plainMqttPass[0] = '\0';
+            cfg.mqttPassEncValid = false;
+            memset(cfg.mqttPassEnc, 0, sizeof(cfg.mqttPassEnc));
+        }
+    }
+
     T _config;
+    const char* _encSeed = nullptr;
+    char _plainMqttPass[32] = "";
 };
 
 using ConfigManager = ConfigManagerT<DeviceConfig>;

@@ -155,6 +155,7 @@ void PumpDriver::getStatus(JsonDocument& resp) {
 }
 
 void PumpDriver::getConfig(JsonDocument& resp) {
+    resp["relayStartMode"] = (int)_cfg->relayStartMode;
     resp["pumpMode"] = _cfg->pumpMode;
     resp["threshOff"] = _cfg->threshOff;
     resp["threshNoWater"] = _cfg->threshNoWater;
@@ -171,6 +172,13 @@ bool PumpDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
     (void)resp;
     bool changed = false;
 
+    if (payload["relayStartMode"].is<unsigned int>()) {
+        int v = payload["relayStartMode"].as<int>();
+        if (v >= 0 && v <= 2) {
+            _cfg->relayStartMode = (RelayStartMode)v;
+            changed = true;
+        }
+    }
     if (payload["pumpMode"].is<bool>()) {
         _cfg->pumpMode = payload["pumpMode"].as<bool>();
         _pump.setPumpMode(_cfg->pumpMode);

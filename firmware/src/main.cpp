@@ -30,7 +30,7 @@ MqttClient mqttClient;
 WebSocketServer wsServer(WEBSOCKET_PORT);
 LogManager logManager;
 WiFiUDP ntpUdp;
-NTPClient ntpClient(ntpUdp, 7 * 3600);
+NTPClient ntpClient(ntpUdp, TZ_OFFSET_SEC);
 OTAManager otaManager;
 CommandHandlerT<ProfileConfig> commandHandler;
 
@@ -41,7 +41,6 @@ template class CommandHandlerT<ProfileConfig>;
 ConnMode g_connMode = ConnMode::AP_WS;
 
 // ── MQTT topic chuẩn (phase 2): devices/{deviceId}/cmd|up|log ──
-// (field config mqttTopic cũ không dùng nữa — giữ để không phá blob layout)
 static String mqttBaseTopic() {
     return String("devices/") + g_identity.deviceId();
 }
@@ -104,52 +103,8 @@ void setup() {
         }
     }
 
-    //── Seed test data ──
-    // {
-    //     for (const char* d : {"/logs/sys/", "/logs/toggle/", "/logs/power/"}) {
-    //         if (!LITTLEFS.exists(d)) LITTLEFS.mkdir(d);
-    //     }
-
-    //     auto writeFile = [](const char* path, const char* data) {
-    //         File f = LITTLEFS.open(path, "w");
-    //         if (f) { f.print(data); f.close(); }
-    //     };
-
-    //     writeFile("/logs/toggle/23-07-2026.log",
-    //         "00:00:01|0|1\n00:00:02|0|0\n01:15:30|1|1\n"
-    //         "02:30:00|2|1\n03:45:15|0|0\n04:00:00|1|0\n"
-    //         "05:10:45|0|1\n06:20:30|2|0\n07:35:00|0|1\n"
-    //         "08:45:15|1|1\n09:55:30|0|0\n10:05:45|2|1\n"
-    //         "11:15:00|0|1\n12:25:15|1|0\n13:35:30|0|1\n"
-    //         "14:45:45|2|1\n15:55:00|0|0\n16:05:15|1|1\n"
-    //         "17:15:30|0|0\n18:25:45|2|0\n19:35:00|0|1\n"
-    //         "20:45:15|1|1\n21:55:30|0|0\n22:05:45|2|1\n"
-    //         "23:15:00|0|0\n");
-
-    //     writeFile("/logs/toggle/24-07-2026.log",
-    //         "00:00:05|0|1\n01:10:20|0|0\n02:20:35|1|1\n"
-    //         "03:30:50|2|0\n04:41:05|0|1\n05:51:20|1|0\n"
-    //         "06:01:35|0|1\n07:11:50|2|1\n08:22:05|0|0\n"
-    //         "09:32:20|1|1\n10:42:35|0|1\n11:52:50|2|0\n"
-    //         "12:03:05|0|0\n13:13:20|1|1\n14:23:35|0|1\n"
-    //         "15:33:50|2|1\n16:44:05|0|0\n17:54:20|1|0\n"
-    //         "18:04:35|0|1\n19:14:50|2|1\n20:25:05|0|0\n"
-    //         "21:35:20|1|1\n22:45:35|0|0\n23:55:50|2|0\n");
-
-    //     writeFile("/logs/power/23-07-2026.log",
-    //         "0|120\n1|450\n2|380\n3|420\n5|0\n6|210\n"
-    //         "7|560\n8|720\n9|690\n10|580\n11|610\n12|450\n13|320\n"
-    //         "14|380\n15|420\n16|510\n18|550\n19|620\n"
-    //         "20|590\n21|430\n22|210\n23|0\n");
-
-    //     writeFile("/logs/power/24-07-2026.log",
-    //         "0|10\n1|0\n2|3200\n3|0\n4|0\n5|0\n7|180\n8|520\n"
-    //         "9|680\n10|710\n11|650\n12|590\n13|480\n14|350\n15|400\n"
-    //         "16|520\n17|610\n18|580\n19|490\n20|550\n21|620\n"
-    //         "22|510\n23|380\n");
-
-    //     LT_IM(SYS, "Seed data written! Remove seed code and re-flash.");
-    // }
+    g_identity.begin(profileName());
+    configManager.setEncSeed(g_identity.deviceId());
 
     if (!configManager.load(configManager.get())) {
         LT_IM(CFG, "No config found, using defaults");
@@ -160,9 +115,6 @@ void setup() {
     logManager.setSysLogFileEnabled(cfg.connMode != ConnMode::DEBUG_WS && cfg.sysLogFileEnabled);
     logManager.setSysLogFileLevel(cfg.sysLogFileLevel);
     logCaptureFlushFile(&logManager);
-
-    // Danh tính thiết bị: deviceId + secret/controlKey mã hóa (sinh lần boot đầu)
-    g_identity.begin(profileName());
 
     s_logCb = [](const String& line) {
         JsonDocument logJson;
@@ -285,13 +237,18 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
-    // MQTT auth per-device (docs §3.3): username = device-{deviceId}, password = deviceSecret
-    // (firmware tự sinh — không còn credential tĩnh nào trong config)
     String clientId = String("device-") + g_identity.deviceId();
+    const char* mqttUser = (cfg.mqttUser[0] != '\0') ? cfg.mqttUser : clientId.c_str();
     String deviceSecret;
-    g_identity.secretHex(deviceSecret);
+    const char* mqttPass;
+    if (cfg.mqttUser[0] != '\0') {
+        mqttPass = configManager.passPlain();
+    } else {
+        g_identity.secretHex(deviceSecret);
+        mqttPass = deviceSecret.c_str();
+    }
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort,
-        clientId.c_str(), deviceSecret.c_str(),
+        mqttUser, mqttPass,
         clientId.c_str(), mqttBaseTopic().c_str());
     mqttClient.setCallback(onMqttMessage);
 

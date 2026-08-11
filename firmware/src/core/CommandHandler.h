@@ -6,6 +6,7 @@
 #include <Config.h>
 #include "compat/task.h"
 #include "compat/fs.h"
+#include "compat/kv.h"
 
 #include "core/ConfigManager.h"
 #include "core/DeviceDriver.h"
@@ -65,6 +66,16 @@ private:
     void _sendResponse(const String& source, const JsonDocument& doc);
     void _sendResponse(const String& source, const String& json);
     void _handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload);
+
+    // ── Envelope lệnh qua MQTT (docs §3.2): chống giả mạo + replay ──
+    bool _verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload);
+    void _resetSeq();
+
+    static constexpr const char* SEQ_KV_KEY = "last_seq";   // seq cuối đã duyệt (chống replay sau reboot)
+    static constexpr uint32_t ENVELOPE_TS_WINDOW_S = 60;    // |now - ts| <= 60s
+    static constexpr uint32_t SEQ_PERSIST_EVERY = 8;        // ghi flash có hạn: persist mỗi N seq
+    uint32_t _lastSeq = 0;
+    uint32_t _lastSeqPersisted = 0;
 
     void _cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp);

@@ -51,6 +51,9 @@
 #define MQTT_SOCKET_TIMEOUT_SEC    7
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
 
+// TZ: UTC+7 (Việt Nam)
+# define TZ_OFFSET_SEC (7 * 3600)
+
 
 // ── OTA khẩn cấp bằng tay (OtaBootGuard, xem src/chip/ota_bootguard.cpp) ──
 // Cách dùng: 2 lần boot power-on + giữ nút (lần 2 giữ >= OTA_BTN_HOLD_MS rồi

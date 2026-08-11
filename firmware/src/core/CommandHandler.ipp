@@ -2,6 +2,7 @@
 #include "compat/log.h"
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
+#include "core/Crypto.h"
 #include "compat/wifi_scan.h"
 #include "chip/scan.h"
 #include "chip/io.h"
@@ -25,6 +26,14 @@ void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     _ota = ota;
     _identity = identity;
     _profile = profile ? profile : "unknown";
+
+    // Nạp seq cuối đã duyệt (nếu thiết bị reboot, lệnh cũ seq thấp vẫn bị từ chối)
+    _lastSeq = 0;
+    _lastSeqPersisted = 0;
+    size_t storedLen = 0;
+    if (compat::kvGet(SEQ_KV_KEY, &_lastSeq, sizeof(_lastSeq), &storedLen) == KvError::Ok && storedLen == sizeof(_lastSeq)) {
+        _lastSeqPersisted = _lastSeq;
+    }
 }
 
 template <typename T>
@@ -68,6 +77,88 @@ void CommandHandlerT<T>::_sendResponse(const String& source, const String& json)
     if (_responseCb) _responseCb(source, json);
 }
 
+// ── Envelope verify (docs §3.2) ──
+// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac} với
+//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>")
+// Kiểm tra: seq tăng dần (chống replay, persisted qua reboot), |now-ts| <= 60s,
+// HMAC đúng (chống giả mạo — kẻ khác không có controlKey).
+template <typename T>
+bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload) {
+    if (!_identity) {
+        LT_EM(CMD, "Envelope: identity unavailable");
+        return false;
+    }
+
+    if (!cmd["seq"].is<uint32_t>() || !cmd["ts"].is<uint32_t>() || !cmd["hmac"].is<const char*>()) {
+        LT_EM(CMD, "Envelope: missing seq/ts/hmac");
+        return false;
+    }
+    const uint32_t seq = cmd["seq"].as<uint32_t>();
+    const uint32_t ts = cmd["ts"].as<uint32_t>();
+    const char* hmacHex = cmd["hmac"].as<const char*>();
+
+    if (strlen(hmacHex) != 64) {
+        LT_EM(CMD, "Envelope: bad hmac length");
+        return false;
+    }
+
+    // Replay: seq phải lớn hơn seq đã duyệt (kể cả sau reboot nhờ persist).
+    if (seq <= _lastSeq) {
+        LT_EM(CMD, "Envelope: stale seq %u (last %u)", (unsigned)seq, (unsigned)_lastSeq);
+        return false;
+    }
+
+    // Lệch giờ: chỉ kiểm tra khi đã đồng bộ NTP (now != 0).
+    if (_log->isTimeSynced()) {
+        const uint32_t now = _log->getEpoch();
+        if (now != 0) {
+            const int32_t drift = (int32_t)(ts - now);
+            if (drift < -(int32_t)ENVELOPE_TS_WINDOW_S || drift > (int32_t)ENVELOPE_TS_WINDOW_S) {
+                LT_EM(CMD, "Envelope: ts drift %d s", (int)drift);
+                return false;
+            }
+        }
+    }
+
+    // Canonical: "seq|ts|cmd|payload" — payload serialize lại từ doc (compact, giữ thứ tự key).
+    String keyHex;
+    if (!_identity->controlKeyHex(keyHex)) {
+        LT_EM(CMD, "Envelope: no controlKey");
+        return false;
+    }
+    String payloadStr;
+    serializeJson(payload, payloadStr);
+    const String canonical = String(seq) + "|" + String(ts) + "|" + cmd["cmd"].as<String>() + "|" + payloadStr;
+
+    char expectedHex[65];
+    if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
+        LT_EM(CMD, "Envelope: hmac compute failed");
+        return false;
+    }
+    if (strcmp(expectedHex, hmacHex) != 0) {
+        LT_EM(CMD, "Envelope: hmac mismatch (cmd=%s)", cmd["cmd"].as<const char*>());
+        return false;
+    }
+
+    _lastSeq = seq;
+    // Ghi flash có hạn (KV trên flash): persist cách quãng; sau reboot cửa sổ
+    // replay tối đa bằng SEQ_PERSIST_EVERY-1 seq.
+    if (seq - _lastSeqPersisted >= SEQ_PERSIST_EVERY) {
+        if (compat::kvSet(SEQ_KV_KEY, &seq, sizeof(seq)) == KvError::Ok) {
+            _lastSeqPersisted = seq;
+        }
+    }
+    return true;
+}
+
+// Reset chuỗi seq — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
+template <typename T>
+void CommandHandlerT<T>::_resetSeq() {
+    _lastSeq = 0;
+    _lastSeqPersisted = 0;
+    compat::kvDel(SEQ_KV_KEY);
+}
+
 template <typename T>
 void CommandHandlerT<T>::_sendResponse(const String& source, const JsonDocument& doc) {
     String json;
@@ -79,6 +170,14 @@ template <typename T>
 void CommandHandlerT<T>::_handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload) {
     String cmdStr = cmd["cmd"].as<String>();
     String reqId = cmd["reqId"].is<String>() ? cmd["reqId"].as<String>() : "";
+
+    // ── Lệnh từ MQTT PHẢI có envelope hợp lệ (seq/ts/hmac) — docs §3.2 ──
+    // Chặn: giả mạo (kẻ khác publish lệnh), replay (seq cũ), lệch giờ (ts).
+    // AP/WS (pairing) không cần envelope: proximity + WPA2.
+    if (source == "mqtt" && !_verifyEnvelope(cmd, payload)) {
+        LT_EM(CMD, "Mqtt command '%s' rejected: invalid envelope", cmdStr.c_str());
+        return;
+    }
 
     JsonDocument resp;
     resp["cmd"] = cmdStr;
@@ -194,7 +293,7 @@ void CommandHandlerT<T>::_cmdGetConfig(const String& source, const JsonDocument&
     resp["mqttServer"] = c.mqttServer;
     resp["mqttPort"] = c.mqttPort;
     resp["mqttUser"] = c.mqttUser;
-    resp["mqttPass"] = strlen(c.mqttPass) > 0 ? "********" : "";
+    resp["mqttPass"] = strlen(_cfg->passPlain()) > 0 ? "********" : "";
     if (_identity) {
         resp["mqttTopic"] = String("devices/") + _identity->deviceId();
     } else {
@@ -221,8 +320,6 @@ void CommandHandlerT<T>::_cmdGetConfig(const String& source, const JsonDocument&
     resp["debugGateway"] = (const char*)ipBuf;
     snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", c.debugNetmask[0], c.debugNetmask[1], c.debugNetmask[2], c.debugNetmask[3]);
     resp["debugNetmask"] = (const char*)ipBuf;
-
-    resp["relayStartMode"] = (int)c.relayStartMode;
 
     resp["sysLogFileEnabled"] = c.sysLogFileEnabled;
     resp["sysLogFileLevel"] = c.sysLogFileLevel;
@@ -266,13 +363,11 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         needReboot = true;
     }
     if (payload["mqttPass"].is<const char*>()) { 
-        strlcpy(c.mqttPass, payload["mqttPass"], sizeof(c.mqttPass)); 
+        _cfg->setPassPlain(payload["mqttPass"].as<const char*>());
         changed = true; 
         needReboot = true;
     }
-    // mqttTopic KHÔNG cấu hình tay nữa (chuẩn "devices/{deviceId}") — field config
-    // giữ lại chỉ để không phá blob layout config cũ.
-    // if (payload["mqttTopic"].is<const char*>()) { ... }
+    // mqttTopic KHÔNG cấu hình tay nữa — topic chuẩn "devices/{deviceId}" (xem getConfig).
 
     // WiFi STA settings
     if (payload["wifiSSID"].is<const char*>()) { 
@@ -298,18 +393,9 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         needReboot = true;
     }
 
-    // Settings riêng của thiết bị → driver (pump thresholds, calib...)
+    // Settings riêng của thiết bị → driver (pump thresholds, calib, relayStartMode...)
     if (_driver && _driver->setConfig(payload, resp)) {
         changed = true;
-    }
-
-    // Relay start mode (dùng chung mọi profile relay)
-    if (payload["relayStartMode"].is<unsigned int>()) {
-        int v = payload["relayStartMode"].as<int>();
-        if (v >= 0 && v <= 2) { 
-            c.relayStartMode = (RelayStartMode)v; 
-            changed = true; 
-        }
     }
 
     // Debug network settings
@@ -429,6 +515,7 @@ void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocume
     (void)payload;
     _cfg->reset();
     if (_identity) _identity->reset();
+    _resetSeq(); // xóa seq đã duyệt — thiết bị quay về unprovisioned
     resp["status"] = "ok";
     resp["message"] = "Factory reset. Rebooting...";
     _sendResponse(source, resp);
@@ -837,11 +924,27 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payl
         _sendResponse(source, resp);
         return;
     }
+    _resetSeq(); // controlKey mới → chuỗi seq bắt đầu lại
 
     T& c = _cfg->get();
     strlcpy(c.wifiSSID, ssid, sizeof(c.wifiSSID));
     const char* pass = payload["wifiPass"].is<const char*>() ? payload["wifiPass"].as<const char*>() : "";
     strlcpy(c.wifiPass, pass, sizeof(c.wifiPass));
+
+    // MQTT broker config
+    if (payload["mqttServer"].is<const char*>() && strlen(payload["mqttServer"].as<const char*>()) > 0) {
+        strlcpy(c.mqttServer, payload["mqttServer"].as<const char*>(), sizeof(c.mqttServer));
+    }
+    if (payload["mqttPort"].is<unsigned int>()) {
+        c.mqttPort = payload["mqttPort"].as<unsigned int>();
+    }
+    if (payload["mqttUser"].is<const char*>() && strlen(payload["mqttUser"].as<const char*>()) > 0) {
+        strlcpy(c.mqttUser, payload["mqttUser"].as<const char*>(), sizeof(c.mqttUser));
+    }
+    if (payload["mqttPass"].is<const char*>() && strlen(payload["mqttPass"].as<const char*>()) > 0) {
+        _cfg->setPassPlain(payload["mqttPass"].as<const char*>());
+    }
+
     c.connMode = ConnMode::STA_MQTT;
     _cfg->save(c);
 
@@ -852,7 +955,7 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payl
     _sendResponse(source, resp);
 
     LT_IM(CMD, "Pairing: ssid=%s connMode=STA_MQTT, rebooting", ssid);
-    delay(800);
+    delay(1200);
     ESP.restart();
 }
 
@@ -879,11 +982,14 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument&
         _sendResponse(source, resp);
         return;
     }
-    if (payload["controlKey"].is<const char*>() && !_identity->setControlKeyHex(payload["controlKey"].as<const char*>())) {
-        resp["status"] = "error";
-        resp["message"] = "Invalid controlKey (need 64 hex chars)";
-        _sendResponse(source, resp);
-        return;
+    if (payload["controlKey"].is<const char*>()) {
+        if (!_identity->setControlKeyHex(payload["controlKey"].as<const char*>())) {
+            resp["status"] = "error";
+            resp["message"] = "Invalid controlKey (need 64 hex chars)";
+            _sendResponse(source, resp);
+            return;
+        }
+        _resetSeq(); // controlKey đổi → chuỗi seq bắt đầu lại
     }
 
     resp["status"] = "ok";

@@ -13,8 +13,15 @@ void DeviceIdentity::begin(const char* model) {
 
     _anchorLen = chip::anchorBytes(_anchor);
 
-    char anchorHex[33];
-    _hex(_anchor, _anchorLen, anchorHex);
+    // deviceId = "dev-" + 6 byte đầu (12 hex) của SHA-256(toàn bộ anchor):
+    // gộp đủ entropy giữa các nền MCU (LN882H 16B flash ID / ESP32 6B MAC),
+    // deterministic, format thống nhất 16 ký tự, không cần persist.
+    uint8_t anchorHash[32];
+    const mbedtls_md_info_t* hashMd = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_md(hashMd, _anchor, _anchorLen, anchorHash);
+
+    char anchorHex[13];
+    _hex(anchorHash, 6, anchorHex);
 
     memcpy(_deviceId, "dev-", 4);
     memcpy(_deviceId + 4, anchorHex, 12);
@@ -74,8 +81,8 @@ void DeviceIdentity::reset() {
 bool DeviceIdentity::_load() {
     uint8_t blob[2 * BLOB_REC_LEN];
     size_t storedLen = 0;
-    int err = compat::kvGet(_kvKey(), blob, sizeof(blob), &storedLen);
-    if (err != 0 || storedLen < sizeof(blob)) {
+    KvError err = compat::kvGet(_kvKey(), blob, sizeof(blob), &storedLen);
+    if (err != KvError::Ok || storedLen < sizeof(blob)) {
         return false; // chưa có / hỏng / blob của thiết bị khác
     }
 
@@ -99,7 +106,7 @@ bool DeviceIdentity::_save() const {
     if (!_encrypt(key, _secret, KEY_LEN, blob)) return false;
     if (!_encrypt(key, _controlKey, KEY_LEN, blob + BLOB_REC_LEN)) return false;
 
-    return compat::kvSet(_kvKey(), blob, sizeof(blob)) == 0;
+    return compat::kvSet(_kvKey(), blob, sizeof(blob)) == KvError::Ok;
 }
 
 void DeviceIdentity::_generateKeys() {

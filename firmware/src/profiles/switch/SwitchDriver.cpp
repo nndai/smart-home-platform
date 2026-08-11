@@ -12,7 +12,7 @@ void SwitchDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
     }
     else if (cfg.relayStartMode == RelayStartMode::LAST) {
         char v[2] = {0};
-        if (compat::kvGet("relay_state", v, sizeof(v), nullptr) == 0 && v[0] == '1') {
+        if (compat::kvGet("relay_state", v, sizeof(v), nullptr) == KvError::Ok && v[0] == '1') {
             _relay.turnOn();
         }
     }
