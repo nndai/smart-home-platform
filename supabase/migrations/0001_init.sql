@@ -1,14 +1,14 @@
 -- ============================================================
 -- 0001_init.sql — Smart Home Platform: schema + RLS + claim_device
+-- IDEMPOTENT — an toàn chạy nhiều lần, không gây lỗi.
 -- Cách dùng: Supabase → SQL Editor → dán toàn bộ → Run.
--- (Không cần supabase CLI / Docker.)
 -- ============================================================
 
 -- ── Extensions ──
 create extension if not exists pgcrypto;
 
 -- ── Bảng: devices ──
-create table public.devices (
+create table if not exists public.devices (
     id          uuid primary key default gen_random_uuid(),
     device_id   text not null unique,          -- "dev-" + 12 hex (từ anchor)
     profile     text not null,                 -- pump / switch / ...
@@ -20,7 +20,7 @@ create table public.devices (
 );
 
 -- ── Bảng: device_members (mọi người được truy cập thiết bị) ──
-create table public.device_members (
+create table if not exists public.device_members (
     device_id  uuid not null references public.devices(id) on delete cascade,
     user_id    uuid not null references auth.users(id) on delete cascade,
     role       text not null check (role in ('OWNER', 'ADMIN', 'MEMBER', 'VIEWER')),
@@ -29,7 +29,7 @@ create table public.device_members (
 );
 
 -- ── Bảng: invites (P6 — chia sẻ; để sẵn schema) ──
-create table public.invites (
+create table if not exists public.invites (
     code       text primary key default encode(gen_random_bytes(9), 'hex'),
     device_id  uuid not null references public.devices(id) on delete cascade,
     role       text not null check (role in ('ADMIN', 'MEMBER', 'VIEWER')),
@@ -44,12 +44,14 @@ alter table public.device_members  enable row level security;
 alter table public.invites         enable row level security;
 
 -- devices: select — mọi member; update — OWNER/ADMIN
+drop policy if exists devices_select on public.devices;
 create policy devices_select on public.devices for select
     using (
         exists (select 1 from public.device_members m
                 where m.device_id = devices.id and m.user_id = auth.uid())
     );
 
+drop policy if exists devices_update on public.devices;
 create policy devices_update on public.devices for update
     using (
         exists (select 1 from public.device_members m
@@ -62,11 +64,13 @@ create policy devices_update on public.devices for update
 -- device_members: select — user thấy đúng các dòng membership của mình
 -- (KHÔNG self-query device_members — gây infinite recursion 42P17).
 -- Đủ cho luồng hiện tại: OWNER claim xong chỉ cần member row của chính mình.
+drop policy if exists members_select on public.device_members;
 create policy members_select on public.device_members for select
     using (user_id = auth.uid());
 
 -- device_members: delete — chỉ OWNER (kiểm tra qua devices.owner_id để tránh
 -- self-recursion; chuỗi devices_select → members_select(user_id=uid) không lặp)
+drop policy if exists members_delete on public.device_members;
 create policy members_delete on public.device_members for delete
     using (
         exists (select 1 from public.devices d
@@ -74,6 +78,7 @@ create policy members_delete on public.device_members for delete
     );
 
 -- invites: select/delete — chỉ OWNER của thiết bị (P6 sẽ thêm member-invite)
+drop policy if exists invites_select on public.invites;
 create policy invites_select on public.invites for select
     using (
         exists (select 1 from public.device_members m
@@ -81,6 +86,7 @@ create policy invites_select on public.invites for select
                   and m.user_id = auth.uid() and m.role = 'OWNER')
     );
 
+drop policy if exists invites_delete on public.invites;
 create policy invites_delete on public.invites for delete
     using (
         exists (select 1 from public.device_members m
@@ -93,6 +99,7 @@ create policy invites_delete on public.invites for delete
 -- Chỉ người đã đăng nhập; thiết bị chưa có owner → claim được;
 -- đã có owner → từ chối (chống claim kép — §4.3). Re-claim sau revocation
 -- (owner null) vẫn được phép.
+-- LƯU Ý: 0005 sẽ ghi đè function này bằng phiên bản cho phép overwrite ownership.
 create or replace function public.claim_device(
     p_device_id   text,
     p_profile     text,
