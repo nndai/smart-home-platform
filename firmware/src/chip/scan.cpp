@@ -116,7 +116,7 @@ int scanStart() {
     ScanCfg cfg = {};
     cfg.channel = 0;                        // quét tất cả kênh
     cfg.scan_type = (uint8_t)WIFI_SCAN_TYPE_ACTIVE;
-    cfg.scan_time = 300;
+    cfg.scan_time = 1000;
     int ret = wifi_softap_scan((wifi_scan_cfg_t*)&cfg, s_apBuf, kMaxScanResults, softApScanCb);
     if (ret != 0) LT_EM(NET, "wifi_softap_scan start failed: %d", ret);
     return ret;
