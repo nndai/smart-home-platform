@@ -227,10 +227,8 @@ object PumpRepositoryProvider {
         val ctx = appContext ?: throw IllegalStateException("PumpRepositoryProvider.init() not called")
         val envelope = DeviceCommandEnvelope(ctx)
         val mqttChannel = MqttDeviceChannel(
-            hostProvider = { getMqttHost() },
-            portProvider = { getMqttPort() },
-            usernameProvider = { getMqttUser() },
-            passwordProvider = { getMqttPass() },
+            connectionManager = provideMqttConnectionManager(),
+            handshakeManager = provideDeviceHandshakeManager(),
             deviceIdProvider = { getActiveDeviceId() },
             envelopeProvider = { raw -> envelope.sign(getActiveDeviceId(), raw) },
             scope = appScope

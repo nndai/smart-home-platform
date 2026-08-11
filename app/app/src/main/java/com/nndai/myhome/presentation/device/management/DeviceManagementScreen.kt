@@ -76,7 +76,7 @@ fun DeviceManagementScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                .padding(padding)
+                //.padding(padding)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp, vertical = 12.dp)

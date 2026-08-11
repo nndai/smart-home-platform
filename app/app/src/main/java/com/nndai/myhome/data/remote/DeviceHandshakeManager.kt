@@ -251,6 +251,6 @@ class DeviceHandshakeManager(
         private const val MAX_FAILED_HANDSHAKE_ATTEMPTS = 2
         private const val HANDSHAKE_RESPONSE_TIMEOUT_MS = 4_000L
         private const val ONLINE_HEARTBEAT_TIMEOUT_MS = 15_000L
-        private const val OFFLINE_PROBE_INTERVAL_MS = 10_000Lb 
+        private const val OFFLINE_PROBE_INTERVAL_MS = 10_000L
     }
 }
