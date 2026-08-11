@@ -59,19 +59,18 @@ create policy devices_update on public.devices for update
 
 -- devices: insert/delete CHỈ qua claim_device (SECURITY DEFINER) — không policy nào khác.
 
--- device_members: select — member của cùng thiết bị; delete — chỉ OWNER
+-- device_members: select — user thấy đúng các dòng membership của mình
+-- (KHÔNG self-query device_members — gây infinite recursion 42P17).
+-- Đủ cho luồng hiện tại: OWNER claim xong chỉ cần member row của chính mình.
 create policy members_select on public.device_members for select
-    using (
-        exists (select 1 from public.device_members me
-                where me.device_id = device_members.device_id
-                  and me.user_id = auth.uid())
-    );
+    using (user_id = auth.uid());
 
+-- device_members: delete — chỉ OWNER (kiểm tra qua devices.owner_id để tránh
+-- self-recursion; chuỗi devices_select → members_select(user_id=uid) không lặp)
 create policy members_delete on public.device_members for delete
     using (
-        exists (select 1 from public.device_members me
-                where me.device_id = device_members.device_id
-                  and me.user_id = auth.uid() and me.role = 'OWNER')
+        exists (select 1 from public.devices d
+                where d.id = device_members.device_id and d.owner_id = auth.uid())
     );
 
 -- invites: select/delete — chỉ OWNER của thiết bị (P6 sẽ thêm member-invite)
