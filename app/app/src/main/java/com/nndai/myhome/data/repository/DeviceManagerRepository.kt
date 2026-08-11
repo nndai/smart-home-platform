@@ -58,6 +58,10 @@ class DeviceManagerRepository(context: Context) {
         }
     }
 
+    /**
+     * Claim thiết bị lên Supabase. DB tự ghi đè nếu thiết bị đã tồn tại
+     * (cập nhật owner_id, control_key, device_members).
+     */
     suspend fun addDevice(
         name: String,
         profile: String,
@@ -72,25 +76,7 @@ class DeviceManagerRepository(context: Context) {
         }
 
         val err = r.exceptionOrNull()
-        if (err is ClaimError.AlreadyClaimed) {
-            // Check if current user already owns this device
-            fetchDevicesInternal()
-            val existing = _devices.value.find { it.device_id == deviceId }
-            if (existing != null) {
-                Log.d(TAG, "addDevice(): Device $deviceId is already claimed by current user. Returning existing device.")
-                pendingStore.remove(deviceId)
-                _lastError.value = null
-                return Result.success(existing)
-            } else {
-                Log.w(TAG, "addDevice(): Device $deviceId claimed by another user. Removing from pendingStore.")
-                pendingStore.remove(deviceId)
-                _lastError.value = "Thiết bị đã thuộc về một tài khoản khác"
-                return Result.failure(err)
-            }
-        }
-
         if (err != null && !isTransientNetworkError(err)) {
-            // Permanent failure (e.g. invalid control key) -> remove from pending store
             Log.w(TAG, "addDevice(): Permanent failure for $deviceId: ${err.message}. Removing from pendingStore.")
             pendingStore.remove(deviceId)
         }
@@ -146,7 +132,7 @@ class DeviceManagerRepository(context: Context) {
     /**
      * Synchronize pending claims stored offline.
      * Retries transient network errors up to 3 times per run.
-     * Automatically removes claims that succeed or encounter permanent errors (such as device_already_claimed).
+     * DB tự ghi đè nếu thiết bị đã có chủ → không cần xử lý AlreadyClaimed.
      */
     suspend fun syncPendingClaims(): Int {
         val pending = pendingStore.getAll()
@@ -157,7 +143,7 @@ class DeviceManagerRepository(context: Context) {
         fetchDevicesInternal()
 
         for (p in pending) {
-            // If device is already in current user's list, remove pending claim
+            // Thiết bị đã nằm trong danh sách của user → bỏ qua
             if (_devices.value.any { it.device_id == p.deviceId }) {
                 Log.d(TAG, "syncPendingClaims(): Device ${p.deviceId} already owned by user. Removing pending claim.")
                 pendingStore.remove(p.deviceId)
@@ -177,18 +163,6 @@ class DeviceManagerRepository(context: Context) {
                 }
 
                 val cause = r.exceptionOrNull()
-                if (cause is ClaimError.AlreadyClaimed) {
-                    fetchDevicesInternal()
-                    if (_devices.value.any { it.device_id == p.deviceId }) {
-                        done = true
-                        synced++
-                    } else {
-                        isPermanentError = true
-                        Log.w(TAG, "syncPendingClaims(): Device ${p.deviceId} is claimed by another user. Removing pending claim.")
-                    }
-                    return@repeat
-                }
-
                 if (!isTransientNetworkError(cause)) {
                     isPermanentError = true
                     Log.w(TAG, "syncPendingClaims(): Permanent failure for ${p.deviceId}: ${cause?.message}. Removing pending claim.")
@@ -208,6 +182,32 @@ class DeviceManagerRepository(context: Context) {
             fetchDevicesInternal()
         }
         return synced
+    }
+
+    /**
+     * Xóa liên kết thiết bị cho user hiện tại.
+     * DB function remove_device:
+     *   - Xóa dòng device_members của user.
+     *   - Nếu user là owner → xóa luôn thiết bị (cascade).
+     *   - Nếu user là TRANSFERRED → chỉ xóa dòng member (dọn rác).
+     */
+    suspend fun removeDevice(deviceId: String): Result<Unit> {
+        return try {
+            val params = buildJsonObject {
+                put("p_device_id", deviceId)
+            }
+            supabaseDb.rpc("remove_device", params)
+            pendingStore.remove(deviceId)
+            fetchDevicesInternal()
+            _lastError.value = null
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "removeDevice() failed for $deviceId: ${e.message}")
+            _lastError.value = "Không thể xóa thiết bị: ${e.message}"
+            Result.failure(e)
+        }
     }
 
     companion object {
