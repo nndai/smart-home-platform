@@ -42,14 +42,14 @@ graph TB
 ```mermaid
 graph LR
     A["Lớp 1: chipAnchor<br/>LN882H: hal_flash_read_unique_id()<br/>128-bit UID die flash (OTP)<br/>ESP32: esp_efuse_mac_get_default()<br/>6 byte MAC eFuse<br/>(API 8B esp_efuse_get_chip_serial_number<br/>không tồn tại trong IDF 4.4 — xem IDENTITY §5.2)<br/>→ không nằm trong dump, không ghi được"] --> B
-    B["Lớp 2: deviceId<br/>= &quot;dev-&quot; + hex(anchor)[:12]<br/>định danh public, in lên nhãn/QR"] --> C
+    B["Lớp 2: deviceId<br/>= &quot;dev-&quot; + hex(SHA-256(anchor))[:12]<br/>định danh public, in lên nhãn/QR"] --> C
     C["Lớp 3: deviceSecret<br/>32 byte ngẫu nhiên, sinh tại lần boot đầu<br/>lưu dạng AES-GCM(KDF(anchor))<br/>không bao giờ nhúng trong firmware"]
 ```
 
 | Lớp | Giá trị | Độ nhạy | Nơi lưu |
 |---|---|---|---|
 | chipAnchor | UID phần cứng | Công khai (của chip) | OTP/eFuse — **không đọc được từ dump** |
-| deviceId | Dẫn xuất từ anchor | Công khai | Nhãn/QR + Supabase |
+| deviceId | Dẫn xuất từ SHA-256(anchor) — cắt 6 byte đầu (gộp đủ entropy 2 nền MCU, deterministic) | Công khai | Nhãn/QR + Supabase |
 | deviceSecret | Ngẫu nhiên 32B | Bí mật | eFlash (mã hóa) + HiveMQ credential |
 
 **Tại sao không dùng `lt_cpu_get_unique_id()`:** bản weak chỉ trả 24 bit cuối của MAC hiệu dụng — và MAC hiệu dụng bị override được (`wifi_set_macaddr`/`netdev_set_mac_addr`). Đã verify trong source LibreTiny/LN882H. Anchor chuẩn: `hal_flash_read_unique_id()` (đọc qua lệnh 0x4B — UID nằm trong OTP die flash, không phải vùng địa chỉ flash nên **dump không lấy được**, và không thể ghi đè).
@@ -94,24 +94,28 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
   "ts": 1750000000,
   "cmd": "setLevel",
   "payload": { "level": 80 },
-  "hmac": "hex64"   // HMAC-SHA256(controlKey, seq|ts|payload)
+  "hmac": "hex64"   // HMAC-SHA256(controlKey, seq|ts|cmd|payload)
 }
 ```
 
 - `controlKey` (32B): **sinh bởi APP** khi pair, gửi trong lệnh `pair` (xem IDENTITY §1/§4 — getConfig không trả key); lưu mã hóa trên thiết bị + Supabase (RLS — **chỉ OWNER/ADMIN đọc**, xem §6) → phân phối cho các app được chia sẻ
-- Thiết bị kiểm tra: `seq > seq_cuối` + `|now - ts| < 60s` + HMAC hợp lệ → mới thực thi
+- Canonical string: `"<seq>|<ts>|<cmd>|<payload JSON compact>"` — gồm cả `cmd` (kẻ đánh cắp 1 lệnh hợp lệ không thể đổi `cmd`)
+- Thiết bị kiểm tra: `seq > seq_cuối` (persist KV `last_seq`, chống replay cả sau reboot) + `|now - ts| < 60s` (bỏ qua khi NTP chưa set) + HMAC hợp lệ → mới thực thi
 - Trạng thái `up` không cần ký (đã qua TLS + broker auth), kèm `seq` để app phát hiện lệch nhịp
 
-### 3.3 Credential HiveMQ (theo quy tắc, gen tự động)
+### 3.3 Credential HiveMQ (cho gia đình — 1 credential shared)
 
 | Client | Username | Password | Permission (topic filter) |
 |---|---|---|---|
-| Thiết bị | `device-{deviceId}` | `deviceSecret` (firmware **tự sinh boot đầu** — xem IDENTITY §1) | `devices/{deviceId}/#` pub+sub |
+| Thiết bị (shared) | `device-family` | tạo 1 lần trong HiveMQ console (≤32 ký tự), seed vào Supabase `app_secrets` | `devices/+/#` pub+sub |
+| Thiết bị (fallback per-device) | `device-{deviceId}` | `deviceSecret` (firmware **tự sinh boot đầu** — xem IDENTITY §1) | `devices/{deviceId}/#` pub+sub |
 | Edge Function bridge | `app-family` | random, tạo 1 lần trong console, **chỉ nằm trong Supabase Function Secrets** | `devices/+/#` pub+sub |
 
-**App Android KHÔNG kết nối MQTT** (open-source: credential không bao giờ nằm trong APK/repo) — mọi lệnh/trạng thái qua Supabase RPC → Edge Function bridge → HiveMQ.
-
-**Bước tay duy nhất (2 phút/thiết bị):** HiveMQ Serverless free **không có REST API** (chỉ Starter trả phí) → credential thiết bị được dán vào HiveMQ console **ngay lúc factory provisioning** (khi nạp firmware cho board mới) — user không phải mở console khi pair sau này. `app-family` tạo 1 lần duy nhất rồi dán vào Supabase → Function Secrets.
+- App Android open-source: **không nhúng credential MQTT vào APK/BuildConfig**. Khi pair, app gọi RPC `get_mqtt_credential()` (SECURITY DEFINER, chỉ `authenticated`) lấy `device-family` rồi gửi kèm trong lệnh `pair` → thiết bị lưu vào config. Firmware fallback sang per-device nếu chưa có credential shared.
+- Migration: `supabase/migrations/0003_mqtt_shared_credential.sql`; seed 1 lần: `tools/seed_mqtt_credential.ps1`.
+- **Lưu trữ:** app chỉ cache credential trong RAM (không ghi prefs); Supabase `app_secrets` chứa pass plaintext (RLS + HTTPS, chấp nhận ở quy mô $0); thiết bị lưu `mqttPass` dạng **mã hóa AES-256-GCM, key = SHA-256(deviceId)** (`mqttPassEnc` trong KV `app_cfg`) — flash không chứa plaintext.
+- App **kết nối MQTT trực tiếp** (kênh điều khiển `MqttDeviceChannel`, credential từ RPC chỉ cache RAM) — không qua Edge Function bridge.
+- **Bước tay duy nhất (2 phút, 1 lần cho cả gia đình):** HiveMQ Serverless free **không có REST API** (chỉ Starter trả phí) → tạo credential `device-family` (permission `devices/+/#`) trong console rồi seed vào Supabase — thiết bị mới không bao giờ phải chạm console. Kịch bản bán thiết bị sau này: self-host EMQX 5 (có REST API tạo credential per-device, cô lập + tự động $0) — firmware giữ fallback per-device nên gần như không đổi.
 
 ## 4. Flow "Thêm thiết bị" (pairing — 2 bước: phone scan → MCU scan)
 
@@ -119,12 +123,11 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
 
 | Việc | Công cụ |
 |---|---|
-| Đọc anchor → deviceId (`dev-...`), SSID AP cố định `myhome-{model}-{4hex}` (từ deviceId + profile) | `tools/` script (đọc qua serial/đã biết ở flash) |
-| Đọc `deviceSecret` (firmware **đã tự sinh** ở boot đầu — đọc qua serial/`provision`) | `tools/` script |
-| Tạo credential HiveMQ `device-{deviceId}` / password = secret, permission `devices/{deviceId}/#` | HiveMQ console (dán — HiveMQ free không REST API) |
-| Inject config (credential, AP SSID/pass) vào partition config | script |
+| Read anchor → deviceId (`dev-...`), SSID AP cố định `myhome-{model}-{4hex}` (từ deviceId + profile) | `tools/` script (đọc qua serial/đã biết ở flash) |
+| Credential MQTT: dùng shared `device-family` đã seed từ trước (xem §3.3) — **không cần tạo credential mới** | Supabase `app_secrets` |
+| Inject config (AP SSID/pass) vào partition config | script |
 
-Thiết bị chưa có credential → không auth MQTT được → **không bao giờ online trên cloud** (deny mặc định).
+Thiết bị chưa được pair → chưa có credential MQTT → không auth được → **không bao giờ online trên cloud** (deny mặc định). Khi pair, app gửi `device-family` vào lệnh `pair` (xem §3.3).
 
 ### 4.1 Sơ đồ flow
 
@@ -270,8 +273,8 @@ Data:
 
 | Phase | Nội dung | Deliverable |
 |---|---|---|
-| **P1** | Hạ tầng cloud | Supabase project + SQL migration (schema+RLS+RPC `claim_device`); tạo credential `app-family` trong HiveMQ console → đặt vào Supabase Function Secrets (không vào repo/APK); script test MQTT trong `tools/` |
-| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`myhome-{model}-XXXX`, `pair` command, scanWifi trong AP); envelope seq/ts/hmac; MQTT per-device auth + topic mới; revocation khi re-pair; verify scan khi đang ở AP mode |
+| **P1** | Hạ tầng cloud | Supabase project + SQL migration (schema+RLS+RPC `claim_device`, `get_mqtt_credential`); tạo credential `app-family` (EF bridge) + `device-family` (shared) trong HiveMQ console → `app-family` vào Function Secrets, `device-family` seed qua `tools/seed_mqtt_credential.ps1`; script test MQTT trong `tools/` |
+| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`myhome-{model}-XXXX`, `pair` command, scanWifi trong AP); envelope seq/ts/hmac ✅; MQTT auth: credential shared qua pair (fallback per-device) ✅; revocation khi re-pair; verify scan khi đang ở AP mode |
 | **P3** | Firmware profiles | SWITCH/DIMMER/FAN (cùng codebase, build thử ESP32); PUMP giữ nguyên |
 | **P4** | App core | Login; Device List + Add Device (scan AP `myhome-` prefix → WifiNetworkSpecifier → chọn WiFi từ danh sách MCU → pair → tự claim); refactor repository/navigation |
 | **P5** | App device UI | Màn hình theo capability; điều khiển qua RPC send_command; quản lý thiết bị |
@@ -280,12 +283,12 @@ Data:
 ## 11. Việc bạn cần làm (tổng cộng ~30 phút, 0 đồng)
 
 1. Tạo project Supabase free → lấy `SUPABASE_URL` + `anon key` (publishable — không phải secret; RLS là tường lửa)
-2. HiveMQ console: tạo 1 credential `app-family` (permission `devices/+/#`) → dán vào Supabase → **Function Secrets** (KHÔNG commit vào repo, không vào APK)
-3. Khi flash mỗi board mới: đọc `deviceSecret` (firmware tự sinh) bằng `tools/` script → tạo credential HiveMQ `device-{deviceId}` + dán vào console (~2 phút) — bước tay duy nhất
+2. HiveMQ console: tạo credential `app-family` (permission `devices/+/#`) → dán vào Supabase → **Function Secrets**; tạo credential `device-family` (permission `devices/+/#`, ≤32 ký tự) → seed 1 lần: `supabase/migrations/0003_mqtt_shared_credential.sql` (SQL Editor) + `tools/seed_mqtt_credential.ps1`
+3. Pair thiết bị mới bằng app — credential `device-family` tự gửi vào lệnh `pair`, **không bao giờ phải mở HiveMQ console** (bước tay duy nhất đã xong ở bước 2)
 
 ## 12. Tradeoffs đã xác nhận
 
-- HiveMQ free: 1 bước tay/thiết bị (không REST API); 100 connections — dư cho gia đình
+- HiveMQ free: 1 bước tay 1 lần cho cả gia đình (credential shared `device-family`); 100 connections — dư cho gia đình. Kịch bản bán thiết bị → self-host EMQX 5 (REST API tạo credential per-device)
 - Supabase free: pause sau 7 ngày không hoạt động → thiết bị không phụ thuộc (thiết kế tách lớp)
 - **App không MQTT trực tiếp** (open-source an toàn) → lệnh điều khiển +1-3s latency do Edge Function cold start; trạng thái đọc qua retained `/up` (poll) — chấp nhận với app gia đình
 - Edge Function không persistent → không subscribe MQTT lâu dài; mỗi lệnh = 1 kết nối ngắn (HiveMQ 100 connections dư)
