@@ -18,7 +18,7 @@ float TemperatureSensor::readCelsius() {
     if (!_initialized) return -273.0f;
 
     int raw = readRaw();
-    LT_I("NTC raw ADC: %d", raw);
+    //LT_I("NTC raw ADC: %d", raw);
     if (raw <= 0) return -273.0f;
 
     float voltage = (raw / NTC_ADC_MAX) * NTC_VREF;
@@ -26,7 +26,7 @@ float TemperatureSensor::readCelsius() {
 
     float resistance = NTC_SERIES_RESISTOR * ((NTC_VREF - voltage) / voltage);
     float temperature = _resistanceToCelsius(resistance);
-    LT_I("NTC resistance: %.2f ohms, temperature: %.2f C", resistance, temperature);
+    //LT_I("NTC resistance: %.2f ohms, temperature: %.2f C", resistance, temperature);
     return temperature;
 }
 
