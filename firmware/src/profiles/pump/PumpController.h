@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <functional>
 
-#include "core/devices/RelayController.h"
+#include "core/devices/MainsSwitch.h"
 
 enum class PumpState {
     OFF,
@@ -19,7 +19,7 @@ public:
     using EventCallback = std::function<void(PumpState state, float current, bool isOn, const char* message)>;
 
     PumpController();
-    void begin(RelayController* relay, bool pumpMode);
+    void begin(MainsSwitch* mains, bool pumpMode);
     void setThresholds(uint16_t off, uint16_t noWater, uint16_t running, uint16_t overload);
     void setTimeouts(uint16_t dryTimeout, uint16_t overloadTimeout);
     void update(float currentAmps);
@@ -28,16 +28,16 @@ public:
     void turnOn();
     void turnOff();
     void toggle();
-    bool isOn() const { return _relay ? _relay->getState() : false; }
-    unsigned long getOnDuration() const { return _relay ? _relay->getOnDuration() : 0; }
+    bool isOn() const { return _switch ? _switch->getState() : false; }
+    unsigned long getOnDuration() const { return _switch ? _switch->getOnDuration() : 0; }
     void clearPumpFault();
     bool isFaultLatched() const { return _faultLatched; }
     void setEventCallback(EventCallback cb);
-    void setOnDurationCallback(std::function<void(unsigned long)> cb) { if (_relay) _relay->setOnDurationCallback(cb); }
+    void setOnDurationCallback(std::function<void(unsigned long)> cb) { if (_switch) _switch->setOnDurationCallback(cb); }
     void reset();
 
 private:
-    RelayController* _relay;
+    MainsSwitch* _switch;
     PumpState _state;
     uint16_t _threshOff;
     uint16_t _threshNoWater;

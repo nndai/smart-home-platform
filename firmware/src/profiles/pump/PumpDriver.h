@@ -9,7 +9,7 @@
 #include "profiles/pump/TemperatureSensor.h"
 #include "profiles/pump/PumpController.h"
 #include "profiles/pump/PumpConfig.h"
-#include "core/devices/RelayController.h"
+#include "core/devices/MainsSwitch.h"
 
 // ── Driver của profile PUMP (bơm + BL0937 + NTC + relay + triac) ──
 class PumpDriver : public DeviceDriver {
@@ -29,7 +29,7 @@ public:
 private:
     CurrentSensor _current;
     TemperatureSensor _temp;
-    RelayController _relay;
+    MainsSwitch _switch;
     PumpController _pump;
     ButtonMenu _menu;
 

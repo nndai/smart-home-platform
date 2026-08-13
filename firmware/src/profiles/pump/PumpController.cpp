@@ -2,7 +2,7 @@
 #include <Config.h>
 
 PumpController::PumpController()
-    : _relay(nullptr)
+    : _switch(nullptr)
     , _state(PumpState::OFF)
     , _threshOff(DEFAULT_THRESH_OFF)
     , _threshNoWater(DEFAULT_THRESH_NO_WATER)
@@ -18,8 +18,8 @@ PumpController::PumpController()
 {
 }
 
-void PumpController::begin(RelayController* relay, bool pumpMode) {
-    _relay = relay;
+void PumpController::begin(MainsSwitch* mains, bool pumpMode) {
+    _switch = mains;
     _pumpMode = pumpMode;
     _state = PumpState::OFF;
     _faultLatched = false;
@@ -38,7 +38,7 @@ void PumpController::setTimeouts(uint16_t dryTimeout, uint16_t overloadTimeout) 
 }
 
 void PumpController::update(float currentAmps) {
-    if (_relay) _relay->handle();
+    if (_switch) _switch->handle();
 
     unsigned long now = millis();
     float currentMa = currentAmps * 1000.0f;
@@ -112,7 +112,7 @@ void PumpController::update(float currentAmps) {
                          newState == PumpState::DRY_RUN ||
                          newState == PumpState::CRITICAL_CURRENT);
         if (_faultLatched) {
-            if (_relay) _relay->turnOff();
+            if (_switch) _switch->turnOff();
         }
         const char* msg = "";
         switch (newState) {
@@ -144,7 +144,7 @@ void PumpController::clearPumpFault() {
 
 void PumpController::turnOn() {
     _faultLatched = false;
-    if (_relay) _relay->turnOn();
+    if (_switch) _switch->turnOn();
     if (_eventCb) {
         _eventCb(_state, 0.0f, isOn(), "Pump ON");
     }
@@ -152,7 +152,7 @@ void PumpController::turnOn() {
 
 void PumpController::turnOff() {
     _faultLatched = false;
-    if (_relay) _relay->turnOff();
+    if (_switch) _switch->turnOff();
     if (_eventCb) {
         _eventCb(_state, 0.0f, isOn(), "Pump OFF");
     }

@@ -13,9 +13,9 @@
 #define PIN_BL0937_CF      PIN_PB04  // PB04  - BL0937 CF  (power pulse, interrupt)
 #define PIN_BL0937_CF1     PIN_PB05  // PB05  - BL0937 CF1 (current/voltage pulse, interrupt)
 #define PIN_BL0937_SEL     PIN_PB06  // PB06  - BL0937 SEL (current/voltage select)
-#define PIN_NTC_ADC        PIN_PA04  // PA04  - NTC 10k thermistor (ADC-capable pin)
+#define PIN_NTC_ADC        PIN_PA01  // PA01  - NTC 10k thermistor (ADC-capable pin)
 #define PIN_RELAY          PIN_PB03  // PB03  - Relay control
-#define PIN_TRIAC_GATE     PIN_PA08  // PA08  - TRIAC gate control
+#define PIN_TRIAC_GATE     PIN_PA05  // PA05  - TRIAC gate control
 #define PIN_LED            PIN_PA06  // PA06  - Status LED (active LOW)
 #define PIN_BUTTON         PIN_PA07  // PA07  - Push button (active LOW, pull-up)
 
@@ -27,7 +27,7 @@
 #define PIN_BL0937_SEL     18  // GPIO18 - BL0937 SEL (current/voltage select)
 #define PIN_NTC_ADC        36  // GPIO36 - NTC 10k thermistor (ADC1, không xung đột WiFi)
 #define PIN_RELAY          23  // GPIO23 - Relay control
-#define PIN_TRIAC_GATE     -1  // -1 = không dùng triac (RelayController hỗ trợ)
+#define PIN_TRIAC_GATE     -1  // -1 = không dùng triac (MainsSwitch hỗ trợ)
 #define PIN_LED            2   // GPIO2  - Status LED (active LOW)
 #define PIN_BUTTON         0   // GPIO0  - Push button (active LOW, pull-up)
 #endif
@@ -50,7 +50,7 @@
 #define PUMP_CRITICAL_PERCENT      125     // dòng >= 125% ngưỡng running -> critical
 
 // ── NTC Thermistor (10k + 10k series) ──
-#define NTC_SERIES_RESISTOR     10000.0f    // 10k series resistor
+#define NTC_SERIES_RESISTOR     4870.0f
 #define NTC_NOMINAL_RES         10000.0f    // 10k at 25°C
 #define NTC_NOMINAL_TEMP        25.0f       // 25°C
 #define NTC_B_VALUE             3950.0f     // Beta coefficient

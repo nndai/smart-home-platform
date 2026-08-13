@@ -1,7 +1,8 @@
 #pragma once
 
 #include "core/DeviceDriver.h"
-#include "core/devices/RelayController.h"
+#include "core/devices/MainsSwitch.h"
+#include "profiles/switch/SwitchConfig.h"
 
 // ── Driver của profile SWITCH (relay đơn, không triac/BL0937/NTC) ──
 class SwitchDriver : public DeviceDriver {
@@ -13,14 +14,14 @@ public:
     void getConfig(JsonDocument& resp) override;
     bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
 
-    bool isRelayOn() override { return _relay.getState(); }
-    void setRelay(bool on) override { on ? _relay.turnOn() : _relay.turnOff(); }
+    bool isRelayOn() override { return _switch.getState(); }
+    void setRelay(bool on) override { on ? _switch.turnOn() : _switch.turnOff(); }
     void setServices(const DriverServices& svc) override { _log = svc.log; }
 
 private:
-    RelayController _relay;
+    MainsSwitch _switch;
 
-    DeviceConfig* _cfg = nullptr;
+    SwitchConfig* _cfg = nullptr;
     LogManager* _log = nullptr;
 
     void _persistRelayState();

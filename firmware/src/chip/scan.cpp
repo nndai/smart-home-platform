@@ -140,6 +140,10 @@ int scanGetScanCount() {
 #include <string.h>
 
 namespace chip {
+// Arduino cores post SCAN_DONE event nội bộ khi scan hoàn tất — không cần pump.
+void scanPumpDoneEvent() {
+}
+
 int scanStart() {
 #if defined(ARDUINO_ARCH_ESP8266)
     return WiFi.scanNetworks(true) >= 0 ? 0 : -1;

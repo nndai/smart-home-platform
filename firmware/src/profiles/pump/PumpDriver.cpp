@@ -39,8 +39,8 @@ void PumpDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
     }
 
     _temp.begin(PIN_NTC_ADC);
-    _relay.begin(PIN_RELAY, PIN_TRIAC_GATE);
-    _pump.begin(&_relay, c.pumpMode);
+    _switch.begin(PIN_RELAY, PIN_TRIAC_GATE, false, true);  // relay + triac, relay active HIGH, triac active LOW
+    _pump.begin(&_switch, c.pumpMode);
     _pump.setThresholds(c.threshOff, c.threshNoWater, c.threshRunning, c.threshOverload);
     _pump.setTimeouts(c.dryTimeout, c.overloadTimeout);
     _pump.setEventCallback([this](PumpState state, float current, bool isOn, const char* msg) {
