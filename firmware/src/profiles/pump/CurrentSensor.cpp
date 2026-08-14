@@ -105,7 +105,7 @@ void CurrentSensor::calibrateCurrent(double expectedCurrent) {
     }
 }
 
-void CurrentSensor::calibrateVoltage(unsigned int expectedVoltage) {
+void CurrentSensor::calibrateVoltage(float expectedVoltage) {
     if (!_initialized) return;
     if (_voltage > 0) {
         double factor = (double)expectedVoltage / _voltage;
@@ -113,7 +113,7 @@ void CurrentSensor::calibrateVoltage(unsigned int expectedVoltage) {
     }
 }
 
-void CurrentSensor::calibratePower(unsigned int expectedPower) {
+void CurrentSensor::calibratePower(float expectedPower) {
     if (!_initialized) return;
     if (_power > 0) {
         double factor = (double)expectedPower / _power;

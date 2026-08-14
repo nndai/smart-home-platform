@@ -273,16 +273,16 @@ void PumpDriver::_handleCalibrate(const JsonDocument& payload, JsonDocument& res
         LT_IM(CMD, "Calibrated current to %.2fA", expected);
         didCalib = true;
     }
-    if (payload["voltage"].is<unsigned int>()) {
-        unsigned int expected = payload["voltage"].as<unsigned int>();
+    if (payload["voltage"].is<float>()) {
+        float expected = payload["voltage"].as<float>();
         _current.calibrateVoltage(expected);
-        LT_IM(CMD, "Calibrated voltage to %u V", expected);
+        LT_IM(CMD, "Calibrated voltage to %.1f V", expected);
         didCalib = true;
     }
-    if (payload["power"].is<unsigned int>()) {
-        unsigned int expected = payload["power"].as<unsigned int>();
+    if (payload["power"].is<float>()) {
+        float expected = payload["power"].as<float>();
         _current.calibratePower(expected);
-        LT_IM(CMD, "Calibrated power to %u W", expected);
+        LT_IM(CMD, "Calibrated power to %.1f W", expected);
         didCalib = true;
     }
 

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <functional>
+#include "compat/log.h"
 
 // MainsSwitch — switches AC mains power for a wall outlet (WiFi smart socket).
 //
@@ -68,7 +69,7 @@ private:
     // 4 = OFF: relay open, waiting -> release TRIAC
 
     static constexpr unsigned long T_TRIAC_SETTLE = 99;  // ms
-    static constexpr unsigned long T_RELAY_SETTLE = 99;  // ms
+    static constexpr unsigned long T_RELAY_SETTLE = 299;  // ms
 
     std::function<void(unsigned long)> _onDurationCb;
 

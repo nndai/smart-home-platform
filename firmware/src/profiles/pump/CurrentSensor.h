@@ -24,8 +24,8 @@ public:
     void loop();
 
     void calibrateCurrent(double expectedCurrent);
-    void calibrateVoltage(unsigned int expectedVoltage);
-    void calibratePower(unsigned int expectedPower);
+    void calibrateVoltage(float expectedVoltage);
+    void calibratePower(float expectedPower);
     void resetCalibration();
 
     float getCurrent() const { return _current; } // A
