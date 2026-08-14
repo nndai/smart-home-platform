@@ -95,14 +95,14 @@ void WebSocketServer::_onEvent(uint8_t num, WStype_t type, uint8_t* payload, siz
             break;
 
         case WStype_TEXT:
-            if (_callback && num < WEBSOCKETS_SERVER_CLIENT_MAX) {
-                String msg((char*)payload, length);
+            if (_callback && payload && length > 0 && num < WEBSOCKETS_SERVER_CLIENT_MAX) {
+                String msg((char*)payload); // already has '/0'
                 _callback(_clientIds[num], msg);
             }
             break;
 
         case WStype_BIN:
-            if (_binaryCb && num < WEBSOCKETS_SERVER_CLIENT_MAX) {
+            if (_binaryCb && payload && length > 0 && num < WEBSOCKETS_SERVER_CLIENT_MAX) {
                 _binaryCb(_clientIds[num], payload, length);
             }
             break;
