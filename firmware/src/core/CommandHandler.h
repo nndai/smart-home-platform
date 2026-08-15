@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -86,6 +86,7 @@ private:
     void _cmdReboot(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp);
+    void _onScanDone();
     void _cmdGetScanWifiData(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetLogStats(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdUploadFirmwareStart(const String& source, const JsonDocument& payload, JsonDocument& resp);

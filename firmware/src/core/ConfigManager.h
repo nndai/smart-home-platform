@@ -14,7 +14,7 @@ enum class RelayStartMode : uint8_t { OFF = 0, ON, LAST };
 // Field riêng của từng profile: kế thừa struct này (vd profiles/pump/PumpConfig.h).
 struct DeviceConfig {
     // ── Connection mode ──
-    ConnMode connMode = ConnMode::AP_WS;
+    ConnMode connMode = ConnMode::DEBUG_WS;
 
     // ── WiFi STA ──
     char wifiSSID[32] = "";

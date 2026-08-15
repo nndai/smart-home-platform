@@ -46,7 +46,27 @@ String chipModelName() {
     }
 }
 
-// ── MCU khác: không cần ──
+// ── MCU khác: ESP8266 vs ESP32 ──
+#else
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <ESP8266WiFi.h>
+
+namespace chip {
+    void reclaimRelayGpio() {}
+
+    float readWifiTempC() { return 0.0f; }
+
+    String chipModelName() { return "ESP8266"; }
+
+    uint32_t systemChipId() { return ESP.getChipId(); }
+
+    String systemResetReason() {
+        return ESP.getResetReason();
+    }
+
+    size_t heapMinFree() { return ESP.getFreeHeap(); }
+}
+
 #else
 #include <esp_system.h>
 #include <ESP.h>
@@ -59,15 +79,9 @@ namespace chip {
         return 0.0f;
     }
 
-#if defined(ARDUINO_ARCH_ESP8266)
-    String chipModelName() {
-        return "ESP8266";
-    }
-#else
     String chipModelName() {
         return ESP.getChipModel();
     }
-#endif
 
     uint32_t systemChipId() {
         return (uint32_t)(ESP.getEfuseMac() >> 32);
@@ -107,4 +121,5 @@ namespace chip {
         return ESP.getMinFreeHeap();
     }
 }
+#endif
 #endif

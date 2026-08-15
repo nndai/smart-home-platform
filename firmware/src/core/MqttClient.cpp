@@ -10,6 +10,7 @@ MqttClient::MqttClient()
     , _lastReconnect(0)
 {
     _mqtt.setBufferSize(MQTT_BUFFER_SIZE);
+    compat::setTlsBufferSize(_wifiClientTls, MQTT_BUFFER_SIZE);
     _mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
     _mqtt.setCallback(_onMessage);
     s_instance = this;
@@ -99,7 +100,10 @@ bool MqttClient::isConnected() {
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
     if (!s_instance) return;
-    String msg(reinterpret_cast<char*>(payload), len);
+    String msg;
+    if (payload && len > 0) {
+        msg = String((char*)payload);
+    }
     if (s_instance->_callback) {
         s_instance->_callback(String(topic), msg);
     }

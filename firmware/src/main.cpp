@@ -2,7 +2,7 @@
 #include "compat/log.h"
 #include "compat/task.h"
 #include <Config.h>
-#include <WiFi.h>
+#include "compat/wifi.h"
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include "compat/wdt.h"
@@ -78,12 +78,25 @@ bool isLogMqttEnabled() {
     return _logMqttActive;
 }
 
+// ── WebSockets Mutex (Cooperative SpinLock) ──
+static volatile bool g_wsLocked = false;
+
+static void safeWsBroadcast(const String& json) {
+    while (g_wsLocked) {
+        vTaskDelay(1);
+    }
+    g_wsLocked = true;
+    wsServer.broadcast(json);
+    g_wsLocked = false;
+}
+
 // ── Setup ──
 void setup() {
-
+    Serial.begin(74880);
     delay(10);
-    LT_IM(SYS, "=== Remote Pump Controller LN882H ===");
+    LT_IM(SYS, "=== Smart Home Controller ===");
     LT_IM(SYS, "FW Build: %s", buildStr());
+    LT_IM(SYS, "Boot Reason: %s", chip::systemResetReason().c_str());
 
     //Watchdog: 15s timeout, feeder task feed mỗi 2s
     if (compat::wdtEnable(WDT_TIMEOUT_MS)) {
@@ -123,7 +136,7 @@ void setup() {
         String json;
         serializeJson(logJson, json);
         if (g_connMode == ConnMode::DEBUG_WS || g_connMode == ConnMode::AP_WS) {
-            wsServer.broadcast(json);
+            safeWsBroadcast(json);
         }
         if (_logMqttActive) {
             mqttClient.publish(mqttBaseTopic() + "/log", json);
@@ -144,7 +157,7 @@ void setup() {
                 mqttClient.publish(mqttBaseTopic() + "/up", json);
             }
             else {
-                wsServer.broadcast(json);
+                safeWsBroadcast(json);
             }
         },
     });
@@ -180,14 +193,14 @@ void setup() {
     }
 
     xTaskCreate(driverTask, "driver", TASK_SENSOR_STACK, NULL, TASK_SENSOR_PRIO, NULL);
-    xTaskCreate(taskStreamSender, "stream", 1000, NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(taskStreamSender, "stream", TASK_NETWORK_STACK - 1000, NULL, tskIDLE_PRIORITY + 2, NULL);
 
     LT_IM(SYS, "System ready!");
 
 }
 
 void loop() {
-    vTaskDelete(NULL);
+    compatRunSchedulerStep();
 }
 
 // ── Connection setup functions ──
@@ -380,7 +393,7 @@ void taskWdtFeed(void* pvParams) {
             while (1) {}
         }
         compat::wdtFeed();
-
+        
         vTaskDelay(pdMS_TO_TICKS(WDT_FEED_INTERVAL_MS));
     }
 }
@@ -438,6 +451,6 @@ static void sendResponse(const String& target, const String& json) {
         mqttClient.publish(mqttBaseTopic() + "/up", json);
     }
     if (target == "ws") {
-        wsServer.broadcast(json);
+        safeWsBroadcast(json);
     }
 }

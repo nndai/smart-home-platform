@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <PubSubClient.h>
-#include <WiFi.h>
+#include "compat/wifi.h"
 #include <WiFiClientSecure.h>
 #include <functional>
 

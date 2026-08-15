@@ -1,20 +1,19 @@
 #include "LogBase.h"
+#include "compat/fs.h"
 #include <algorithm>
 
 int LogBase::_listFiles(const char* dir, String* files, int maxCount) {
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) { if (d) d.close(); return 0; }
+    compat::DirIterator it(dir);
     int count = 0;
-    File f = d.openNextFile();
-    while (f && count < maxCount) {
-        String name = String(f.name());
-        f.close();
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir) && count < maxCount) {
         if (name.endsWith(".log") && name.length() == 14) {
             files[count++] = name;
         }
-        f = d.openNextFile();
     }
-    d.close();
+    it.close();
     return count;
 }
 
@@ -32,15 +31,14 @@ void LogBase::_sortFilesByDate(String* files, int count) {
 
 size_t LogBase::_dirBytes(const char* dir) {
     size_t total = 0;
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) { if (d) d.close(); return 0; }
-    File f = d.openNextFile();
-    while (f) {
-        total += f.size();
-        f.close();
-        f = d.openNextFile();
+    compat::DirIterator it(dir);
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir)) {
+        total += size;
     }
-    d.close();
+    it.close();
     return total;
 }
 
@@ -78,16 +76,15 @@ void LogBase::_appendFile(const String& src, const String& dst, size_t maxSize) 
 }
 
 void LogBase::_clearDir(const char* dir) {
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) return;
-    File f = d.openNextFile();
-    while (f) {
-        String p = String(dir) + String(f.name());
-        f.close();
+    compat::DirIterator it(dir);
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir)) {
+        String p = String(dir) + name;
         LITTLEFS.remove(p);
-        f = d.openNextFile();
     }
-    d.close();
+    it.close();
 }
 
 static bool _parseDate(const String& name, int& d, int& m, int& y) {
@@ -101,16 +98,13 @@ static int _dateCmp(int d1, int m1, int y1, int d2, int m2, int y2) {
 }
 
 String LogBase::_oldestFile(const char* dir) {
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) { if (d) d.close(); return ""; }
-
+    compat::DirIterator it(dir);
     String found;
     int bestD = 99, bestM = 99, bestY = 9999;
-
-    File f = d.openNextFile();
-    while (f) {
-        String name = String(f.name());
-        f.close();
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir)) {
         int dd, mm, yy;
         if (name.endsWith(".log") && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
             if (_dateCmp(dd, mm, yy, bestD, bestM, bestY) < 0) {
@@ -118,23 +112,19 @@ String LogBase::_oldestFile(const char* dir) {
                 found = name;
             }
         }
-        f = d.openNextFile();
     }
-    d.close();
+    it.close();
     return found.length() == 0 ? "" : String(dir) + found;
 }
 
 String LogBase::_latestFile(const char* dir) {
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) { if (d) d.close(); return ""; }
-
+    compat::DirIterator it(dir);
     String found;
     int bestD = 0, bestM = 0, bestY = 0;
-
-    File f = d.openNextFile();
-    while (f) {
-        String name = String(f.name());
-        f.close();
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir)) {
         int dd, mm, yy;
         if (name.endsWith(".log") && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
             if (_dateCmp(dd, mm, yy, bestD, bestM, bestY) > 0) {
@@ -142,9 +132,8 @@ String LogBase::_latestFile(const char* dir) {
                 found = name;
             }
         }
-        f = d.openNextFile();
     }
-    d.close();
+    it.close();
     return found.length() == 0 ? "" : String(dir) + found;
 }
 
@@ -178,12 +167,12 @@ void LogBase::_migrateNosync(const char* dir, unsigned long epoch, size_t maxFil
 
 bool LogBase::_readDirConcat(const char* dir, String& out, size_t maxBytes) {
     out = "";
-    File d = LITTLEFS.open(dir);
-    if (!d || !d.isDirectory()) return false;
-    File f = d.openNextFile();
-    while (f) {
-        String p = String(dir) + String(f.name());
-        f.close();
+    compat::DirIterator it(dir);
+    String name;
+    size_t size;
+    bool isDir;
+    while (it.next(name, size, isDir)) {
+        String p = String(dir) + name;
         File rf = LITTLEFS.open(p, "r");
         if (rf) {
             size_t remain = maxBytes - out.length();
@@ -197,8 +186,7 @@ bool LogBase::_readDirConcat(const char* dir, String& out, size_t maxBytes) {
             rf.close();
             if (out.length() >= maxBytes) break;
         }
-        f = d.openNextFile();
     }
-    d.close();
+    it.close();
     return out.length() > 0;
 }

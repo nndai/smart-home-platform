@@ -60,7 +60,11 @@ void softApStart(const char* ssid, const char* pass, uint8_t channel) {
 
 // ── MCU khác: WiFi.softAP() ──
 #else
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <ESP8266WiFi.h>
+#else
 #include <WiFi.h>
+#endif
 
 namespace chip {
 void softApStart(const char* ssid, const char* pass, uint8_t channel) {

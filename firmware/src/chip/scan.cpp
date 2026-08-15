@@ -136,7 +136,11 @@ int scanGetScanCount() {
 
 // ── MCU khác: API scan Arduino chuẩn ──
 #else
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <ESP8266WiFi.h>
+#else
 #include <WiFi.h>
+#endif
 #include <string.h>
 
 namespace chip {
@@ -145,10 +149,10 @@ void scanPumpDoneEvent() {
 }
 
 int scanStart() {
+    WiFi.scanDelete();
 #if defined(ARDUINO_ARCH_ESP8266)
     return WiFi.scanNetworks(true) >= 0 ? 0 : -1;
 #else
-    WiFi.scanDelete();
     return WiFi.scanNetworks(true, false, false, 200) >= 0 ? 0 : -1;
 #endif
 }
@@ -158,18 +162,14 @@ int scanGetResults(ScanResult* out, int maxCount) {
     if (count < 0) return 0;
     int n = count < maxCount ? count : maxCount;
     for (int i = 0; i < n; i++) {
-#if defined(ARDUINO_ARCH_ESP8266)
-        auto info = WiFi.scanResult(i);
-        strncpy(out[i].ssid, info.SSID.c_str(), sizeof(out[i].ssid) - 1);
-        out[i].rssi = info.RSSI;
-        memcpy(out[i].bssid, info.BSSID, 6);
-        out[i].isEncrypt = (info.encryptionType != WIFI_AUTH_OPEN);
-#else
         String ssid = WiFi.SSID(i);
         strncpy(out[i].ssid, ssid.c_str(), sizeof(out[i].ssid) - 1);
         out[i].rssi = WiFi.RSSI(i);
         uint8_t* bssid = WiFi.BSSID(i);
         if (bssid) memcpy(out[i].bssid, bssid, 6);
+#if defined(ARDUINO_ARCH_ESP8266)
+        out[i].isEncrypt = (WiFi.encryptionType(i) != ENC_TYPE_NONE);
+#else
         out[i].isEncrypt = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
 #endif
         out[i].ssid[sizeof(out[i].ssid) - 1] = '\0';

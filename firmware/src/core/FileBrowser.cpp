@@ -1,4 +1,4 @@
-﻿#include "core/FileBrowser.h"
+#include "core/FileBrowser.h"
 #include "compat/fs.h"
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
@@ -10,8 +10,8 @@ String FileBrowser::listDir(const String& path, size_t offset, size_t limit) {
     doc["status"] = "ok";
     doc["path"] = path;
     //LT_IM(SYS, "Listing directory: %s", path.c_str());
-    File dir = LITTLEFS.open(path);
-    if (!dir || !dir.isDirectory()) {
+    File dir = LITTLEFS.open(path, "r");
+    if (!dir) {
         doc["status"] = "error";
         doc["message"] = "Not a directory";
         String out;
@@ -21,20 +21,21 @@ String FileBrowser::listDir(const String& path, size_t offset, size_t limit) {
 
     if (limit == 0) {
         JsonArray entries = doc["entries"].to<JsonArray>();
-        File f = dir.openNextFile();
-        while (f) {
+        compat::DirIterator it(path.c_str());
+        String name;
+        size_t size;
+        bool isDir;
+        while (it.next(name, size, isDir)) {
             JsonObject e = entries.add<JsonObject>();
-            e["name"] = String(f.name());
-            if (f.isDirectory()) {
+            e["name"] = name;
+            if (isDir) {
                 e["type"] = "dir";
             } else {
                 e["type"] = "file";
-                e["size"] = (unsigned long)f.size();
+                e["size"] = (unsigned long)size;
             }
-            f.close();
-            f = dir.openNextFile();
         }
-        dir.close();
+        it.close();
         String out;
         serializeJson(doc, out);
         return out;
@@ -47,23 +48,24 @@ String FileBrowser::listDir(const String& path, size_t offset, size_t limit) {
     };
     std::vector<DirEntry> all;
     {
-        File f = dir.openNextFile();
-        while (f) {
+        compat::DirIterator it(path.c_str());
+        String name;
+        size_t size;
+        bool isDir;
+        while (it.next(name, size, isDir)) {
             DirEntry e;
-            e.name = String(f.name());
-            if (f.isDirectory()) {
+            e.name = name;
+            if (isDir) {
                 e.type = "dir";
                 e.size = 0;
             } else {
                 e.type = "file";
-                e.size = (unsigned long)f.size();
+                e.size = (unsigned long)size;
             }
             all.push_back(e);
-            f.close();
-            f = dir.openNextFile();
         }
+        it.close();
     }
-    dir.close();
 
     std::sort(all.begin(), all.end(), [](const DirEntry& a, const DirEntry& b) {
         int da, ma, ya, db, mb, yb;
@@ -226,17 +228,15 @@ String FileBrowser::deleteItem(const String& path) {
     bool ok;
     if (isDir) {
         // Remove all files inside first
-        File d = LITTLEFS.open(path);
-        if (d) {
-            File child = d.openNextFile();
-            while (child) {
-                String childPath = path + "/" + String(child.name());
-                child.close();
-                LITTLEFS.remove(childPath);
-                child = d.openNextFile();
-            }
-            d.close();
+        compat::DirIterator it(path.c_str());
+        String name;
+        size_t size;
+        bool childIsDir;
+        while (it.next(name, size, childIsDir)) {
+            String childPath = path + "/" + name;
+            LITTLEFS.remove(childPath);
         }
+        it.close();
         ok = LITTLEFS.rmdir(path);
     } else {
         ok = LITTLEFS.remove(path);
@@ -258,8 +258,8 @@ String FileBrowser::fsInfo() {
     JsonDocument doc;
 
     doc["status"] = "ok";
-    doc["totalBytes"] = (unsigned long)LITTLEFS.totalBytes();
-    doc["usedBytes"] = (unsigned long)LITTLEFS.usedBytes();
+    doc["totalBytes"] = (unsigned long)compat::fsTotalBytes();
+    doc["usedBytes"] = (unsigned long)compat::fsUsedBytes();
 
     String out;
     serializeJson(doc, out);

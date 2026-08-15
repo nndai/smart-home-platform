@@ -1,7 +1,7 @@
 #include "core/OTAManager.h"
-#include <Update.h>
-#include <HTTPClient.h>
-#include <WiFi.h>
+#include "compat/ota.h"
+#include "compat/http.h"
+#include "compat/wifi.h"
 #include <algorithm>
 
 OTAManager::OTAManager()

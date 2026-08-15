@@ -20,10 +20,24 @@ namespace chip {
         ESP.random(out, len);
     }
 }
-#endif
 
-// ── MCU khác (ESP32/ESP8266) ──
-#if !defined(LT_ARD_HAS_SERIAL)
+#elif defined(ARDUINO_ARCH_ESP8266)
+#include <ESP8266WiFi.h>
+#include <Esp.h>
+namespace chip {
+
+    size_t anchorBytes(uint8_t out[16]) {
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        memcpy(out, mac, 6);
+        return 6;
+    }
+
+    void randomBytes(uint8_t* out, size_t len) {
+        os_get_random(out, len);
+    }
+}
+#else
 #include <esp_efuse.h>
 #include <esp_random.h>
 

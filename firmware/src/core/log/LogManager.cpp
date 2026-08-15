@@ -1,4 +1,4 @@
-﻿#include "LogManager.h"
+#include "LogManager.h"
 #include "compat/fs.h"
 #include <Config.h>
 
@@ -83,5 +83,5 @@ void LogManager::addTotalPower(uint64_t p) { _data.addTotalPower(p); }
 void LogManager::addPumpTime(uint32_t s) { _data.addPumpTime(s); }
 
 // ── Filesystem ──
-size_t LogManager::getTotalBytes() { return LITTLEFS.totalBytes(); }
-size_t LogManager::getUsedBytes() { return LITTLEFS.usedBytes(); }
+size_t LogManager::getTotalBytes() { return compat::fsTotalBytes(); }
+size_t LogManager::getUsedBytes() { return compat::fsUsedBytes(); }

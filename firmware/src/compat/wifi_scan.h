@@ -1,6 +1,6 @@
 #pragma once
 
-#include <WiFi.h>
+#include "compat/wifi.h"
 #include "chip/scan.h"
 
 namespace compat {
@@ -13,19 +13,17 @@ inline int16_t scanComplete() {
     return chip::scanGetScanCount();
 }
 
-// ESP8266 không có WiFi.scanDelete() → no-op
 inline void scanDelete() {
-#if !defined(ARDUINO_ARCH_ESP8266) && !defined(LT_ARD_HAS_SERIAL)
     WiFi.scanDelete();
+}
+
+
+#if defined(ARDUINO_ARCH_ESP8266)
+typedef int arduino_event_id_t;
+typedef int arduino_event_info_t;
+#ifndef ARDUINO_EVENT_WIFI_SCAN_DONE
+#define ARDUINO_EVENT_WIFI_SCAN_DONE 0
 #endif
-}
+#endif
 
-// LN882H: AP không bao giờ bị tắt khi scan → no-op. MCU khác: no-op.
-inline void scanRestore() {}
-
-// LN882H giờ scan ngay trong AP mode (wifi_softap_scan) → AP không rớt.
-// App không bị mất kết nối WiFi khi scan trên mọi MCU.
-inline bool scanWillDrop() {
-    return false;
-}
 }

@@ -1,4 +1,4 @@
-﻿#include "core/CommandHandler.h"
+#include "core/CommandHandler.h"
 #include "compat/log.h"
 #include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
@@ -717,7 +717,6 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
 
     if (has("tasks")) {
         JsonArray tasks = resp["tasks"].to<JsonArray>();
-#if defined(LT_ARD_HAS_SERIAL)
         UBaseType_t numTasks = uxTaskGetNumberOfTasks();
         TaskStatus_t* taskArray = (TaskStatus_t*)pvPortMalloc(numTasks * sizeof(TaskStatus_t));
         if (taskArray) {
@@ -733,15 +732,13 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
                 case eReady:     stateStr = "ready"; break;
                 case eBlocked:   stateStr = "blocked"; break;
                 case eSuspended: stateStr = "suspended"; break;
+                case eDeleted:   stateStr = "deleted"; break;
                 default: break;
                 }
                 t["state"] = (const char*)stateStr;
             }
             vPortFree(taskArray);
         }
-#else
-        (void)tasks;
-#endif
     }
 
     if (has("wifi")) {
@@ -767,8 +764,8 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
     if (has("storage")) {
         JsonObject s = resp["storage"].to<JsonObject>();
         s["flashSize"] = ESP.getFlashChipSize();
-        s["fsTotal"] = (unsigned long)LITTLEFS.totalBytes();
-        s["fsUsed"] = (unsigned long)LITTLEFS.usedBytes();
+        s["fsTotal"] = (unsigned long)compat::fsTotalBytes();
+        s["fsUsed"] = (unsigned long)compat::fsUsedBytes();
     }
 
     if (has("pump")) {
@@ -780,6 +777,46 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
     if (payload["stream"].is<bool>() && payload["stream"].as<bool>()) {
         startStream(STREAM_SYSINFO, source, STREAM_DURATION_MS);
     }
+}
+
+template <typename T>
+void CommandHandlerT<T>::_onScanDone() {
+    _scanPending = false;
+
+    _scanResultDoc.clear();
+    _scanResultDoc["cmd"] = "scanWifi";
+
+    int16_t count = compat::scanComplete();
+    if (count >= 0) {
+        chip::ScanResult results[40];
+        int n = chip::scanGetResults(results, 40);
+        JsonArray nets = _scanResultDoc["networks"].to<JsonArray>();
+        for (int i = 0; i < n && i < count; i++) {
+            JsonObject obj = nets.add<JsonObject>();
+            obj["name"] = results[i].ssid;
+            obj["rssi"] = results[i].rssi;
+            char bssid[18];
+            snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
+                results[i].bssid[0], results[i].bssid[1], results[i].bssid[2],
+                results[i].bssid[3], results[i].bssid[4], results[i].bssid[5]);
+            obj["bssid"] = bssid;
+            obj["isEncrypt"] = results[i].isEncrypt;
+        }
+        _scanResultDoc["status"] = "ok";
+    }
+    else {
+        _scanResultDoc["status"] = "error";
+        _scanResultDoc["message"] = "Scan failed";
+    }
+
+    _scanResultReady = true;
+    compat::scanDelete();
+
+    JsonDocument notify;
+    notify["cmd"] = "scanWifi";
+    notify["status"] = "completed";
+    vTaskDelay(100);
+    _sendResponse(_scanSource, notify);
 }
 
 template <typename T>
@@ -800,53 +837,23 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
         LT_IM(CMD, "Registering WiFi scan event handler");
 #if defined(LT_ARD_HAS_SERIAL)
         _scanEventHandlerId = WiFi.onEvent([this](EventId event, EventInfo info) {
+            (void)event; (void)info;
+            this->_onScanDone();
+        });
+#elif defined(ARDUINO_ARCH_ESP8266)
+        _scanEventHandlerId = 1;
+        // ESP8266 WiFiEvent_t does not have a SCAN_DONE event.
+        // We will use WiFi.scanNetworksAsync() instead.
 #else
         _scanEventHandlerId = WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
-#endif
-            (void)event;
-            (void)info;
-            _scanPending = false;
-
-            _scanResultDoc.clear();
-            _scanResultDoc["cmd"] = "scanWifi";
-
-            int16_t count = compat::scanComplete();
-            if (count >= 0) {
-                chip::ScanResult results[40];
-                int n = chip::scanGetResults(results, 40);
-                JsonArray nets = _scanResultDoc["networks"].to<JsonArray>();
-                for (int i = 0; i < n && i < count; i++) {
-                    JsonObject obj = nets.add<JsonObject>();
-                    obj["name"] = results[i].ssid;
-                    obj["rssi"] = results[i].rssi;
-                    char bssid[18];
-                    snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
-                        results[i].bssid[0], results[i].bssid[1], results[i].bssid[2],
-                        results[i].bssid[3], results[i].bssid[4], results[i].bssid[5]);
-                    obj["bssid"] = bssid;
-                    obj["isEncrypt"] = results[i].isEncrypt;
-                }
-                _scanResultDoc["status"] = "ok";
-            }
-            else {
-                _scanResultDoc["status"] = "error";
-                _scanResultDoc["message"] = "Scan failed";
-            }
-
-            _scanResultReady = true;
-            compat::scanDelete();
-            compat::scanRestore();   // no-op (AP không bao giờ bị tắt khi scan)
-
-            JsonDocument notify;
-            notify["cmd"] = "scanWifi";
-            notify["status"] = "completed";
-            vTaskDelay(100);
-            _sendResponse(_scanSource, notify);
+            (void)event; (void)info;
+            this->_onScanDone();
         }, ARDUINO_EVENT_WIFI_SCAN_DONE);
+#endif
     }
 
     LT_IM(CMD, "Starting async WiFi scan...");
-    bool wifiDrop = compat::scanWillDrop();
+    bool wifiDrop = false;
     
 
     resp["status"] = "ok";
@@ -855,7 +862,17 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     _sendResponse(source, resp);
 
     vTaskDelay(100);
+#if defined(ARDUINO_ARCH_ESP8266)
+    static CommandHandlerT<T>* self = this;
+    self = this;
+    WiFi.scanDelete();
+    WiFi.scanNetworksAsync([](int count) {
+        (void)count;
+        if (self) self->_onScanDone();
+    });
+#else
     compat::scanStart();
+#endif
 }
 
 template <typename T>

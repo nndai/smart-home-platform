@@ -43,6 +43,40 @@ inline KvError kvDel(const char* key) {
 }
 }
 
+// ── MCU khác (ESP8266): LittleFS KV ──
+#elif defined(ARDUINO_ARCH_ESP8266)
+#include <LittleFS.h>
+
+namespace compat {
+inline KvError kvGet(const char* key, void* buf, size_t size, size_t* storedLen) {
+    String path = String("/kv/") + key;
+    if (!LittleFS.exists(path)) return KvError::NotExist;
+    File f = LittleFS.open(path, "r");
+    if (!f) return KvError::Other;
+    size_t totalLen = f.size();
+    f.read((uint8_t*)buf, size);
+    f.close();
+    if (storedLen) *storedLen = totalLen;
+    if (totalLen > size) return KvError::BufTooShort;
+    return KvError::Ok;
+}
+
+inline KvError kvSet(const char* key, const void* data, size_t size) {
+    if (!LittleFS.exists("/kv")) LittleFS.mkdir("/kv");
+    String path = String("/kv/") + key;
+    File f = LittleFS.open(path, "w");
+    if (!f) return KvError::Other;
+    size_t written = f.write((const uint8_t*)data, size);
+    f.close();
+    return written == size ? KvError::Ok : KvError::Other;
+}
+
+inline KvError kvDel(const char* key) {
+    String path = String("/kv/") + key;
+    return LittleFS.remove(path) ? KvError::Ok : KvError::NotExist;
+}
+}
+
 // ── MCU khác (ESP32): Preferences (NVS) ──
 #else
 #include <Preferences.h>
