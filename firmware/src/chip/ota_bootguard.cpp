@@ -44,11 +44,15 @@
  * constructor của người dùng, không dùng FAL (Update ghi flash thô qua
  * lt_ota), nên chạy trước mọi ctor khác là an toàn.
  */
-// Cơ chế bootguard + pre-ctor chỉ tồn tại trên LibreTiny (linker .init_array, ln_kv, lt_ota)
+ // Cơ chế bootguard + pre-ctor chỉ tồn tại trên LibreTiny (linker .init_array, ln_kv, lt_ota)
 #if defined(LT_ARD_HAS_SERIAL)
 
 #include <Arduino.h>
-#include "compat/log.h"
+#include <Config.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Update.h>
+#include <sdk_private.h>
 
 #ifndef OTA_BTN_PIN
 #error "OTA_BTN_PIN must be defined"
@@ -63,13 +67,6 @@
 #ifndef OTA_LED_ACTIVE_LOW //true if LED is active low, false if active high
 #error "OTA_LED_ACTIVE_LOW must be defined"
 #endif
-#include "compat/task.h"
-#include <Config.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <Update.h>
-
-#include <sdk_private.h>
 
 
 
@@ -214,7 +211,7 @@ static bool otaDownloadAndFlash(const char* url) {
     // UPDATE_SIZE_UNKNOWN -> Update.begin gọi lt_ota_begin size=0: không cần
     // Content-Length, UF2 tự mang kích thước trong mỗi block
     if (total <= 0) total = 1024 * 1024; // giả sử 1MB nếu không có Content-Length
-    
+
     if (!Update.begin(total, U_FLASH)) {
         LT_EM(OTA, "Manual OTA: Update.begin failed: %s", Update.errorString());
         http.end();
@@ -227,14 +224,15 @@ static bool otaDownloadAndFlash(const char* url) {
     bool ledOn = false;
 
     while (http.connected() && written < (size_t)total) {
-        
+
         size_t avail = stream->available();
         if (avail > 0) {
             size_t n = stream->readBytes(buf, std::min(avail, sizeof(buf)));
             if (n > 0) written += Update.write(buf, n);
             ledOn = !ledOn;
             otaLedSet(ledOn);
-        } else {
+        }
+        else {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
@@ -285,54 +283,52 @@ finish:
 // ── Cướp quá trình boot: tạo task OTA và khởi động scheduler ───────────────
 
 static void otaEnterMode() {
-    xTaskCreate(otaUploadTask, "otaUpload", OTA_TASK_STACK, NULL, TASK_NETWORK_PRIO + 1, NULL);
+    xTaskCreate(otaUploadTask, "otaUpload", TASK_OTA_STACK, NULL, TASK_NETWORK_PRIO + 1, NULL);
     vTaskStartScheduler();
     for (;;) {} // never reached
 }
 
 // ── Boot guard ──────────────────────────────────────────────────────────────
-// IntelliSense (MSVC-based parser) does not understand GCC's constructor
-// priority — only the real GCC toolchain needs it. The build is unaffected.
-#ifdef __INTELLISENSE__
-#define OTA_GUARD_CTOR
-#else
-#define OTA_GUARD_CTOR __attribute__((constructor(101)))
-#endif
 
-OTA_GUARD_CTOR
-void otaBootGuard() {
-    // chỉ xử lý khi boot do cấp nguồn; SOFTWARE/WATCHDOG -> không làm gì
-    if (ln_chip_get_reboot_cause() != CHIP_REBOOT_POWER_ON) return;
+class OtaBootGuard {
+public:
+    OtaBootGuard() {
+        // chỉ xử lý khi boot do cấp nguồn; SOFTWARE/WATCHDOG -> không làm gì
+        if (ln_chip_get_reboot_cause() != CHIP_REBOOT_POWER_ON) return;
 
-    OtaBtnState state = otaStateRead();
+        OtaBtnState state = otaStateRead();
 
-    if (!otaButtonPressed()) {
-        // power-on, không nhấn nút -> reset trạng thái về ban đầu nếu khác
-        if (state != OTA_BTN_STATE_IDLE) {
-            otaStateWrite(OTA_BTN_STATE_IDLE);
-            LT_IM(OTA, "Manual OTA: state reset to IDLE");
+        if (!otaButtonPressed()) {
+            // power-on, không nhấn nút -> reset trạng thái về ban đầu nếu khác
+            if (state != OTA_BTN_STATE_IDLE) {
+                otaStateWrite(OTA_BTN_STATE_IDLE);
+                LT_IM(OTA, "Manual OTA: state reset to IDLE");
+            }
+            return;
         }
-        return;
-    }
 
-    if (state != OTA_BTN_STATE_PREPARING) {
-        // power-on + nút nhấn, chưa ở trạng thái chuẩn bị -> đánh dấu và boot tiếp
-        otaStateWrite(OTA_BTN_STATE_PREPARING);
-        LT_IM(OTA, "Manual OTA: armed (PREPARING), booting normally");
-        otaLedSet(true);
-        ln_block_delayms(300); // LED xác nhận đã lưu trạng thái chuẩn bị
-        otaLedSet(false);
-        return;
-    }
+        if (state != OTA_BTN_STATE_PREPARING) {
+            // power-on + nút nhấn, chưa ở trạng thái chuẩn bị -> đánh dấu và boot tiếp
+            otaStateWrite(OTA_BTN_STATE_PREPARING);
+            LT_IM(OTA, "Manual OTA: armed (PREPARING), booting normally");
+            otaLedSet(true);
+            ln_block_delayms(300); // LED xác nhận đã lưu trạng thái chuẩn bị
+            otaLedSet(false);
+            return;
+        }
 
-    // power-on + nút nhấn + đang PREPARING -> xác nhận pattern giữ/nhả
-    LT_IM(OTA, "Manual OTA: giữ nút >=%u ms rồi nhả trong %u ms để vào OTA", OTA_BTN_HOLD_MS, OTA_BTN_RELEASE_MS);
-    if (otaConfirmPattern()) {
-        LT_IM(OTA, "Manual OTA: pattern OK, entering OTA mode");
-        otaEnterMode();
-        for (;;) {} // never reached
+        // power-on + nút nhấn + đang PREPARING -> xác nhận pattern giữ/nhả
+        LT_IM(OTA, "Manual OTA: giữ nút >=%u ms rồi nhả trong %u ms để vào OTA", OTA_BTN_HOLD_MS, OTA_BTN_RELEASE_MS);
+        if (otaConfirmPattern()) {
+            LT_IM(OTA, "Manual OTA: pattern OK, entering OTA mode");
+            otaEnterMode();
+            for (;;) {} // never reached
+        }
+        LT_IM(OTA, "Manual OTA: pattern failed, booting normally (state vẫn PREPARING)");
     }
-    LT_IM(OTA, "Manual OTA: pattern failed, booting normally (state vẫn PREPARING)");
-}
+};
+
+// Priority 101 ensures this runs FIRST among all global constructors
+OtaBootGuard __attribute__((init_priority(101))) g_otaBootGuard;
 
 #endif
