@@ -11,8 +11,12 @@ using ProfileConfig = PumpConfig;
 #include "profiles/switch/SwitchConfig.h"
 #include "profiles/switch/SwitchDriver.h"
 using ProfileConfig = SwitchConfig;
+#elif defined(PROFILE_REMOTE_SWITCH)
+#include "profiles/remote_switch/RemoteSwitchConfig.h"
+#include "profiles/remote_switch/RemoteSwitchDriver.h"
+using ProfileConfig = RemoteSwitchConfig;
 #else
-#error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH trong build_flags"
+#error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH hoac PROFILE_REMOTE_SWITCH trong build_flags"
 #endif
 
 inline DeviceDriver* createDriver() {
@@ -20,6 +24,8 @@ inline DeviceDriver* createDriver() {
     return new PumpDriver();
 #elif defined(PROFILE_SWITCH)
     return new SwitchDriver();
+#elif defined(PROFILE_REMOTE_SWITCH)
+    return new RemoteSwitchDriver();
 #endif
     return nullptr;
 }
@@ -30,6 +36,8 @@ inline const char* profileName() {
     return "pump";
 #elif defined(PROFILE_SWITCH)
     return "switch";
+#elif defined(PROFILE_REMOTE_SWITCH)
+    return "remote_switch";
 #else
     return "unknown";
 #endif
