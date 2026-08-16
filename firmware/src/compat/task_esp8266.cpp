@@ -234,7 +234,11 @@ BaseType_t xTaskCreate(
     t.stackSize = sz;
 
     t.stack = (uint8_t*)malloc(sz);
-    if (!t.stack) return pdFAIL;
+    if (!t.stack) {
+        Serial.printf("[FATAL] Task '%s' failed to allocate %u bytes of stack!\r\n", 
+                      t.name ? t.name : "unknown", (unsigned)sz);
+        return pdFAIL;
+    }
 
     // Paint with 0xA5 for stack high-water-mark debugging
     memset(t.stack, 0xA5, sz);
