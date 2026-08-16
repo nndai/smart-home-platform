@@ -1,4 +1,5 @@
 #include "SysLog.h"
+#include "Config.h"
 #include <time.h>
 
 SysLog::SysLog(TimeManager& tm) : LogBase(tm, DIR) {}
@@ -7,7 +8,7 @@ bool SysLog::begin() {
     _mounted = true;
     _queue = xQueueCreate(QUEUE_SIZE, sizeof(LogQueueEntry));
     if (_queue) {
-        xTaskCreate(_writerTask, "logWriter", 1024, this, tskIDLE_PRIORITY + 1, &_writerTaskHandle);
+        xTaskCreate(_writerTask, "logWriter", TASK_LOGWRITER_STACK, this, TASK_LOGWRITER_PRIO, &_writerTaskHandle);
     }
     return true;
 }

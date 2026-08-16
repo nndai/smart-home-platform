@@ -94,13 +94,16 @@ static void safeWsBroadcast(const String& json) {
 void setup() {
     Serial.begin(74880);
     delay(10);
+   
     LT_IM(SYS, "=== Smart Home Controller ===");
     LT_IM(SYS, "FW Build: %s", buildStr());
     LT_IM(SYS, "Boot Reason: %s", chip::systemResetReason().c_str());
+    LT_IM(SYS, "Free Heap: %u bytes", ESP.getFreeHeap());
+    
 
     //Watchdog: 15s timeout, feeder task feed mỗi 2s
     if (compat::wdtEnable(WDT_TIMEOUT_MS)) {
-        xTaskCreate(taskWdtFeed, "wdtFeed", 512, NULL, tskIDLE_PRIORITY + 1, NULL);
+        xTaskCreate(taskWdtFeed, "wdtFeed", TASK_WDT_STACK, NULL, TASK_WDT_PRIO, NULL);
         LT_IM(SYS, "Watchdog enabled, 15s timeout");
     }
     else {
@@ -153,6 +156,17 @@ void setup() {
         [&]() { return configManager.save(); },
         [&]() { configManager.reset(); g_identity.reset(); },
         [](const String& json) {
+            if (json.startsWith("route:")) {
+                int split = json.indexOf('|');
+                if (split > 0) {
+                    String topicSuffix = json.substring(6, split);
+                    String payload = json.substring(split + 1);
+                    if (g_connMode == ConnMode::STA_MQTT) {
+                        mqttClient.publish("myhome/" + topicSuffix, payload);
+                    }
+                }
+                return;
+            }
             if (g_connMode == ConnMode::STA_MQTT) {
                 mqttClient.publish(mqttBaseTopic() + "/up", json);
             }
@@ -160,6 +174,7 @@ void setup() {
                 safeWsBroadcast(json);
             }
         },
+        []() { return g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected(); }
     });
     g_driver->begin(configManager.get(), [&]() { return configManager.save(); });
 
@@ -193,7 +208,7 @@ void setup() {
     }
 
     xTaskCreate(driverTask, "driver", TASK_SENSOR_STACK, NULL, TASK_SENSOR_PRIO, NULL);
-    xTaskCreate(taskStreamSender, "stream", TASK_NETWORK_STACK - 1000, NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(taskStreamSender, "stream", TASK_STREAM_STACK, NULL, TASK_STREAM_PRIO, NULL);
 
     LT_IM(SYS, "System ready!");
 
@@ -292,7 +307,7 @@ void taskWifiConnect(void* pvParams) {
             break;
         case ConnMode::STA_MQTT:
             xTaskCreate(taskMqttLoop, "mqtt", TASK_NETWORK_STACK, NULL, TASK_NETWORK_PRIO, NULL);
-            xTaskCreate(taskNtpUpdate, "ntp", TASK_NTPCLIENT_STACK, NULL, TASK_NETWORK_PRIO, NULL);
+            xTaskCreate(taskNtpUpdate, "ntp", TASK_NTP_STACK, NULL, TASK_NTP_PRIO, NULL);
             break;
         default:
             break;
@@ -343,7 +358,7 @@ void taskWsLoop(void* pvParams) {
 void taskMqttLoop(void* pvParams) {
     (void)pvParams;
     TickType_t lastWake = xTaskGetTickCount();
-    bool logLostConnection = false;
+    bool logLostConnection = true; // Bắt đầu ở trạng thái coi như mất kết nối để khi connect lần đầu sẽ trigger
 
     while (1) {
         compat::wdtFeed();
@@ -355,6 +370,13 @@ void taskMqttLoop(void* pvParams) {
         else if (connected && logLostConnection) {
             LT_I("MQTT reconnected");
             logLostConnection = false;
+#if defined(PROFILE_REMOTE_SWITCH)
+            if (configManager.get().targetId[0] != '\0') {
+                String targetTopic = String("myhome/") + configManager.get().targetId + "/up";
+                mqttClient.subscribe(targetTopic.c_str());
+                LT_I("Subscribed to target: %s", targetTopic.c_str());
+            }
+#endif
         }
 
         vTaskDelayUntil(&lastWake, otaManager.isRunning() ? pdMS_TO_TICKS(10) : pdMS_TO_TICKS(50));
@@ -424,10 +446,15 @@ void taskStreamSender(void* pvParams) {
 // ── Callbacks ──
 
 static void onMqttMessage(const String& topic, const String& payload) {
-    // if (topic != configManager.get().mqttTopic + String("/otachunk")) {
-    //     LT_I("MQTT Received message: %s", payload.c_str());
-    // }
-
+    if (topic != mqttBaseTopic() + "/down") {
+        // Alien topic (e.g. target status)
+        if (g_driver) {
+            JsonDocument doc;
+            deserializeJson(doc, payload);
+            g_driver->handleTargetStatus(doc);
+        }
+        return;
+    }
     commandHandler.handleCommand("mqtt", payload);
 }
 

@@ -14,6 +14,7 @@ struct DriverServices {
     std::function<bool()> saveConfig;
     std::function<void()> resetConfig;
     std::function<void(const String&)> sendResponse;
+    std::function<bool()> isConnected;
 };
 
 // ── Interface thiết bị: core gọi mù, profile hiện thực ──
@@ -49,4 +50,7 @@ public:
     virtual void setServices(const DriverServices& svc) { (void)svc; }
     virtual bool isRelayOn() { return false; }
     virtual void setRelay(bool on) { (void)on; }
+
+    // Dành cho thiết bị có target (vd: Remote Switch) để nhận status từ target
+    virtual void handleTargetStatus(const JsonDocument& doc) { (void)doc; }
 };

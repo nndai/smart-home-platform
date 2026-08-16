@@ -260,6 +260,9 @@ void CommandHandlerT<T>::sendStream(StreamType type) {
         emptyPayload["fields"] = "all";
         _cmdGetSystemInfo(source, emptyPayload, resp);
         break;
+        case STREAM_COUNT:
+        default:
+            break;
     }
 }
 
