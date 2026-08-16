@@ -49,6 +49,20 @@
 
 #include <Arduino.h>
 #include "compat/log.h"
+
+#ifndef OTA_BTN_PIN
+#error "OTA_BTN_PIN must be defined"
+#endif
+#ifndef OTA_BTN_ACTIVE_LOW //true if button is active low, false if active high
+#error "OTA_BTN_ACTIVE_LOW must be defined"
+#endif
+
+#ifndef OTA_LED_PIN
+#error "OTA_LED_PIN must be defined"
+#endif
+#ifndef OTA_LED_ACTIVE_LOW //true if LED is active low, false if active high
+#error "OTA_LED_ACTIVE_LOW must be defined"
+#endif
 #include "compat/task.h"
 #include <Config.h>
 #include <WiFi.h>
@@ -104,7 +118,7 @@ static gpio_pin_t otaBtnPin;
 
 static bool otaButtonPressed() {
     if (!otaButtonInitDone) {
-        const uint32_t pin = (uint32_t)PIN_BUTTON;
+        const uint32_t pin = (uint32_t)OTA_BTN_PIN;
         otaBtnBase = (pin >> 4) ? GPIOB_BASE : GPIOA_BASE;
         otaBtnPin = (gpio_pin_t)(1u << (pin & 0xF));
 
@@ -119,7 +133,7 @@ static bool otaButtonPressed() {
         ln_block_delayms(5);
         otaButtonInitDone = true;
     }
-    return hal_gpio_pin_input_read(otaBtnBase, otaBtnPin) == (BUTTON_ACTIVE_LOW ? LOW : HIGH);
+    return hal_gpio_pin_input_read(otaBtnBase, otaBtnPin) == (OTA_BTN_ACTIVE_LOW ? LOW : HIGH);
 }
 
 // ── LED: hal_gpio trực tiếp (chạy trước mọi ctor) — PIN_LED active LOW ─────
@@ -130,7 +144,7 @@ static gpio_pin_t otaLedPin;
 
 static void otaLedSet(bool on) {
     if (!otaLedInitDone) {
-        const uint32_t pin = (uint32_t)PIN_LED;
+        const uint32_t pin = (uint32_t)OTA_LED_PIN;
         otaLedBase = (pin >> 4) ? GPIOB_BASE : GPIOA_BASE;
         otaLedPin = (gpio_pin_t)(1u << (pin & 0xF));
 
@@ -143,7 +157,7 @@ static void otaLedSet(bool on) {
         hal_gpio_init(otaLedBase, &gpio);
         otaLedInitDone = true;
     }
-    if (on == !LED_ACTIVE_LOW) hal_gpio_pin_set(otaLedBase, otaLedPin);
+    if (on == !OTA_LED_ACTIVE_LOW) hal_gpio_pin_set(otaLedBase, otaLedPin);
     else hal_gpio_pin_reset(otaLedBase, otaLedPin);
 }
 
@@ -256,8 +270,8 @@ static void otaUploadTask(void* pv) {
 
     vTaskDelay(pdMS_TO_TICKS(3000));
     {
-        LT_IM(OTA, "Manual OTA: WiFi connected, downloading %s", DEFAULT_OTA_URL);
-        bool ok = otaDownloadAndFlash(DEFAULT_OTA_URL);
+        LT_IM(OTA, "Manual OTA: WiFi connected, downloading %s", DEFAULT_OTA_URL_LN882H);
+        bool ok = otaDownloadAndFlash(DEFAULT_OTA_URL_LN882H);
         otaLedSet(ok); // flash OK -> LED sáng 1s rồi reboot; fail -> tắt rồi reboot
     }
 
