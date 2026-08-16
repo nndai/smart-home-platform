@@ -32,6 +32,12 @@
 #define PIN_BUTTON         0   // GPIO0  - Push button (active LOW, pull-up)
 #endif
 
+// ── OTA button & LED ──
+#define OTA_BTN_PIN             PIN_BUTTON
+#define OTA_BTN_ACTIVE_LOW      true
+#define OTA_LED_PIN             PIN_LED
+#define OTA_LED_ACTIVE_LOW      true
+
 // ── BL0937 Defaults ──
 #define CURRENT_MIN_INTERVAL_MS   500     // interval tối thiểu giữa 2 lần tính dòng điện
 
@@ -47,7 +53,7 @@
 
 // ── Default Pump Mode ──
 #define DEFAULT_PUMP_MODE          true
-#define PUMP_CRITICAL_PERCENT      125     // dòng >= 125% ngưỡng running -> critical
+#define PUMP_CRITICAL_PERCENT      140     // dòng >= 140% ngưỡng running -> critical
 
 // ── NTC Thermistor (10k + 10k series) ──
 #define NTC_SERIES_RESISTOR     4870.0f
