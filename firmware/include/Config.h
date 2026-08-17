@@ -56,9 +56,14 @@
 // ── MQTT ──
 #define DEFAULT_MQTT_PORT          1883
 #define DEFAULT_MQTT_TOPIC         "pump"
-#define MQTT_BUFFER_SIZE           5000
 #define MQTT_SOCKET_TIMEOUT_SEC    7
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
+
+#if defined(ARDUINO_ARCH_ESP8266)
+#define MQTT_BUFFER_SIZE           3072
+#else
+#define MQTT_BUFFER_SIZE           5000
+#endif
 
 // TZ: UTC+7 (Việt Nam)
 # define TZ_OFFSET_SEC (7 * 3600)
