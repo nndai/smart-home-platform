@@ -1,10 +1,11 @@
 /*
  * OTA Boot Guard — cơ chế OTA khẩn cấp bằng tay.
  *
- * Runs BEFORE all other constructors thanks to the constructor priority:
- *   __attribute__((constructor(101)))  ->  .init_array.00101
+ * Runs BEFORE all other constructors thanks to GCC's constructor priority:
+ *   __attribute__((init_priority(101))) applied to a global object.
+ * 
  * The linker script sorts ".init_array.*" before ".init_array", so this
- * function is the first thing executed by __libc_init_array():
+ * constructor is the first thing executed by __libc_init_array():
  *
  *   lt_main -> lt_init_family() -> __libc_init_array() -> [OTA BOOT GUARD]
  *                                        -> ...all other ctors...
@@ -27,7 +28,7 @@
  * nút -> reset trạng thái về IDLE.
  *
  * Không dùng WDT trong guard (cơ chế cứu hộ thủ công: nếu treo thì cắt nguồn
- * và làm lại). LED (PIN_LED, active LOW) báo trạng thái:
+ * và làm lại). LED (OTA_LED_PIN, active LOW) báo trạng thái:
  *   - boot 1 - đã lưu PREPARING        : LED sáng 300ms
  *   - boot 2 - đang giữ nút (>=5s)      : LED sáng liên tục
  *   - boot 2 - chờ nhả nút (trong 5s)   : LED nháy nhanh 100ms
