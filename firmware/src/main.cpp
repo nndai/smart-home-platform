@@ -22,6 +22,7 @@
 #include "chip/io.h"
 
 
+
 // ── Global objects ──
 ConfigManagerT<ProfileConfig> configManager;
 DeviceIdentity g_identity;
@@ -33,6 +34,11 @@ WiFiUDP ntpUdp;
 NTPClient ntpClient(ntpUdp, TZ_OFFSET_SEC);
 OTAManager otaManager;
 CommandHandlerT<ProfileConfig> commandHandler;
+
+// Seed mã hóa mqttPass: deviceId + FW_SECRET (build secret từ .env, xem
+// scripts/buildtime.py). Phải là global: ConfigManager giữ con trỏ tới buffer
+// này suốt runtime (save() gọi bất kỳ lúc nào qua setConfig/calibrate...).
+static String g_encSeed;
 
 template class CommandHandlerT<ProfileConfig>;
 
@@ -152,7 +158,11 @@ void setup() {
     }
 
     g_identity.begin(profileName());
-    configManager.setEncSeed(g_identity.deviceId());
+
+    // Seed mã hóa mqttPass = deviceId + FW_SECRET. FW_SECRET rỗng → chỉ deviceId
+    // (tương thích build cũ / device đã pair trước khi có secret).
+    g_encSeed = String(g_identity.deviceId()) + FW_SECRET;
+    configManager.setEncSeed(g_encSeed.c_str());
 
     if (!configManager.load(configManager.get())) {
         LT_IM(CFG, "No config found, using defaults");

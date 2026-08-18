@@ -48,8 +48,8 @@ struct DeviceConfig {
 template <typename T = DeviceConfig>
 class ConfigManagerT {
 public:
-    // Seed derive key mã hoá mqttPass (deviceId) — gọi sau g_identity.begin(),
-    // TRƯỚC load() (xem main.cpp).
+    // Seed derive key mã hoá mqttPass (deviceId + FW_SECRET build secret) — gọi
+    // sau g_identity.begin(), TRƯỚC load() (xem main.cpp).
     void setEncSeed(const char* seed) { _encSeed = seed; }
 
     bool load() { return load(_config); }
