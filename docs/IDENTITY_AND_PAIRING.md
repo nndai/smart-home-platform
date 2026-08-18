@@ -131,7 +131,7 @@ Mọi lệnh chỉ được chấp nhận khi `g_connMode == AP_WS` — từ STA
 | Giá trị | Dùng ở phase 2 |
 |---|---|
 | `deviceSecret` | Password MQTT **fallback per-device**: username `device-{deviceId}` / password `deviceSecret` (chỉ khi thiết bị chưa được pair cấp credential shared — bình thường dùng `device-family`) |
-| `controlKey` | Envelope lệnh: `hmac = HMAC-SHA256(controlKey, seq\|ts\|cmd\|payload)` (payload JSON compact — giữ thứ tự key); thiết bị kiểm tra `seq` tăng (persist `last_seq`, chống replay cả sau reboot) + `ts` trong ±60s (khi NTP đã set) + HMAC đúng (xem ECOSYSTEM_PLAN §3.2) |
+| `controlKey` | Envelope lệnh: `hmac = HMAC-SHA256(controlKey, seq\|ts\|cmd\|payload\|src)` (payload JSON compact — giữ thứ tự key); `src` = senderId ổn định (`app-...` của app / `dev-...` của remote switch) — thiết bị kiểm tra `seq` tăng **riêng cho từng sender** (bảng RAM, không persist flash — sau reboot dựa vào `ts` ±60s) + `ts` trong ±60s (khi NTP đã set) + HMAC đúng (xem ECOSYSTEM_PLAN §3.2) |
 | `deviceId` | Topic `devices/{deviceId}/cmd` (app→device), `devices/{deviceId}/up` (retained, device→app); clientId cố định để chống chạy 2 thiết bị cùng danh tính |
 | Supabase | App lưu `deviceId` + `controlKey` (RLS); revocation khi re-pair; credential MQTT shared trong `app_secrets` (RPC `get_mqtt_credential`) |
 

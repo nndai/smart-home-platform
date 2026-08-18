@@ -45,6 +45,38 @@ static String mqttBaseTopic() {
     return String("devices/") + g_identity.deviceId();
 }
 
+// ── Extra MQTT topics do driver đăng ký (vd: devices/{targetId}/up của Remote Switch) ──
+// Core chỉ ghi nhớ + re-subscribe khi reconnect; nội dung topic là việc của driver.
+static constexpr uint8_t MAX_EXTRA_MQTT_TOPICS = 8;
+static String g_extraMqttTopics[MAX_EXTRA_MQTT_TOPICS];
+static uint8_t g_extraMqttCount = 0;
+
+static void subscribeMqttTopic(const String& topic) {
+    if (topic.length() == 0) return;
+    for (uint8_t i = 0; i < g_extraMqttCount; i++) {
+        if (g_extraMqttTopics[i] == topic) return;
+    }
+    if (g_extraMqttCount < MAX_EXTRA_MQTT_TOPICS) {
+        g_extraMqttTopics[g_extraMqttCount++] = topic;
+    }
+    if (g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected()) {
+        mqttClient.subscribe(topic);
+    }
+}
+
+static void resubscribeMqttTopics() {
+    for (uint8_t i = 0; i < g_extraMqttCount; i++) {
+        mqttClient.subscribe(g_extraMqttTopics[i]);
+    }
+}
+
+static bool isExtraMqttTopic(const String& topic) {
+    for (uint8_t i = 0; i < g_extraMqttCount; i++) {
+        if (g_extraMqttTopics[i] == topic) return true;
+    }
+    return false;
+}
+
 // ── Forward declarations ──
 void taskWifiConnect(void* pvParams);
 void taskWsLoop(void* pvParams);
@@ -156,17 +188,6 @@ void setup() {
         [&]() { return configManager.save(); },
         [&]() { configManager.reset(); g_identity.reset(); },
         [](const String& json) {
-            if (json.startsWith("route:")) {
-                int split = json.indexOf('|');
-                if (split > 0) {
-                    String topicSuffix = json.substring(6, split);
-                    String payload = json.substring(split + 1);
-                    if (g_connMode == ConnMode::STA_MQTT) {
-                        mqttClient.publish("myhome/" + topicSuffix, payload);
-                    }
-                }
-                return;
-            }
             if (g_connMode == ConnMode::STA_MQTT) {
                 mqttClient.publish(mqttBaseTopic() + "/up", json);
             }
@@ -174,7 +195,14 @@ void setup() {
                 safeWsBroadcast(json);
             }
         },
-        []() { return g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected(); }
+        []() { return g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected(); },
+        [](const String& topic, const String& payload) {
+            if (g_connMode != ConnMode::STA_MQTT) return false;
+            return mqttClient.publish(topic, payload);
+        },
+        [](const String& topic) { subscribeMqttTopic(topic); },
+        [&]() { commandHandler.publishStatusToUp(); },
+        g_identity.deviceId()
     });
     g_driver->begin(configManager.get(), [&]() { return configManager.save(); });
 
@@ -370,13 +398,7 @@ void taskMqttLoop(void* pvParams) {
         else if (connected && logLostConnection) {
             LT_I("MQTT reconnected");
             logLostConnection = false;
-#if defined(PROFILE_REMOTE_SWITCH)
-            if (configManager.get().targetId[0] != '\0') {
-                String targetTopic = String("myhome/") + configManager.get().targetId + "/up";
-                mqttClient.subscribe(targetTopic.c_str());
-                LT_I("Subscribed to target: %s", targetTopic.c_str());
-            }
-#endif
+            resubscribeMqttTopics();
         }
 
         vTaskDelayUntil(&lastWake, otaManager.isRunning() ? pdMS_TO_TICKS(10) : pdMS_TO_TICKS(50));
@@ -432,13 +454,26 @@ void driverTask(void* pvParams) {
 }
 
 // ── Stream Sender Task ──
+// Cũng chịu trách nhiệm publish status định kỳ lên devices/{id}/up để các
+// thiết bị theo dõi (vd Remote Switch) luôn nhận được dữ liệu mới.
+// Chỉ tự báo khi KHÔNG có status stream (mỗi 60s): đang stream thì để stream
+// tự chạy (2s), tránh publish trùng 2 bản/lần.
 void taskStreamSender(void* pvParams) {
     (void)pvParams;
     TickType_t lastWake = xTaskGetTickCount();
+    uint32_t lastStatusUp = 0;
 
     while (1) {
         commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_STATUS);
         commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_SYSINFO);
+
+        uint32_t nowMs = millis();
+        if (!commandHandler.isStreamActive(CommandHandlerT<ProfileConfig>::STREAM_STATUS)) {
+            if (nowMs - lastStatusUp >= 60000) {
+                lastStatusUp = nowMs;
+                commandHandler.publishStatusToUp();
+            }
+        }
         vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(2000));
     }
 }
@@ -446,16 +481,21 @@ void taskStreamSender(void* pvParams) {
 // ── Callbacks ──
 
 static void onMqttMessage(const String& topic, const String& payload) {
-    if (topic != mqttBaseTopic() + "/down") {
-        // Alien topic (e.g. target status)
+    // Topic của chính mình (devices/{id}/cmd|otachunk|down) → lệnh cho CommandHandler
+    if (topic.startsWith(mqttBaseTopic() + "/")) {
+        commandHandler.handleCommand("mqtt", payload);
+        return;
+    }
+
+    // Topic do driver đăng ký (vd: devices/{targetId}/up của Remote Switch)
+    // → đẩy thẳng cho driver; topic lạ khác bị bỏ qua.
+    if (isExtraMqttTopic(topic)) {
         if (g_driver) {
             JsonDocument doc;
             deserializeJson(doc, payload);
             g_driver->handleTargetStatus(doc);
         }
-        return;
     }
-    commandHandler.handleCommand("mqtt", payload);
 }
 
 static void onWsMessage(const String& clientId, const String& message) {

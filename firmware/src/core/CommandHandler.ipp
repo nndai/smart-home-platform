@@ -27,13 +27,9 @@ void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     _identity = identity;
     _profile = profile ? profile : "unknown";
 
-    // Nạp seq cuối đã duyệt (nếu thiết bị reboot, lệnh cũ seq thấp vẫn bị từ chối)
-    _lastSeq = 0;
-    _lastSeqPersisted = 0;
-    size_t storedLen = 0;
-    if (compat::kvGet(SEQ_KV_KEY, &_lastSeq, sizeof(_lastSeq), &storedLen) == KvError::Ok && storedLen == sizeof(_lastSeq)) {
-        _lastSeqPersisted = _lastSeq;
-    }
+    // Per-sender seq table lives in RAM only (intentional: no flash persistence).
+    // After reboot the ts window (60s) guards replay until NTP sync.
+    _seqCount = 0;
 }
 
 template <typename T>
@@ -78,9 +74,9 @@ void CommandHandlerT<T>::_sendResponse(const String& source, const String& json)
 }
 
 // ── Envelope verify (docs §3.2) ──
-// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac} với
-//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>")
-// Kiểm tra: seq tăng dần (chống replay, persisted qua reboot), |now-ts| <= 60s,
+// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac, src} với
+//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>|<src>")
+// Kiểm tra: seq tăng dần THEO TỪNG SENDER (chống replay, RAM-only), |now-ts| <= 60s,
 // HMAC đúng (chống giả mạo — kẻ khác không có controlKey).
 template <typename T>
 bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload) {
@@ -102,9 +98,29 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         return false;
     }
 
-    // Replay: seq phải lớn hơn seq đã duyệt (kể cả sau reboot nhờ persist).
-    if (seq <= _lastSeq) {
-        LT_EM(CMD, "Envelope: stale seq %u (last %u)", (unsigned)seq, (unsigned)_lastSeq);
+    // Nhiều controller (app, remote switch...) ký cùng controlKey nhưng giữ seq
+    // riêng → tìm/ tạo floor riêng cho từng sender ("" = legacy sender thiếu src).
+    const char* src = cmd["src"] | "";
+    SeqEntry* entry = nullptr;
+    for (uint8_t i = 0; i < _seqCount; i++) {
+        if (strcmp(_seqTable[i].src, src) == 0) {
+            entry = &_seqTable[i];
+            break;
+        }
+    }
+    if (!entry) {
+        if (_seqCount >= MAX_SEQ_ENTRIES) {
+            LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
+            return false;
+        }
+        entry = &_seqTable[_seqCount++];
+        strlcpy(entry->src, src, sizeof(entry->src));
+        entry->seq = 0;
+    }
+
+    // Replay: seq phải lớn hơn seq cuối đã duyệt của SENDER này.
+    if (seq <= entry->seq) {
+        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src);
         return false;
     }
 
@@ -120,7 +136,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         }
     }
 
-    // Canonical: "seq|ts|cmd|payload" — payload serialize lại từ doc (compact, giữ thứ tự key).
+    // Canonical: "seq|ts|cmd|payload|src" — payload serialize lại từ doc (compact, giữ thứ tự key).
     String keyHex;
     if (!_identity->controlKeyHex(keyHex)) {
         LT_EM(CMD, "Envelope: no controlKey");
@@ -128,7 +144,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
     }
     String payloadStr;
     serializeJson(payload, payloadStr);
-    const String canonical = String(seq) + "|" + String(ts) + "|" + cmd["cmd"].as<String>() + "|" + payloadStr;
+    const String canonical = String(seq) + "|" + String(ts) + "|" + cmd["cmd"].as<String>() + "|" + payloadStr + "|" + src;
 
     char expectedHex[65];
     if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
@@ -140,23 +156,16 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         return false;
     }
 
-    _lastSeq = seq;
-    // Ghi flash có hạn (KV trên flash): persist cách quãng; sau reboot cửa sổ
-    // replay tối đa bằng SEQ_PERSIST_EVERY-1 seq.
-    if (seq - _lastSeqPersisted >= SEQ_PERSIST_EVERY) {
-        if (compat::kvSet(SEQ_KV_KEY, &seq, sizeof(seq)) == KvError::Ok) {
-            _lastSeqPersisted = seq;
-        }
-    }
+    entry->seq = seq;
+    // Cố ý KHÔNG persist floor xuống flash: sau reboot bảng rỗng, replay bị chặn
+    // bằng cửa sổ ts 60s — đánh đổi flash wear vs an toàn đã được chấp nhận.
     return true;
 }
 
-// Reset chuỗi seq — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
+// Reset floor của mọi sender — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
 template <typename T>
 void CommandHandlerT<T>::_resetSeq() {
-    _lastSeq = 0;
-    _lastSeqPersisted = 0;
-    compat::kvDel(SEQ_KV_KEY);
+    _seqCount = 0;
 }
 
 template <typename T>
@@ -264,6 +273,14 @@ void CommandHandlerT<T>::sendStream(StreamType type) {
         default:
             break;
     }
+}
+
+template <typename T>
+void CommandHandlerT<T>::publishStatusToUp() {
+    JsonDocument resp;
+    JsonDocument emptyPayload;
+    resp["cmd"] = "getStatus";
+    _cmdGetStatus("mqtt", emptyPayload, resp);
 }
 
 template <typename T>

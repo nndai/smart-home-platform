@@ -43,6 +43,12 @@ public:
     void sendStream(StreamType type);
     bool anyStreamActive() const;
 
+    // Publish status snapshot của chính thiết bị lên devices/{id}/up.
+    // Dùng cho việc tự báo định kỳ (stream rảnh: 60s, đang stream: 2s — xem
+    // main.cpp taskStreamSender) và báo lỗi tức thì từ driver (pump DRY RUN...).
+    // Đi thẳng vào _cmdGetStatus (không qua envelope: đây là status của mình).
+    void publishStatusToUp();
+
 private:
     ConfigManagerT<T>* _cfg;
     DeviceDriver* _driver = nullptr;
@@ -68,14 +74,22 @@ private:
     void _handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload);
 
     // ── Envelope lệnh qua MQTT (docs §3.2): chống giả mạo + replay ──
+    // Mỗi sender (app, remote switch...) tự ký bằng cùng controlKey nhưng giữ
+    // seq riêng → floor chống replay theo từng sender, không khóa nhau.
     bool _verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload);
     void _resetSeq();
 
-    static constexpr const char* SEQ_KV_KEY = "last_seq";   // seq cuối đã duyệt (chống replay sau reboot)
+    // Replay protection per sender (src = deviceId của sender; "" = legacy sender).
+    // Bảng chỉ ở RAM, CỐ Ý không persist flash: sau reboot, replay bị chặn bởi
+    // cửa sổ ts (|now-ts| <= 60s) — đánh đổi flash wear vs an toàn, đã chấp nhận.
     static constexpr uint32_t ENVELOPE_TS_WINDOW_S = 60;    // |now - ts| <= 60s
-    static constexpr uint32_t SEQ_PERSIST_EVERY = 8;        // ghi flash có hạn: persist mỗi N seq
-    uint32_t _lastSeq = 0;
-    uint32_t _lastSeqPersisted = 0;
+    static constexpr uint8_t MAX_SEQ_ENTRIES = 6;           // app + vài remote switch
+    struct SeqEntry {
+        char src[24];
+        uint32_t seq;
+    };
+    SeqEntry _seqTable[MAX_SEQ_ENTRIES];
+    uint8_t _seqCount = 0;
 
     void _cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp);
     void _cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp);

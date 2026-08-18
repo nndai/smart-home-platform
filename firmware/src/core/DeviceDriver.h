@@ -15,6 +15,20 @@ struct DriverServices {
     std::function<void()> resetConfig;
     std::function<void(const String&)> sendResponse;
     std::function<bool()> isConnected;
+
+    // ── MQTT primitives (thiết bị có target, vd Remote Switch): core thực thi ──
+    // Driver publish/subscribe topic bất kỳ (vd devices/{targetId}/cmd, .../up)
+    // mà không cần biết chi tiết client — core lo reconnect + routing.
+    std::function<bool(const String& topic, const String& payload)> mqttPublish;
+    std::function<void(const String& topic)> mqttSubscribe;
+
+    // Publish status snapshot của thiết bị lên devices/{id}/up ngay lập tức
+    // (vd: driver báo lỗi bơm tức thì, không cần chờ stream). Core thực thi.
+    std::function<void()> publishStatus;
+
+    // Định danh công khai của thiết bị này — dùng để ký envelope (field "src")
+    // khi driver gửi lệnh device-to-device (xem RemoteSwitchDriver::buildEnvelope).
+    const char* deviceId = nullptr;
 };
 
 // ── Interface thiết bị: core gọi mù, profile hiện thực ──

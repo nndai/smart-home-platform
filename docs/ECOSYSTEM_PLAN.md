@@ -94,13 +94,15 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
   "ts": 1750000000,
   "cmd": "setLevel",
   "payload": { "level": 80 },
-  "hmac": "hex64"   // HMAC-SHA256(controlKey, seq|ts|cmd|payload)
+  "src": "dev-abc... hoặc app-...",   // senderId — bắt buộc kể từ envelope v2
+  "hmac": "hex64"   // HMAC-SHA256(controlKey, seq|ts|cmd|payload|src)
 }
 ```
 
 - `controlKey` (32B): **sinh bởi APP** khi pair, gửi trong lệnh `pair` (xem IDENTITY §1/§4 — getConfig không trả key); lưu mã hóa trên thiết bị + Supabase (RLS — **chỉ OWNER/ADMIN đọc**, xem §6) → phân phối cho các app được chia sẻ
-- Canonical string: `"<seq>|<ts>|<cmd>|<payload JSON compact>"` — gồm cả `cmd` (kẻ đánh cắp 1 lệnh hợp lệ không thể đổi `cmd`)
-- Thiết bị kiểm tra: `seq > seq_cuối` (persist KV `last_seq`, chống replay cả sau reboot) + `|now - ts| < 60s` (bỏ qua khi NTP chưa set) + HMAC hợp lệ → mới thực thi
+- `src`: định danh sender ổn định (`dev-{deviceId}` của remote switch khi nút bấm chuyển tiếp lệnh, `app-{hex}` của app). **Nhiều sender ký cùng controlKey nhưng giữ seq riêng** → thiết bị track floor riêng từng sender, không khóa nhau
+- Canonical string: `"<seq>|<ts>|<cmd>|<payload JSON compact>|<src>"` — gồm cả `cmd` + `src` (kẻ đánh cắp 1 lệnh hợp lệ không thể đổi `cmd`/`src`)
+- Thiết bị kiểm tra: `seq > seq_cuối của sender` (bảng RAM, **không persist flash** — sau reboot cửa sổ replay giới hạn bởi `ts`) + `|now - ts| < 60s` (bỏ qua khi NTP chưa set) + HMAC hợp lệ → mới thực thi
 - Trạng thái `up` không cần ký (đã qua TLS + broker auth), kèm `seq` để app phát hiện lệch nhịp
 
 ### 3.3 Credential HiveMQ (cho gia đình — 1 credential shared)
