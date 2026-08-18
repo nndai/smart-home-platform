@@ -47,8 +47,8 @@ def generate(env):
 
     # Build-time secret → DEFINE FW_SECRET="..." (dùng chung seed mã hóa mqttPass:
     # key = SHA-256(deviceId + FW_SECRET), xem main.cpp). Chỉ gắn flag khi có giá
-    # trị (giá trị rỗng → main.cpp tự fallback FW_SECRET=""); giá trị phải là
-    # hex/alnum không có dấu nháy — được nhúng thẳng vào build flag.
+    # trị (giá trị rỗng → main.cpp tự fallback FW_SECRET=""). Chỉ dùng hex/alnum —
+    # kí tự đặc biệt (" $ \ ...) làm hỏng build flag hoặc bị SCons đổi giá trị.
     secret = _read_env_secret(project_dir)
     if secret:
         env.Append(BUILD_FLAGS=[f'-DFW_SECRET=\\"{secret}\\"'])
