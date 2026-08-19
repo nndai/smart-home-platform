@@ -9,12 +9,13 @@
 // ── MCU khác: mirror cùng giao diện LT_I/LT_E/LT_IM/LT_EM ──
 #else
 
-// ESP8266: os_printf (SDK) — hoạt động từ lúc boot rất sớm, trước Serial.begin
-// (giống ota_bootguard_esp8266.cpp/anchor.cpp). Lưu ý: không hỗ trợ %f.
+// ESP8266: ets_printf (ROM) — xuất trực tiếp, KHÔNG buffer (os_printf của SDK
+// buffer 256B, flush không đáng tin → dính dòng/cắt chữ). Hoạt động từ lúc
+// boot rất sớm, ISR-safe. Lưu ý: không hỗ trợ %f.
 // MCU khác (ESP32...): Serial.printf.
 #if defined(ARDUINO_ARCH_ESP8266)
-#include <user_interface.h>
-#define LT_PRINTF(...) os_printf(__VA_ARGS__)
+#include <ets_sys.h>
+#define LT_PRINTF(...) ets_printf(__VA_ARGS__)
 #else
 #define LT_PRINTF(...) Serial.printf(__VA_ARGS__)
 #endif
