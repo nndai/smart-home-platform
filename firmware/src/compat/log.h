@@ -6,8 +6,18 @@
 #if defined(LT_ARD_HAS_SERIAL)
 #include <lt_logger.h>
 
-// ── MCU khác: mirror cùng giao diện LT_I/LT_E/LT_IM/LT_EM qua Serial.printf ──
+// ── MCU khác: mirror cùng giao diện LT_I/LT_E/LT_IM/LT_EM ──
 #else
+
+// ESP8266: os_printf (SDK) — hoạt động từ lúc boot rất sớm, trước Serial.begin
+// (giống ota_bootguard_esp8266.cpp/anchor.cpp). Lưu ý: không hỗ trợ %f.
+// MCU khác (ESP32...): Serial.printf.
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <user_interface.h>
+#define LT_PRINTF(...) os_printf(__VA_ARGS__)
+#else
+#define LT_PRINTF(...) Serial.printf(__VA_ARGS__)
+#endif
 
 // Level constants (giá trị mirror lt_config.h của LibreTiny)
 #define LT_LEVEL_TRACE 0
@@ -45,33 +55,33 @@
 
 #define LT_I(...)                                   \
 	do {                                            \
-		Serial.printf("[I] ");                      \
-		Serial.printf(__VA_ARGS__);                 \
-		Serial.printf("\n");                        \
+		LT_PRINTF("[I] ");                          \
+		LT_PRINTF(__VA_ARGS__);                     \
+		LT_PRINTF("\n");                            \
 	} while (0)
 
 #define LT_E(...)                                   \
 	do {                                            \
-		Serial.printf("[E] ");                      \
-		Serial.printf(__VA_ARGS__);                 \
-		Serial.printf("\n");                        \
+		LT_PRINTF("[E] ");                          \
+		LT_PRINTF(__VA_ARGS__);                     \
+		LT_PRINTF("\n");                            \
 	} while (0)
 
 #define LT_IM(module, ...)                          \
 	do {                                            \
 		if (LT_DEBUG_##module) {                    \
-			Serial.printf("[I][" #module "] ");     \
-			Serial.printf(__VA_ARGS__);             \
-			Serial.printf("\n");                    \
+			LT_PRINTF("[I][" #module "] ");         \
+			LT_PRINTF(__VA_ARGS__);                 \
+			LT_PRINTF("\n");                        \
 		}                                           \
 	} while (0)
 
 #define LT_EM(module, ...)                          \
 	do {                                            \
 		if (LT_DEBUG_##module) {                    \
-			Serial.printf("[E][" #module "] ");     \
-			Serial.printf(__VA_ARGS__);             \
-			Serial.printf("\n");                    \
+			LT_PRINTF("[E][" #module "] ");         \
+			LT_PRINTF(__VA_ARGS__);                 \
+			LT_PRINTF("\n");                        \
 		}                                           \
 	} while (0)
 
