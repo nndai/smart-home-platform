@@ -124,7 +124,7 @@
 #define TASK_OTA_PRIO            4
 
 
-// Build secret từ .env (scripts/buildtime.py). Fallback rỗng nếu build không
+// Build secret từ .env (scripts/build_env.py). Fallback rỗng nếu build không
 // chạy extra_scripts → seed mã hóa chỉ còn deviceId.
 #ifndef FW_SECRET
 #define FW_SECRET ""

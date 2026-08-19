@@ -42,15 +42,15 @@ graph TB
 ```mermaid
 graph LR
     A["Lớp 1: chipAnchor<br/>LN882H: hal_flash_read_unique_id()<br/>128-bit UID die flash (OTP)<br/>ESP32: esp_efuse_mac_get_default()<br/>6 byte MAC eFuse<br/>(API 8B esp_efuse_get_chip_serial_number<br/>không tồn tại trong IDF 4.4 — xem IDENTITY §5.2)<br/>→ không nằm trong dump, không ghi được"] --> B
-    B["Lớp 2: deviceId<br/>= &quot;dev-&quot; + hex(SHA-256(anchor))[:12]<br/>định danh public, in lên nhãn/QR"] --> C
-    C["Lớp 3: deviceSecret<br/>32 byte ngẫu nhiên, sinh tại lần boot đầu<br/>lưu dạng AES-GCM(KDF(anchor))<br/>không bao giờ nhúng trong firmware"]
+    B["Lớp 2: deviceId<br/>= &quot;dev-&quot; + hex(SHA-256(anchor))[:12]<br/>định danh public, in lên nhãn/QR<br/>thành phần seed mã hóa"] --> C
+    C["Lớp 3: controlKey<br/>32 byte ngẫu nhiên (app sinh lúc pair)<br/>lưu dạng AES-GCM(key = SHA-256(deviceId + FW_SECRET))<br/>không bao giờ nhúng trong firmware"]
 ```
 
 | Lớp | Giá trị | Độ nhạy | Nơi lưu |
 |---|---|---|---|
 | chipAnchor | UID phần cứng | Công khai (của chip) | OTP/eFuse — **không đọc được từ dump** |
 | deviceId | Dẫn xuất từ SHA-256(anchor) — cắt 6 byte đầu (gộp đủ entropy 2 nền MCU, deterministic) | Công khai | Nhãn/QR + Supabase |
-| deviceSecret | Ngẫu nhiên 32B | Bí mật | eFlash (mã hóa) + HiveMQ credential |
+| controlKey | Ngẫu nhiên 32B (app sinh lúc pair) | Bí mật | eFlash (mã hóa AES-GCM, key = SHA-256(deviceId + FW_SECRET)) + app/Supabase |
 
 **Tại sao không dùng `lt_cpu_get_unique_id()`:** bản weak chỉ trả 24 bit cuối của MAC hiệu dụng — và MAC hiệu dụng bị override được (`wifi_set_macaddr`/`netdev_set_mac_addr`). Đã verify trong source LibreTiny/LN882H. Anchor chuẩn: `hal_flash_read_unique_id()` (đọc qua lệnh 0x4B — UID nằm trong OTP die flash, không phải vùng địa chỉ flash nên **dump không lấy được**, và không thể ghi đè).
 
@@ -58,18 +58,18 @@ graph LR
 
 ```mermaid
 graph TD
-    A["Attacker dump flash chip A"] --> B["Có: firmware + deviceSecret MÃ HÓA<br/>(AES-GCM với khóa KDF(anchor_A))"]
+    A["Attacker dump flash chip A"] --> B["Có: firmware + controlKey MÃ HÓA<br/>(AES-GCM, key = SHA-256(deviceId_A + FW_SECRET))"]
     B --> C["Nạp sang chip B"]
     C --> D["Firmware chạy, đọc anchor_B<br/>anchor_B ≠ anchor_A"]
-    D --> E["KDF(anchor_B) ≠ KDF(anchor_A) →<br/>giải mã secret THẤT BẠI"]
-    E --> F["Auth HiveMQ fail — clone vô dụng ✔"]
+    D --> E["deviceId_B ≠ deviceId_A →<br/>key khác → giải mã controlKey THẤT BẠI<br/>→ sinh controlKey mới → phải re-pair"]
+    E --> F["App cũ mất controlKey → phải re-pair — clone vô dụng ✔"]
 ```
 
 ### 2.3 Ma trận tấn công & phòng thủ
 
 | Kịch bản tấn công | Cơ chế chống | Hiệu quả |
 |---|---|---|
-| Dump flash → nạp board khác | AES-GCM + KDF(anchor) | ✅ Clone không auth được |
+| Dump flash → nạp board khác | AES-GCM + KDF(SHA256(deviceId + FW_SECRET)) | ✅ Clone phải re-pair, không dùng được |
 | Sửa MAC để "khớp" identity | Anchor không phải MAC; dùng UID die flash | ✅ Không sửa được |
 | Recompile firmware bỏ check | LN882H: không có secure boot → dựa cloud detection; ESP32 (ESP-IDF): secure boot v2 + flash encryption (nâng cấp tùy chọn) | ⚠️ Tùy nền tảng |
 | Replay lệnh | `seq` tăng dần + `ts` + HMAC controlKey, device từ chối seq cũ | ✅ |
@@ -110,12 +110,11 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
 | Client | Username | Password | Permission (topic filter) |
 |---|---|---|---|
 | Thiết bị (shared) | `device-family` | tạo 1 lần trong HiveMQ console (≤32 ký tự), seed vào Supabase `app_secrets` | `devices/+/#` pub+sub |
-| Thiết bị (fallback per-device) | `device-{deviceId}` | `deviceSecret` (firmware **tự sinh boot đầu** — xem IDENTITY §1) | `devices/{deviceId}/#` pub+sub |
 | Edge Function bridge | `app-family` | random, tạo 1 lần trong console, **chỉ nằm trong Supabase Function Secrets** | `devices/+/#` pub+sub |
 
-- App Android open-source: **không nhúng credential MQTT vào APK/BuildConfig**. Khi pair, app gọi RPC `get_mqtt_credential()` (SECURITY DEFINER, chỉ `authenticated`) lấy `device-family` rồi gửi kèm trong lệnh `pair` → thiết bị lưu vào config. Firmware fallback sang per-device nếu chưa có credential shared.
+- App Android open-source: **không nhúng credential MQTT vào APK/BuildConfig**. Khi pair, app gọi RPC `get_mqtt_credential()` (SECURITY DEFINER, chỉ `authenticated`) lấy `device-family` rồi gửi kèm trong lệnh `pair` → thiết bị lưu vào config. **Thiết bị không có credential (`mqttUser` rỗng) → không connect MQTT** (không fallback per-device).
 - Migration: `supabase/migrations/0003_mqtt_shared_credential.sql`; seed 1 lần: `tools/seed_mqtt_credential.ps1`.
-- **Lưu trữ:** app lưu credential vào **Android Keystore** (persist an toàn, không phải SharedPreferences); khi mở app → lấy từ Keystore trước để connect nhanh, đồng thời sync background với Supabase (`syncWithRemote()`). Supabase `app_secrets` chứa pass plaintext (RLS + HTTPS, chấp nhận ở quy mô $0); thiết bị lưu `mqttPass` dạng **mã hóa AES-256-GCM, key = SHA-256(deviceId + FW_SECRET)** (`mqttPassEnc` trong KV `app_cfg`; `FW_SECRET` là build secret từ `.env` do `scripts/buildtime.py` nhúng, rỗng = tương đương cũ) — flash không chứa plaintext.
+- **Lưu trữ:** app lưu credential vào **Android Keystore** (persist an toàn, không phải SharedPreferences); khi mở app → lấy từ Keystore trước để connect nhanh, đồng thời sync background với Supabase (`syncWithRemote()`). Supabase `app_secrets` chứa pass plaintext (RLS + HTTPS, chấp nhận ở quy mô $0); thiết bị lưu `mqttPass` dạng **mã hóa AES-256-GCM, key = SHA-256(deviceId + FW_SECRET)** (`mqttPassEnc` trong KV `app_cfg`; **cùng key mã hóa controlKey blob** — KV `ident`, `FW_SECRET` là build secret từ `.env` do `scripts/build_env.py` nhúng, rỗng = tương đương cũ) — flash không chứa plaintext. ⚠️ Đổi FW_SECRET giữa 2 build → key đổi → phải re-pair thiết bị đã pair.
 - App **kết nối MQTT trực tiếp** (kênh điều khiển `MqttDeviceChannel`, credential từ Keystore/RPC) — không qua Edge Function bridge.
 - **Bước tay duy nhất (2 phút, 1 lần cho cả gia đình):** HiveMQ Serverless free **không có REST API** (chỉ Starter trả phí) → tạo credential `device-family` (permission `devices/+/#`) trong console rồi seed vào Supabase — thiết bị mới không bao giờ phải chạm console. Kịch bản bán thiết bị sau này: self-host EMQX 5 (có REST API tạo credential per-device, cô lập + tự động $0) — firmware giữ fallback per-device nên gần như không đổi.
 
@@ -236,7 +235,7 @@ graph TD
         NET["WiFi + TLS"]
     end
     subgraph Identity["DeviceIdentity"]
-        SECRET["deviceSecret AES-GCM(KDF(anchor))"]
+        SECRET["controlKey AES-GCM(SHA256(deviceId + FW_SECRET))"]
         STATE["pairing state máy trạng thái"]
         CONTROL["controlKey + seq"]
     end

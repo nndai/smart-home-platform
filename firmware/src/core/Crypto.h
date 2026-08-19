@@ -50,10 +50,10 @@ inline bool hmacSha256HexKey(const char* keyHex, const char* data, size_t dataLe
     return true;
 }
 
-// ── AES-256-GCM cho config nhạy cảm (mqttPass) ──
-// key = SHA-256(seed), seed = deviceId → key = hash(dev-<id>) (bí mật chỉ
-// thiết bị tự sinh + biết; không lưu pass plaintext trên flash).
-// blob = IV(16) + ciphertext(32) + tag(16) = 64B — layout khớp DeviceIdentity.
+// ── AES-256-GCM chung (dùng cho mqttPass + identity blob) ──
+// key = SHA-256(seed), seed = deviceId + FW_SECRET (FW_SECRET từ .env qua
+// build flag, xem scripts/build_env.py). Rỗng FW_SECRET → seed = deviceId
+// (compat build cũ). Blob layout: IV(16) + ciphertext + tag(16).
 inline bool cfgKeyFromSeed(const char* seed, uint8_t key[32]) {
     if (!seed || seed[0] == '\0') return false;
     const mbedtls_md_info_t* md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
@@ -61,13 +61,13 @@ inline bool cfgKeyFromSeed(const char* seed, uint8_t key[32]) {
     return mbedtls_md(md, (const uint8_t*)seed, strlen(seed), key) == 0;
 }
 
-inline bool cfgEncryptPass(const uint8_t key[32], const char* plain, uint8_t out[64]) {
-    if (!plain) return false;
-    uint8_t plainBuf[32] = {0};
-    strncpy((char*)plainBuf, plain, sizeof(plainBuf) - 1);
-
+// AES-256-GCM encrypt plainLen byte (tối đa 32) → out[64]. True nếu thành công.
+inline bool aesGcmEncrypt(const uint8_t key[32], const uint8_t* plain, size_t plainLen,
+                          uint8_t out[64]) {
+    if (!plain || plainLen > 32) return false;
     uint8_t iv[16];
     chip::randomBytes(iv, sizeof(iv));
+    memcpy(out, iv, sizeof(iv));
 
     mbedtls_gcm_context ctx;
     mbedtls_gcm_init(&ctx);
@@ -75,24 +75,36 @@ inline bool cfgEncryptPass(const uint8_t key[32], const char* plain, uint8_t out
         mbedtls_gcm_free(&ctx);
         return false;
     }
-    int r = mbedtls_gcm_crypt_and_tag(&ctx, MBEDTLS_GCM_ENCRYPT, sizeof(plainBuf),
-        iv, sizeof(iv), nullptr, 0, plainBuf, out + 16, 16, out + 48);
-    memcpy(out, iv, sizeof(iv));
+    int r = mbedtls_gcm_crypt_and_tag(&ctx, MBEDTLS_GCM_ENCRYPT, plainLen,
+        iv, sizeof(iv), nullptr, 0, plain, out + 16, 16, out + 48);
     mbedtls_gcm_free(&ctx);
     return r == 0;
 }
 
-inline bool cfgDecryptPass(const uint8_t key[32], const uint8_t blob[64], char out[32]) {
+// AES-256-GCM decrypt blob[64] → out (outLen byte plaintext). True nếu auth ok.
+inline bool aesGcmDecrypt(const uint8_t key[32], const uint8_t blob[64],
+                          uint8_t* out, size_t outLen) {
     mbedtls_gcm_context ctx;
     mbedtls_gcm_init(&ctx);
     if (mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, 256) != 0) {
         mbedtls_gcm_free(&ctx);
         return false;
     }
-    int r = mbedtls_gcm_auth_decrypt(&ctx, 32, blob, 16, nullptr, 0,
-        blob + 48, 16, blob + 16, (uint8_t*)out);
+    int r = mbedtls_gcm_auth_decrypt(&ctx, outLen, blob, 16, nullptr, 0,
+        blob + 48, 16, blob + 16, out);
     mbedtls_gcm_free(&ctx);
-    if (r != 0) return false;
+    return r == 0;
+}
+
+inline bool cfgEncryptPass(const uint8_t key[32], const char* plain, uint8_t out[64]) {
+    if (!plain) return false;
+    uint8_t plainBuf[32] = {0};
+    strncpy((char*)plainBuf, plain, sizeof(plainBuf) - 1);
+    return aesGcmEncrypt(key, plainBuf, sizeof(plainBuf), out);
+}
+
+inline bool cfgDecryptPass(const uint8_t key[32], const uint8_t blob[64], char out[32]) {
+    if (!aesGcmDecrypt(key, blob, (uint8_t*)out, 32)) return false;
     out[32 - 1] = '\0';
     return true;
 }

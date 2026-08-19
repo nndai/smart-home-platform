@@ -996,7 +996,7 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payl
     ESP.restart();
 }
 
-// ── Provision (factory): inject/đổi deviceSecret + controlKey ──
+// ── Provision (factory): inject/đổi controlKey ──
 // Chỉ chấp nhận khi đang AP_WS (proximity). Hex 64 ký tự; bỏ trống = giữ nguyên.
 template <typename T>
 void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument& payload, JsonDocument& resp) {
@@ -1013,12 +1013,6 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument&
         return;
     }
 
-    if (payload["deviceSecret"].is<const char*>() && !_identity->setSecretHex(payload["deviceSecret"].as<const char*>())) {
-        resp["status"] = "error";
-        resp["message"] = "Invalid deviceSecret (need 64 hex chars)";
-        _sendResponse(source, resp);
-        return;
-    }
     if (payload["controlKey"].is<const char*>()) {
         if (!_identity->setControlKeyHex(payload["controlKey"].as<const char*>())) {
             resp["status"] = "error";

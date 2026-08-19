@@ -35,9 +35,10 @@ NTPClient ntpClient(ntpUdp, TZ_OFFSET_SEC);
 OTAManager otaManager;
 CommandHandlerT<ProfileConfig> commandHandler;
 
-// Seed mã hóa mqttPass: deviceId + FW_SECRET (build secret từ .env, xem
-// scripts/buildtime.py). Phải là global: ConfigManager giữ con trỏ tới buffer
-// này suốt runtime (save() gọi bất kỳ lúc nào qua setConfig/calibrate...).
+// Seed mã hóa chung: deviceId + FW_SECRET (build secret từ .env, xem
+// scripts/build_env.py) — dùng cho controlKey (identity blob) + mqttPass.
+// Phải là global: ConfigManager/DeviceIdentity giữ con trỏ tới buffer này
+// suốt runtime (save() gọi bất kỳ lúc nào qua setConfig/calibrate...).
 static String g_encSeed;
 
 template class CommandHandlerT<ProfileConfig>;
@@ -130,7 +131,6 @@ static void safeWsBroadcast(const String& json) {
 
 // ── Setup ──
 void setup() {
-    Serial.begin(74880);
     delay(10);
    
     LT_IM(SYS, "=== Smart Home Controller ===");
@@ -159,9 +159,11 @@ void setup() {
 
     g_identity.begin(profileName());
 
-    // Seed mã hóa mqttPass = deviceId + FW_SECRET. FW_SECRET rỗng → chỉ deviceId
-    // (tương thích build cũ / device đã pair trước khi có secret).
+    // Seed mã hóa = deviceId + FW_SECRET (FW_SECRET từ .env qua build flag,
+    // xem scripts/build_env.py). Dùng chung cho controlKey (identity blob) và
+    // mqttPass (config). FW_SECRET rỗng → chỉ deviceId (compat build cũ).
     g_encSeed = String(g_identity.deviceId()) + FW_SECRET;
+    g_identity.setEncSeed(g_encSeed.c_str());
     configManager.setEncSeed(g_encSeed.c_str());
 
     if (!configManager.load(configManager.get())) {
@@ -304,17 +306,12 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
     chip::reclaimRelayGpio();
 
     String clientId = String("device-") + g_identity.deviceId();
-    const char* mqttUser = (cfg.mqttUser[0] != '\0') ? cfg.mqttUser : clientId.c_str();
-    String deviceSecret;
-    const char* mqttPass;
-    if (cfg.mqttUser[0] != '\0') {
-        mqttPass = configManager.passPlain();
-    } else {
-        g_identity.secretHex(deviceSecret);
-        mqttPass = deviceSecret.c_str();
+    if (cfg.mqttUser[0] == '\0') {
+        LT_EM(NET, "MQTT: no credential (device not paired) — MQTT disabled");
+        return;
     }
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort,
-        mqttUser, mqttPass,
+        cfg.mqttUser, configManager.passPlain(),
         clientId.c_str(), mqttBaseTopic().c_str());
     mqttClient.setCallback(onMqttMessage);
 

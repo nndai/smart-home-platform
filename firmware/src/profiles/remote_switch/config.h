@@ -8,11 +8,11 @@
 // 4 đèn, tất cả active HIGH, xanh/đỏ trong mỗi cặp loại trừ nhau bằng code:
 //   Cặp 1 (kết nối): đỏ = lỗi wifi/mqtt/ntp/timeout status, xanh = khỏe mạnh
 //   Cặp 2 (trạng thái): xanh = on/waiting, đỏ = error
-#define PIN_LED_CONNECT_RED   14 // GPIO14 (D5) - LED đỏ: mất kết nối (active HIGH)
-#define PIN_LED_CONNECT_GREEN 12 // GPIO12 (D6) - LED xanh: kết nối khỏe mạnh (active HIGH)
-#define PIN_LED_STATE_GREEN    2 // GPIO2  (D4) - LED xanh: target on/waiting (active HIGH)
-#define PIN_LED_STATE_RED     13 // GPIO13 (D7) - LED đỏ: target error (active HIGH)
-#define PIN_BUTTON             5 // GPIO5  (D1) - nút nhấn (active LOW, pull-up)
+#define PIN_LED_CONNECT_RED     13  // LED đỏ: mất kết nối (active HIGH)
+#define PIN_LED_CONNECT_GREEN   12  // LED xanh: kết nối khỏe mạnh (active HIGH)
+#define PIN_LED_STATE_GREEN     4   // LED xanh: target on/waiting (active HIGH)
+#define PIN_LED_STATE_RED       14  // LED đỏ: target error (active HIGH)
+#define PIN_BUTTON              5   // nút nhấn (active LOW, pull-up)
 
 #define OTA_BTN_PIN             PIN_BUTTON
 #define OTA_BTN_ACTIVE_LOW      true
