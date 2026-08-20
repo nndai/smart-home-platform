@@ -64,7 +64,6 @@ private:
 
     // ── WiFi scan state ──
     bool _scanPending = false;
-    uint16_t _scanEventHandlerId = 0;
     String _scanSource;
     JsonDocument _scanResultDoc;
     bool _scanResultReady = false;

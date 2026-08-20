@@ -851,45 +851,16 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     _scanPending = true;
     _scanSource = source;
 
-    if (!_scanEventHandlerId) {
-        LT_IM(CMD, "Registering WiFi scan event handler");
-#if defined(LT_ARD_HAS_SERIAL)
-        _scanEventHandlerId = WiFi.onEvent([this](EventId event, EventInfo info) {
-            (void)event; (void)info;
-            this->_onScanDone();
-        });
-#elif defined(ARDUINO_ARCH_ESP8266)
-        _scanEventHandlerId = 1;
-        // ESP8266 WiFiEvent_t does not have a SCAN_DONE event.
-        // We will use WiFi.scanNetworksAsync() instead.
-#else
-        _scanEventHandlerId = WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
-            (void)event; (void)info;
-            this->_onScanDone();
-        }, ARDUINO_EVENT_WIFI_SCAN_DONE);
-#endif
-    }
-
     LT_IM(CMD, "Starting async WiFi scan...");
-    bool wifiDrop = false;
-    
 
     resp["status"] = "ok";
     resp["message"] = "Scan started";
-    resp["wifiDrop"] = wifiDrop;
+    resp["wifiDrop"] = false;
     _sendResponse(source, resp);
 
-#if defined(ARDUINO_ARCH_ESP8266)
-    static CommandHandlerT<T>* self = this;
-    self = this;
-    WiFi.scanDelete();
-    WiFi.scanNetworksAsync([](int count) {
-        (void)count;
-        if (self) self->_onScanDone();
+    compat::scanAsync([this]() {
+        this->_onScanDone();
     });
-#else
-    compat::scanStart();
-#endif
 }
 
 template <typename T>
