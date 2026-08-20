@@ -66,6 +66,7 @@ private:
     static constexpr uint32_t STATUS_TIMEOUT_MS  = 70000;  // 1p10s không nhận status → lỗi connect
     static constexpr uint32_t CONNECT_BLINK_ON   = 300;    // cụm nháy đỏ (wifi/mqtt/ntp)
     static constexpr uint32_t CONNECT_BLINK_OFF  = 2000;
+    static constexpr uint32_t CONNECT_AP_BLINK_MS = 500;   // xanh nháy đều khi ở AP (pairing)
     uint32_t _waitStartMs = 0;
     uint32_t _errorStartMs = 0;
     uint32_t _lastStatusRxMs = 0;

@@ -67,8 +67,16 @@ void RemoteSwitchDriver::updateLeds(uint32_t nowMs) {
 void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
     (void)nowMs;
 
+    // AP mode (pairing): chỉ cần AP đang chạy — xanh nháy đều,
+    // không check mqtt/ntp/timeout status
+    if (WiFi.getMode() == WIFI_AP) {
+        _ledConnRed.off();
+        _ledConnGreen.blink(CONNECT_AP_BLINK_MS);
+        return;
+    }
+
     // Check theo thứ tự: wifi → mqtt → ntp → timeout status (lỗi đầu tiên hiển thị)
-    bool wifiOk = (WiFi.getMode() == WIFI_AP) || (WiFi.status() == WL_CONNECTED);
+    bool wifiOk = (WiFi.status() == WL_CONNECTED);
     if (!wifiOk) {
         _ledConnGreen.off();
         _ledConnRed.blink(2, CONNECT_BLINK_ON, CONNECT_BLINK_OFF);
