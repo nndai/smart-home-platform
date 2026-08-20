@@ -1,6 +1,8 @@
 #pragma once
 #include "LogBase.h"
 
+#include <Config.h>
+
 class PowerLog : public LogBase {
 public:
     PowerLog(TimeManager& tm);
@@ -15,5 +17,5 @@ private:
     void _rotate();
     String _path();
 
-    static constexpr size_t MAX_FOLDER = 200 * 1024;
+    static constexpr size_t MAX_FOLDER = POWERLOG_MAX_FOLDER;
 };

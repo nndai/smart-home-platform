@@ -1,5 +1,7 @@
 #pragma once
 #include "LogBase.h"
+
+#include <Config.h>
 #include <FS.h>
 #include <LittleFS.h>
 #include "compat/log.h"
@@ -38,8 +40,8 @@ private:
     void _writeLine(const char* line);
     void _rotate();
 
-    static constexpr size_t QUEUE_SIZE = 128;
-    static constexpr size_t MAX_FILE_SIZE = 10 * 1024;
-    static constexpr size_t MAX_LINE_LEN = 100;
-    static constexpr size_t MAX_FILES = 5;
+    static constexpr size_t QUEUE_SIZE = SYSLOG_QUEUE_SIZE;
+    static constexpr size_t MAX_FILE_SIZE = SYSLOG_MAX_FILE_SIZE;
+    static constexpr size_t MAX_LINE_LEN = SYSLOG_MAX_LINE_LEN;
+    static constexpr size_t MAX_FILES = SYSLOG_MAX_FILES;
 };

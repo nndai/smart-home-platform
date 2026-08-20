@@ -83,6 +83,50 @@
 #define OTA_CHUNK_SIZE            1400    // buffer đọc HTTP khi tải firmware
 
 
+// ── Log Sizes ──
+#if defined(ARDUINO_ARCH_ESP8266) || defined(ARDUINO_ARCH_ESP32)
+// ESP chips: Nhiều flash hơn -> x4 giới hạn log
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE (128 * 4)
+#endif
+#ifndef SYSLOG_MAX_FILE_SIZE
+#define SYSLOG_MAX_FILE_SIZE (40 * 1024)
+#endif
+#ifndef SYSLOG_MAX_LINE_LEN
+#define SYSLOG_MAX_LINE_LEN (100 * 4)
+#endif
+#ifndef SYSLOG_MAX_FILES
+#define SYSLOG_MAX_FILES (5 * 4)
+#endif
+#ifndef TOGGLELOG_MAX_FOLDER
+#define TOGGLELOG_MAX_FOLDER (400 * 1024)
+#endif
+#ifndef POWERLOG_MAX_FOLDER
+#define POWERLOG_MAX_FOLDER (800 * 1024)
+#endif
+#else
+// LN882H (LibreTiny): Giữ nguyên giới hạn nhỏ do LittleFS bé
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 128
+#endif
+#ifndef SYSLOG_MAX_FILE_SIZE
+#define SYSLOG_MAX_FILE_SIZE (10 * 1024)
+#endif
+#ifndef SYSLOG_MAX_LINE_LEN
+#define SYSLOG_MAX_LINE_LEN 100
+#endif
+#ifndef SYSLOG_MAX_FILES
+#define SYSLOG_MAX_FILES 5
+#endif
+#ifndef TOGGLELOG_MAX_FOLDER
+#define TOGGLELOG_MAX_FOLDER (100 * 1024)
+#endif
+#ifndef POWERLOG_MAX_FOLDER
+#define POWERLOG_MAX_FOLDER (200 * 1024)
+#endif
+#endif
+
+
 // ── FreeRTOS task config (Stack & Priority) ──
 #if defined(ARDUINO_ARCH_ESP8266)
 // ESP8266 (NonOS Shim): usStackDepth tính bằng BYTE

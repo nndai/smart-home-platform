@@ -1,6 +1,8 @@
 #pragma once
 #include "LogBase.h"
 
+#include <Config.h>
+
 class ToggleLog : public LogBase {
 public:
     enum Source : uint8_t {
@@ -20,5 +22,5 @@ private:
     void _rotate();
     String _path();
 
-    static constexpr size_t MAX_FOLDER = 100 * 1024;
+    static constexpr size_t MAX_FOLDER = TOGGLELOG_MAX_FOLDER;
 };
