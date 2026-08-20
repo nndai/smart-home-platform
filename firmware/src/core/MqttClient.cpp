@@ -113,7 +113,7 @@ void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
 }
 
 void MqttClient::subscribeExtra(const String& topic) {
-    if (topic.isEmpty()) return;
+    if (topic.length() == 0) return;
     if (std::find(_extraTopics.begin(), _extraTopics.end(), topic) != _extraTopics.end()) return;
     
     if (_extraTopics.size() < 16) {

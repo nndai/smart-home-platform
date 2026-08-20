@@ -33,6 +33,22 @@ typedef void* SysTaskHandle;
 // We still keep the original FreeRTOS API around for existing drivers/libs
 #define compatRunSchedulerStep() vTaskDelete(NULL)
 
+// Provide a weak mock for ESP32 if CONFIG_FREERTOS_USE_TRACE_FACILITY is not enabled
+#if !defined(configUSE_TRACE_FACILITY) || configUSE_TRACE_FACILITY == 0
+#ifdef __cplusplus
+extern "C" {
+#endif
+    __attribute__((weak)) UBaseType_t uxTaskGetSystemState(TaskStatus_t* pxTaskStatusArray, UBaseType_t uxArraySize, uint32_t* pulTotalRunTime) {
+        (void)pxTaskStatusArray;
+        (void)uxArraySize;
+        if (pulTotalRunTime) *pulTotalRunTime = 0;
+        return 0;
+    }
+#ifdef __cplusplus
+}
+#endif
+#endif
+
 #elif defined(ARDUINO_ARCH_ESP8266)
 
 // ── TaskScheduler Implementation (ESP8266) ──
@@ -46,6 +62,40 @@ typedef void* SysTaskHandle;
 #define pdMS_TO_TICKS(ms) (ms)
 #define portMAX_DELAY 0xFFFFFFFF
 #define _TASK_SCHEDULING_OPTIONS
+
+typedef uint32_t UBaseType_t;
+
+typedef enum eTaskState {
+    eRunning = 0,
+    eReady,
+    eBlocked,
+    eSuspended,
+    eDeleted,
+    eInvalid
+} eTaskState;
+
+typedef struct xTASK_STATUS {
+    const char* pcTaskName;
+    UBaseType_t uxCurrentPriority;
+    eTaskState eCurrentState;
+    uint32_t usStackHighWaterMark;
+} TaskStatus_t;
+
+inline UBaseType_t uxTaskGetNumberOfTasks() {
+    return 1;
+}
+
+inline UBaseType_t uxTaskGetSystemState(TaskStatus_t *pxTaskStatusArray, UBaseType_t uxArraySize, uint32_t *pulTotalRunTime) {
+    if (uxArraySize > 0 && pxTaskStatusArray != nullptr) {
+        pxTaskStatusArray[0].pcTaskName = "loop";
+        pxTaskStatusArray[0].uxCurrentPriority = 1;
+        pxTaskStatusArray[0].eCurrentState = eRunning;
+        pxTaskStatusArray[0].usStackHighWaterMark = ESP.getFreeContStack();
+        if (pulTotalRunTime) *pulTotalRunTime = 0;
+        return 1;
+    }
+    return 0;
+}
 
 typedef void* QueueHandle_t;
 QueueHandle_t xQueueCreate(uint32_t uxQueueLength, uint32_t uxItemSize);

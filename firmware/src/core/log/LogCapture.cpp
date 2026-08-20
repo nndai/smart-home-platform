@@ -23,11 +23,11 @@
 #include <esp8266_peri.h>
 #endif
 
-#define LINE_MAX 256
+#define LINE_LOG_MAX 256
 #define PREINIT_MAX 15
 #define PREINIT_LINE_MAX 128
 
-static char s_lineBuf[LINE_MAX];
+static char s_lineBuf[LINE_LOG_MAX];
 static int  s_linePos = 0;
 
 static char* s_preBuffer[PREINIT_MAX];
@@ -55,7 +55,7 @@ void logCaptureChar(char c) {
             }
         }
         s_linePos = 0;
-    } else if (c != '\r' && s_linePos < (LINE_MAX - 1)) {
+    } else if (c != '\r' && s_linePos < (LINE_LOG_MAX - 1)) {
         s_lineBuf[s_linePos++] = c;
     }
 }
