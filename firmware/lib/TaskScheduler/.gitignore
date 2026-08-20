@@ -1,0 +1,33 @@
+# Claude Code
+.claude/
+
+# VS Code
+*.code-workspace
+.vscode/
+
+# Build artifacts
+build/
+cmake-build-*/
+CMakeLists.txt
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+.wip/
