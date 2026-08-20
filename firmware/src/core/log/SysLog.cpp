@@ -22,8 +22,14 @@ void SysLog::ingest(const char* line) {
 void SysLog::writeFile(const char* line) {
     if (!line || !_mounted || !_fileEnabled || !_queue) return;
 
+    // Nhận diện level từ prefix: dòng LT_ dạng "[I][SYS] ..." / "[E] ...",
+    // hoặc format cũ "I ..."/"E ..." (log_capture LN882H).
     uint8_t level = LT_LEVEL_INFO;
-    char c = line[0];
+    const char* p = line;
+    if (line[0] == '[' && line[2] == ']') {
+        p = line + 1;
+    }
+    char c = p[0];
     if (c == 'T') level = LT_LEVEL_TRACE;
     else if (c == 'D') level = LT_LEVEL_DEBUG;
     else if (c == 'I') level = LT_LEVEL_INFO;

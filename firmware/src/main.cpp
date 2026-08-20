@@ -100,22 +100,6 @@ static void onMqttMessage(const String& topic, const String& payload);
 static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
 static void sendResponse(const String& target, const String& json);
-void setLogMqttEnable(bool enable);
-bool isLogMqttEnabled();
-
-static LogManager::LogCallback s_logCb;
-static bool _logMqttActive = false;
-
-void setLogMqttEnable(bool enable) {
-    _logMqttActive = enable;
-    if (enable && s_logCb) {
-        logCaptureFlushCallback(s_logCb);
-    }
-}
-
-bool isLogMqttEnabled() {
-    return _logMqttActive;
-}
 
 // ── WebSockets Mutex (Cooperative SpinLock) ──
 static volatile bool g_wsLocked = false;
@@ -132,7 +116,10 @@ static void safeWsBroadcast(const String& json) {
 // ── Setup ──
 void setup() {
     delay(10);
-   
+    // Bắt toàn bộ output serial (log LT_ + log SDK wifi) → LogManager → file.
+    // Log [guard] của bootguard (os_printf trong constructor, trước setup)
+    // không đi qua hook nên không bị ghi file.
+    logCaptureInit();
     LT_IM(SYS, "=== Smart Home Controller ===");
     LT_IM(SYS, "FW Build: %s", buildStr());
     LT_IM(SYS, "Boot Reason: %s", chip::systemResetReason().c_str());
@@ -172,11 +159,15 @@ void setup() {
     ProfileConfig& cfg = configManager.get();
 
     logManager.begin();
-    logManager.setSysLogFileEnabled(cfg.connMode != ConnMode::DEBUG_WS && cfg.sysLogFileEnabled);
+    // Ghi file khi config bật (logFile=ON), bất kể connMode — user muốn
+    // forward toàn bộ log sang file kể cả khi debug qua WS.
+    logManager.setSysLogFileEnabled(cfg.sysLogFileEnabled);
     logManager.setSysLogFileLevel(cfg.sysLogFileLevel);
+    // Ghi các dòng log lưu tạm (trước LITTLEFS init) vào file và xóa cấp
+    // phát động; từ đây log đẩy thẳng vào LogManager.
     logCaptureFlushFile(&logManager);
 
-    s_logCb = [](const String& line) {
+    logManager.setLogCallback([&logManager](const String& line) {
         JsonDocument logJson;
         logJson["cmd"] = "log";
         logJson["msg"] = line;
@@ -185,11 +176,10 @@ void setup() {
         if (g_connMode == ConnMode::DEBUG_WS || g_connMode == ConnMode::AP_WS) {
             safeWsBroadcast(json);
         }
-        if (_logMqttActive) {
+        if (logManager.isMqttLogEnabled()) {
             mqttClient.publish(mqttBaseTopic() + "/log", json);
         }
-        };
-    logManager.setLogCallback(s_logCb);
+        });
 
     configManager.print();
 
@@ -373,10 +363,6 @@ void taskWsLoop(void* pvParams) {
         case ConnMode::DEBUG_WS:
             wsServer.handle();
             chip::scanPumpDoneEvent();
-            if (!logCaptureIsDone() && wsServer.clientCount() > 0 && s_logCb) {
-                logCaptureFlushCallback(s_logCb);
-            }
-
             break;
 
         case ConnMode::AP_WS:

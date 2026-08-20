@@ -546,9 +546,8 @@ void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocume
 
 template <typename T>
 void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    extern void setLogMqttEnable(bool);
     bool en = payload["enabled"].as<bool>();
-    setLogMqttEnable(en);
+    _log->setMqttLogEnabled(en);
     resp["status"] = "ok";
     resp["enabled"] = en;
     _sendResponse(source, resp);
@@ -556,9 +555,9 @@ void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument
 
 template <typename T>
 void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    extern bool isLogMqttEnabled();
+    (void)payload;
     resp["status"] = "ok";
-    resp["enabled"] = isLogMqttEnabled();
+    resp["enabled"] = _log->isMqttLogEnabled();
     _sendResponse(source, resp);
 }
 
