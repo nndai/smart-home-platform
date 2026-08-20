@@ -1,7 +1,5 @@
 package com.nndai.myhome.presentation.main
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -35,6 +34,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.nndai.myhome.R
 import com.nndai.myhome.data.repository.AuthRepository
 import com.nndai.myhome.data.repository.DeviceManagerRepository
 import com.nndai.myhome.presentation.device.management.DeviceManagementScreen
@@ -43,13 +43,13 @@ import com.nndai.myhome.presentation.profile.ProfileScreen
 
 sealed class BottomNavItem(
     val route: String,
-    val title: String,
+    val titleRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    data object Dashboard : BottomNavItem("tab_dashboard", "Dashboard", Icons.Filled.Home, Icons.Outlined.Home)
-    data object Devices : BottomNavItem("tab_devices", "Devices", Icons.Filled.Devices, Icons.Outlined.Devices)
-    data object Profile : BottomNavItem("tab_profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person)
+    data object Dashboard : BottomNavItem("tab_dashboard", R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home)
+    data object Devices : BottomNavItem("tab_devices", R.string.nav_devices, Icons.Filled.Devices, Icons.Outlined.Devices)
+    data object Profile : BottomNavItem("tab_profile", R.string.nav_profile, Icons.Filled.Person, Icons.Outlined.Person)
 }
 
 private val bottomNavItems = listOf(
@@ -91,18 +91,19 @@ fun MainScreen(
 
                 bottomNavItems.forEach { item ->
                     val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+                    val title = stringResource(item.titleRes)
 
                     NavigationBarItem(
                         icon = {
                             Icon(
                                 imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                                contentDescription = item.title,
+                                contentDescription = title,
                                 modifier = Modifier.size(22.dp)
                             )
                         },
                         label = {
                             Text(
-                                text = item.title,
+                                text = title,
                                 style = MaterialTheme.typography.labelSmall
                             )
                         },

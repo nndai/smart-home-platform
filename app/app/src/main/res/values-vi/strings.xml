@@ -1,0 +1,310 @@
+<resources>
+    <!-- App Name -->
+    <string name="app_name">Nhà Tôi</string>
+
+    <!-- Bottom Navigation (Root) -->
+    <string name="nav_home">Tổng quan</string>
+    <string name="nav_devices">Thiết bị</string>
+    <string name="nav_profile">Tôi</string>
+
+    <!-- Sub Navigation (Device Detail) -->
+    <string name="nav_dashboard">Bảng điều khiển</string>
+    <string name="nav_history">Lịch sử</string>
+    <string name="nav_log">Nhật ký</string>
+    <string name="nav_settings">Cài đặt</string>
+    <string name="nav_system">Hệ thống</string>
+
+    <!-- Profile & App Settings Screen -->
+    <string name="profile_title">Cá nhân</string>
+    <string name="profile_signed_in">Đã đăng nhập</string>
+    <string name="profile_devices_synced">Thiết bị của bạn đã được đồng bộ</string>
+    <string name="profile_sign_out">Đăng xuất</string>
+    <string name="profile_guest">Khách</string>
+    <string name="profile_sign_in_hint">Đăng nhập để quản lý thiết bị của bạn</string>
+    <string name="profile_sign_in">Đăng nhập</string>
+    <string name="profile_app_settings">Cài đặt ứng dụng</string>
+    <string name="profile_language">Ngôn ngữ</string>
+    <string name="profile_select_language">Chọn ngôn ngữ</string>
+    <string name="profile_appearance">Giao diện</string>
+    <string name="profile_theme_system">Theo hệ thống</string>
+    <string name="profile_privacy">Chính sách quyền riêng tư</string>
+    <string name="profile_about">Giới thiệu</string>
+    <string name="profile_version">Phiên bản %s</string>
+
+    <!-- Home & Device Management Screen -->
+    <string name="home_title">Nhà Tôi</string>
+    <string name="home_sign_in_hint">Đăng nhập để quản lý thiết bị của bạn</string>
+    <string name="devices_title">Thiết bị</string>
+    <string name="devices_registered_count">%d thiết bị đã đăng ký</string>
+    <string name="devices_empty_title">Chưa có thiết bị nào</string>
+    <string name="devices_empty_hint_home">Vào tab Thiết bị để thêm thiết bị đầu tiên của bạn</string>
+    <string name="devices_empty_hint_logged_in">Nhấn + để thêm thiết bị đầu tiên của bạn</string>
+    <string name="devices_empty_hint_guest">Đăng nhập để quản lý thiết bị</string>
+    <string name="devices_status_transferred">Đã đổi chủ</string>
+    <string name="devices_status_online">Trực tuyến</string>
+    <string name="devices_status_connecting">Đang kết nối...</string>
+    <string name="devices_status_offline">Ngoại tuyến</string>
+    <string name="devices_status_unknown">Không xác định</string>
+    <string name="add_device">Thêm thiết bị</string>
+
+    <!-- Dashboard - Fault Dialogs -->
+    <string name="fault_dry_run_title">CẢNH BÁO: HỤT NƯỚC</string>
+    <string name="fault_dry_run_desc">Phát hiện máy bơm chạy khô không có nước - bị hụt nước! Bơm đã tự động ngắt relay để bảo vệ động cơ khỏi cháy hỏng.</string>
+    <string name="fault_critical_current_title">CẢNH BÁO: DÒNG ĐIỆN CỰC CAO</string>
+    <string name="fault_critical_current_desc">Dòng điện vượt quá ngưỡng cực đại cho phép! Bơm đã ngắt khẩn cấp để tránh hư hỏng hệ thống.</string>
+    <string name="fault_overload_title">CẢNH BÁO: QUÁ TẢI BƠM</string>
+    <string name="fault_overload_desc">Phát hiện motor bị quá tải! Hệ thống đã ngắt điện để phòng tránh chập cháy.</string>
+    <string name="fault_generic_title">CẢNH BÁO SỰ CỐ</string>
+    <string name="fault_generic_desc">Phát hiện lỗi nguy hại trên hệ thống bơm.</string>
+
+    <!-- Dashboard - Fault Dialog Buttons -->
+    <string name="close">Đóng</string>
+    <string name="clear_fault">Xác nhận</string>
+
+    <!-- Dashboard - Relay Status -->
+    <string name="relay_on">ĐANG BẬT</string>
+    <string name="relay_off">ĐANG TẮT</string>
+    <string name="relay_status">Relay</string>
+
+    <!-- Dashboard - Pump/Switch State -->
+    <string name="pump_state_title">TRẠNG THÁI BƠM</string>
+    <string name="switch_state_title">TRẠNG THÁI CÔNG TẮC</string>
+
+    <!-- Dashboard - Pump State Labels -->
+    <string name="pump_state_off">ĐANG TẮT</string>
+    <string name="pump_state_running_ok">ĐANG CHẠY</string>
+    <string name="pump_state_high_current">DÒNG CAO</string>
+    <string name="pump_state_dry_run">HỤT NƯỚC</string>
+    <string name="pump_state_critical_current">DÒNG CỰC CAO</string>
+    <string name="pump_state_overload">QUÁ TẢI</string>
+
+    <!-- Dashboard - Metrics -->
+    <string name="metric_current">Dòng điện</string>
+    <string name="metric_power">Công suất</string>
+    <string name="metric_voltage">Điện áp</string>
+    <string name="metric_apparent_power">Công suất biểu kiến</string>
+    <string name="metric_power_factor">Hệ số công suất</string>
+    <string name="metric_energy">Điện năng</string>
+    <string name="metric_temperature">Nhiệt độ</string>
+    <string name="metric_rssi">RSSI</string>
+
+    <!-- Dashboard - Control Section -->
+    <string name="pump_control">ĐIỀU KHIỂN BƠM</string>
+    <string name="switch_control">ĐIỀU KHIỂN CÔNG TẮC</string>
+
+    <!-- Dashboard - ViewModel Messages -->
+    <string name="pump_turned_on">Đã bật máy bơm</string>
+    <string name="pump_turned_off">Đã tắt máy bơm</string>
+    <string name="failed_update_relay">Không thể cập nhật relay</string>
+    <string name="pump_fault_cleared">Đã xóa lỗi bơm</string>
+    <string name="failed_clear_fault">Không thể xóa lỗi</string>
+    <string name="relay_toggle_timeout">Hết thời gian chờ chuyển relay (10s)</string>
+    <string name="failed_send_toggle">Không thể gửi lệnh chuyển relay</string>
+
+    <!-- Pump Control Button -->
+    <string name="pump_btn_turn_off_desc">Tắt</string>
+    <string name="pump_btn_turn_on_desc">Bật</string>
+    <string name="pump_btn_processing">ĐANG XỬ LÝ...</string>
+    <string name="pump_btn_turn_off_relay">TẮT RELAY</string>
+    <string name="pump_btn_turn_on_relay">BẬT RELAY</string>
+
+    <!-- History Screen -->
+    <string name="history_title">LỊCH SỬ NĂNG LƯỢNG &amp; THAO TÁC</string>
+    <string name="history_sync">Đồng bộ</string>
+    <string name="history_daily_consumption">Tiêu thụ điện ngày</string>
+    <string name="history_toggle_count_format">%d lần</string>
+    <string name="history_toggle_count_today">Bật/tắt trong ngày</string>
+    <string name="history_daily_chart_title">TIÊU THỤ TRONG NGÀY</string>
+    <string name="history_hour_tooltip">Giờ %1$s: %2$d Wh</string>
+    <string name="history_monthly_chart_title">TIÊU THỤ HÀNG THÁNG</string>
+    <string name="history_unit_kwh">Đơn vị: kWh</string>
+    <string name="history_unit_wh">Đơn vị: Wh</string>
+    <string name="history_total">Tổng: %s</string>
+    <string name="history_times">(%d lần)</string>
+    <string name="history_monthly_daily_chart_title">TIÊU THỤ TRONG THÁNG</string>
+    <string name="history_month_label">Tháng %s</string>
+    <string name="history_day_tooltip">Ngày %1$d/%2$s: %3$s</string>
+    <string name="history_toggle_log_title">NHẬT KÝ BẬT TẮT</string>
+    <string name="history_no_toggle_events">Không có ghi nhận thao tác bật/tắt trong ngày này.</string>
+    <string name="history_today">Hôm nay</string>
+    <string name="history_select_date">Chọn ngày</string>
+    <string name="history_select_month">Chọn tháng</string>
+    <string name="history_choose">Chọn</string>
+    <string name="history_cancel">Hủy</string>
+    <string name="history_month_header">Tháng %1$02d/%2$04d</string>
+    <string name="history_year_label">Năm %d</string>
+    <string-array name="history_week_days">
+        <item>T2</item>
+        <item>T3</item>
+        <item>T4</item>
+        <item>T5</item>
+        <item>T6</item>
+        <item>T7</item>
+        <item>CN</item>
+    </string-array>
+    <string-array name="history_month_names">
+        <item>Tháng 1</item>
+        <item>Tháng 2</item>
+        <item>Tháng 3</item>
+        <item>Tháng 4</item>
+        <item>Tháng 5</item>
+        <item>Tháng 6</item>
+        <item>Tháng 7</item>
+        <item>Tháng 8</item>
+        <item>Tháng 9</item>
+        <item>Tháng 10</item>
+        <item>Tháng 11</item>
+        <item>Tháng 12</item>
+    </string-array>
+
+    <!-- Log Screen -->
+    <string name="log_title">Device Logs</string>
+    <string name="log_clear_logs">Xóa log</string>
+    <string name="log_listening">Đang nghe...</string>
+    <string name="log_off">Tắt</string>
+    <string name="log_raw_json_hint">Nhập raw JSON (ví dụ: {"cmd":"getStatus"})</string>
+    <string name="log_send">Gửi</string>
+    <string name="log_mode_live">Trực tiếp</string>
+    <string name="log_mode_file">File nhật ký (/logs/sys/)</string>
+    <string name="log_no_file_data">Chưa có dữ liệu file log hệ thống cho ngày này</string>
+    <string name="log_sync_from_device">Đồng bộ từ thiết bị</string>
+    <string name="log_delete_file_title">Xóa file log hệ thống</string>
+    <string name="log_delete_file_confirm">Bạn có chắc chắn muốn xóa file %1$s khỏi thiết bị không?</string>
+    <string name="log_delete_action">Xóa</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_device_protection_mode">Chế độ bảo vệ thiết bị</string>
+    <string name="settings_pump_mode">CHẾ ĐỘ BƠM</string>
+    <string name="settings_smart_protection_enabled">Đã bật bảo vệ thông minh</string>
+    <string name="settings_switch_mode">CHẾ ĐỘ CÔNG TẮC</string>
+    <string name="settings_manual_switch_only">Chỉ công tắc thủ công</string>
+    <string name="settings_network_connection_mode">Chế độ kết nối mạng</string>
+    <string name="settings_wifi_mqtt">WiFi MQTT</string>
+    <string name="settings_ap_hotspot">AP Hotspot</string>
+    <string name="settings_wifi_debug">WiFi Debug</string>
+    <string name="settings_wifi_sta_credentials">Thông tin WiFi STA</string>
+    <string name="settings_mqtt_server">Cài đặt MQTT Server</string>
+    <string name="settings_wifi_ap_hotspot_settings">Cài đặt WiFi AP Hotspot</string>
+    <string name="settings_wifi_debug_settings">Cài đặt WiFi Debug</string>
+    <string name="settings_other_network_modes">Chế độ mạng khác (Tùy chọn/Nâng cao)</string>
+    <string name="settings_toggle_other_network">Mở/đóng cài đặt mạng khác</string>
+    <string name="settings_wifi_sta_mqtt">Cài đặt WiFi STA &amp; MQTT</string>
+    <string name="settings_open_network">Mạng mở (Không cần mật khẩu)</string>
+    <string name="settings_save_network">Lưu cài đặt mạng</string>
+    <string name="settings_label_wifi_ssid">WiFi SSID</string>
+    <string name="settings_label_wifi_password">Mật khẩu WiFi</string>
+    <string name="settings_label_ap_ssid">AP SSID</string>
+    <string name="settings_label_ap_password">Mật khẩu AP</string>
+    <string name="settings_label_debug_ssid">Debug SSID</string>
+    <string name="settings_label_debug_password">Mật khẩu Debug</string>
+    <string name="settings_label_mqtt_host">MQTT Server Host</string>
+    <string name="settings_label_username">Tên đăng nhập</string>
+    <string name="settings_label_password">Mật khẩu</string>
+    <string name="settings_label_topic">Topic</string>
+    <string name="settings_label_port">Cổng</string>
+    <string name="settings_scan">Quét</string>
+    <string name="settings_scanning">Đang quét...</string>
+    <string name="settings_label_off">Tắt</string>
+    <string name="settings_label_dry_run">Khô nước</string>
+    <string name="settings_label_running">Đang chạy</string>
+    <string name="settings_label_overload">Quá tải</string>
+    <string name="settings_protection_thresholds">Ngưỡng bảo vệ (mA)</string>
+    <string name="settings_timeouts">Thời gian chờ (ms)</string>
+    <string name="settings_relay_startup_mode">Chế độ khởi động Relay</string>
+    <string name="settings_relay_off">OFF</string>
+    <string name="settings_relay_on">ON</string>
+    <string name="settings_relay_keep_last">KEEP LAST</string>
+    <string name="settings_calibration_coefficients">Hệ số hiệu chỉnh</string>
+    <string name="settings_label_current_cal">Dòng điện (cCal)</string>
+    <string name="settings_label_voltage_cal">Điện áp (vCal)</string>
+    <string name="settings_label_power_cal">Công suất (pCal)</string>
+    <string name="settings_auto_calibrate">Hiệu chỉnh theo giá trị thực tế</string>
+    <string name="settings_toggle_calibrate">Mở/đóng hiệu chỉnh</string>
+    <string name="settings_label_current">Dòng điện</string>
+    <string name="settings_label_voltage">Điện áp</string>
+    <string name="settings_label_power">Công suất</string>
+    <string name="settings_label_dry_run_timeout">Thời gian chờ khô</string>
+    <string name="settings_label_overload_timeout">Thời gian chờ quá tải</string>
+    <string name="settings_display_off_threshold">Ngưỡng Tắt (mA)</string>
+    <string name="settings_display_dry_threshold">Ngưỡng Khô nước (mA)</string>
+    <string name="settings_display_running_threshold">Ngưỡng Đang chạy (mA)</string>
+    <string name="settings_display_overload_threshold">Ngưỡng Quá tải (mA)</string>
+    <string name="settings_display_dry_timeout">Thời gian chờ Khô (ms)</string>
+    <string name="settings_display_overload_timeout">Thời gian chờ Quá tải (ms)</string>
+    <string name="settings_display_cal_current">Hiệu chỉnh Dòng (cCal)</string>
+    <string name="settings_display_cal_voltage">Hiệu chỉnh Áp (vCal)</string>
+    <string name="settings_display_cal_power">Hiệu chỉnh Công suất (pCal)</string>
+    <string name="settings_display_log_level">Cấp độ Log Hệ thống</string>
+    <string name="settings_rescan">Quét lại</string>
+    <string name="settings_close">Đóng</string>
+    <string name="settings_system_logging">Ghi log hệ thống</string>
+    <string name="settings_enable_system_log">Bật ghi log hệ thống</string>
+    <string name="settings_label_log_level">Cấp độ log</string>
+    <string name="settings_danger_zone">Khu vực nguy hiểm</string>
+    <string name="settings_fetching_config">Đang tải cấu hình thiết bị...</string>
+    <string name="settings_retrying">Đang thử lại mỗi 5 giây cho đến khi kết nối...</string>
+    <string name="settings_saving">Đang lưu cấu hình...</string>
+    <string name="settings_rebooting">Đang khởi động lại thiết bị...</string>
+    <string name="settings_available_wifi">Mạng WiFi khả dụng</string>
+    <string name="settings_hidden_network">&lt;Mạng ẩn&gt;</string>
+    <string name="settings_secured_network">Mạng có bảo mật</string>
+    <string name="settings_no_wifi">Không tìm thấy mạng WiFi.</string>
+    <string name="settings_wifi_pass_length">Mật khẩu Wi-Fi phải từ 8 đến 64 ký tự</string>
+    <string name="settings_ap_pass_length">Mật khẩu AP phải từ 8 đến 64 ký tự</string>
+    <string name="settings_debug_pass_length">Mật khẩu Debug phải từ 8 đến 64 ký tự</string>
+    <string name="settings_threshold_order">Ngưỡng dòng phải theo thứ tự: Off &lt; Dry Run &lt; Running &lt; Overload</string>
+    <string name="settings_timeout_positive">Thời gian Timeout phải lớn hơn 0</string>
+    <string name="settings_enter_real_values">Vui lòng nhập ít nhất một giá trị thực tế</string>
+    <string name="settings_confirm_save_title">Xác nhận lưu %s</string>
+    <string name="settings_confirm_save_message">Lưu giá trị mới cho %1$s: %2$s?</string>
+    <string name="settings_confirm_save">Lưu ngay</string>
+    <string name="settings_confirm_and_save">Xác nhận &amp; Lưu</string>
+    <string name="settings_confirm_network_title">Xác nhận cài đặt mạng</string>
+    <string name="settings_network_modified">Gửi %1$d thay đổi cài đặt mạng đến thiết bị?\n\nCác trường đã sửa: %2$s</string>
+    <string name="settings_save_local_mqtt">Lưu thông số kết nối MQTT cục bộ?</string>
+    <string name="settings_switch_pump_mode">Chuyển sang CHẾ ĐỘ BƠM?</string>
+    <string name="settings_switch_switch_mode">Chuyển sang CHẾ ĐỘ CÔNG TẮC?</string>
+    <string name="settings_pump_mode_desc">CHẾ ĐỘ BƠM bật các tính năng bảo vệ thông minh. Nó sẽ tự động tắt relay nếu phát hiện \'Hụt nước\' hoặc \'Quá tải\'. Chỉ sử dụng cho máy bơm nước.</string>
+    <string name="settings_switch_mode_desc">CHẾ ĐỘ CÔNG TẮC tắt tất cả bảo vệ thông minh cho máy bơm. Thiết bị sẽ hoạt động như công tắc thủ công thông thường.</string>
+    <string name="settings_change_relay_mode">Đổi chế độ khởi động Relay?</string>
+    <string name="settings_relay_mode_message">Đặt chế độ khởi động relay thành %s?</string>
+    <string name="settings_enable_log_title">Bật ghi log hệ thống?</string>
+    <string name="settings_disable_log_title">Tắt ghi log hệ thống?</string>
+    <string name="settings_enable_log_msg">Bật ghi các sự kiện hệ thống vào file?</string>
+    <string name="settings_disable_log_msg">Tắt ghi các sự kiện hệ thống vào file?</string>
+    <string name="settings_reboot_required">Cần khởi động lại</string>
+    <string name="settings_reboot_required_msg">Lưu cấu hình thành công. Thiết bị cần khởi động lại để áp dụng cài đặt mới. Khởi động lại ngay?</string>
+    <string name="settings_reboot_now">Khởi động lại ngay</string>
+    <string name="settings_later">Để sau</string>
+    <string name="settings_reboot_device">Khởi động lại thiết bị</string>
+    <string name="settings_reboot_device_msg">Thiết bị sẽ khởi động lại. Kết nối sẽ bị mất tạm thời.</string>
+    <string name="settings_reboot">Khởi động lại</string>
+    <string name="settings_factory_reset">Khôi phục cài đặt gốc</string>
+    <string name="settings_factory_reset_msg">Thao tác này sẽ xóa TẤT CẢ cấu hình và khôi phục mặc định. Thiết bị sẽ khởi động lại.</string>
+    <string name="settings_reset">Đặt lại</string>
+    <string name="settings_confirm_calibrate_title">Xác nhận Hiệu chỉnh Thực tế</string>
+    <string name="settings_confirm_calibrate_msg">Gửi các thông số thực tế sau đến thiết bị để tính toán lại hệ số calib?\n\n%s</string>
+    <string name="settings_send_calibration">Gửi Hiệu Chỉnh</string>
+    <string name="settings_reset_calibration_title">Khôi phục Hiệu chỉnh Mặc định</string>
+    <string name="settings_reset_calibration_msg">Xác nhận khôi phục các hệ số cCal, vCal, pCal về mặc định phần cứng ban đầu?</string>
+    <string name="settings_reset_to_default">Khôi phục Mặc định</string>
+
+    <!-- Language Selector -->
+    <string name="language">Ngôn ngữ</string>
+    <string name="lang_en">English</string>
+    <string name="lang_vi">Tiếng Việt</string>
+
+    <!-- System / Device Info Screen -->
+    <string name="system_no_info">Chưa có thông tin hệ thống</string>
+    <string name="system_refresh">Làm mới</string>
+    <string name="system_refreshing">Đang làm mới...</string>
+
+    <!-- Connection Banner -->
+    <string name="conn_connected">Đã kết nối</string>
+    <string name="conn_connected_via">Đã kết nối qua %s</string>
+    <string name="conn_transport_ready">Đã kết nối %s, đang bắt tay...</string>
+    <string name="conn_connecting">Đang kết nối...</string>
+    <string name="conn_disconnected">Mất kết nối - Chạm để thử lại</string>
+    <string name="conn_failed">Kết nối thất bại - Chạm để thử lại</string>
+    <string name="conn_idle">Chờ</string>
+</resources>
