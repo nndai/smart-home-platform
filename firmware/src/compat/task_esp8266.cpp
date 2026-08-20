@@ -170,7 +170,7 @@ void compatRunSchedulerStep() {
         // ── Check for stack overflow (Canary) ──
         if (t.stack && !t.finished) {
             if (memcmp(t.stack, STACK_CANARY_PATTERN, sizeof(STACK_CANARY_PATTERN)) != 0) {
-                Serial.printf("\r\n[FATAL] Task '%s' STACK OVERFLOW! Restarting...\r\n", 
+                ets_printf("\r\n[FATAL] Task '%s' STACK OVERFLOW! Restarting...\r\n",
                               t.name ? t.name : "unknown");
                 delay(100);
                 ESP.restart();
@@ -235,7 +235,7 @@ BaseType_t xTaskCreate(
 
     t.stack = (uint8_t*)malloc(sz);
     if (!t.stack) {
-        Serial.printf("[FATAL] Task '%s' failed to allocate %u bytes of stack!\r\n", 
+        ets_printf("[FATAL] Task '%s' failed to allocate %u bytes of stack!\r\n",
                       t.name ? t.name : "unknown", (unsigned)sz);
         return pdFAIL;
     }
