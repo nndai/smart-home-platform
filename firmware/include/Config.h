@@ -32,7 +32,7 @@
 
 // ── System / RTOS ──
 #define WDT_TIMEOUT_MS            15000   // watchdog timeout
-#define WDT_FEED_INTERVAL_MS      2000    // task wdtFeed feed mỗi 2s
+#define WDT_FEED_INTERVAL_MS      1000    // task wdtFeed feed mỗi 1s
 
 // heap dưới mức này -> restart
 #if defined(ARDUINO_ARCH_ESP8266)

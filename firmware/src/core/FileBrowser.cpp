@@ -171,7 +171,7 @@ String FileBrowser::readFile(const String& path, size_t offset, size_t limit, bo
         data.reserve(toRead + 64);
         size_t remaining = toRead;
         while (remaining > 0) {
-            size_t n = f.read((uint8_t*)buf, min(sizeof(buf) - 1, remaining));
+            size_t n = f.read((uint8_t*)buf, std::min<size_t>(sizeof(buf) - 1, remaining));
             if (n == 0) break;
             buf[n] = '\0';
             data += buf;

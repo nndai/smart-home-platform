@@ -2,13 +2,17 @@
 #include "Config.h"
 #include <time.h>
 
+SysLog* g_sysLogInstance = nullptr;
+
 SysLog::SysLog(TimeManager& tm) : LogBase(tm, DIR) {}
 
 bool SysLog::begin() {
     _mounted = true;
     _queue = xQueueCreate(QUEUE_SIZE, sizeof(LogQueueEntry));
     if (_queue) {
-        xTaskCreate(_writerTask, "logWriter", TASK_LOGWRITER_STACK, this, TASK_LOGWRITER_PRIO, &_writerTaskHandle);
+        // Use a global pointer for the static callback
+        g_sysLogInstance = this;
+        sysTaskCreate("logWriter", 50, _writerTaskCb, TASK_LOGWRITER_STACK, TASK_LOGWRITER_PRIO);
     }
     return true;
 }
@@ -52,18 +56,22 @@ void SysLog::setEnabled(bool en) { _fileEnabled = en; }
 void SysLog::setLevel(uint8_t lv) { _fileLevel = lv; }
 void SysLog::setCallback(LogCallback cb) { _cb = cb; }
 
-void SysLog::_writerTask(void* param) {
-    SysLog* self = static_cast<SysLog*>(param);
+uint32_t SysLog::_writerTaskCb() {
+    if (!g_sysLogInstance) return TASK_KEEP_INTERVAL;
+    
     LogQueueEntry entry;
-
-    while (1) {
-        if (xQueueReceive(self->_queue, &entry, portMAX_DELAY) == pdTRUE) {
+    // Process up to 5 entries per tick to prevent blocking TaskScheduler
+    for (int i = 0; i < 5; i++) {
+        if (xQueueReceive(g_sysLogInstance->_queue, &entry, 0) == pdTRUE) {
             if (entry.line) {
-                self->_writeLine(entry.line);
+                g_sysLogInstance->_writeLine(entry.line);
+                free(entry.line);
             }
-            free(entry.line);
+        } else {
+            break;
         }
     }
+    return TASK_KEEP_INTERVAL;
 }
 
 void SysLog::_writeLine(const char* line) {

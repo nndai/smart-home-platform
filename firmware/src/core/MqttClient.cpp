@@ -1,6 +1,7 @@
 #include "core/MqttClient.h"
 #include <Config.h>
 #include "compat/tls.h"
+#include <algorithm>
 
 static MqttClient* s_instance = nullptr;
 
@@ -45,6 +46,7 @@ bool MqttClient::connect() {
         if (ok) {
             _mqtt.subscribe((_topic + "/cmd").c_str());
             _mqtt.subscribe((_topic + "/otachunk").c_str());
+            resubscribeExtra();
         }
         return ok;
     }
@@ -58,6 +60,7 @@ bool MqttClient::connect() {
     if (ok) {
         _mqtt.subscribe((_topic + "/cmd").c_str());
         _mqtt.subscribe((_topic + "/otachunk").c_str());
+        resubscribeExtra();
     }
     return ok;
 }
@@ -107,4 +110,26 @@ void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
     if (s_instance->_callback) {
         s_instance->_callback(String(topic), msg);
     }
+}
+
+void MqttClient::subscribeExtra(const String& topic) {
+    if (topic.isEmpty()) return;
+    if (std::find(_extraTopics.begin(), _extraTopics.end(), topic) != _extraTopics.end()) return;
+    
+    if (_extraTopics.size() < 16) {
+        _extraTopics.push_back(topic);
+    }
+    if (isConnected()) {
+        _mqtt.subscribe(topic.c_str());
+    }
+}
+
+void MqttClient::resubscribeExtra() {
+    for (const auto& t : _extraTopics) {
+        _mqtt.subscribe(t.c_str());
+    }
+}
+
+bool MqttClient::isExtraTopic(const String& topic) const {
+    return std::find(_extraTopics.begin(), _extraTopics.end(), topic) != _extraTopics.end();
 }

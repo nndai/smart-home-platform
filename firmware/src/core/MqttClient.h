@@ -5,6 +5,7 @@
 #include "compat/wifi.h"
 #include <WiFiClientSecure.h>
 #include <functional>
+#include <vector>
 
 class MqttClient {
 public:
@@ -22,8 +23,13 @@ public:
     bool loop();
     bool isConnected();
     const String& getTopic() const { return _topic; }
+    
+    void subscribeExtra(const String& topic);
+    void resubscribeExtra();
+    bool isExtraTopic(const String& topic) const;
 
 private:
+    std::vector<String> _extraTopics;
     WiFiClient _wifiClient;
     WiFiClientSecure _wifiClientTls;
     bool _useTls = false;

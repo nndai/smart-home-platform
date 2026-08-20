@@ -51,7 +51,13 @@ public:
     // Seed derive key mã hoá mqttPass = deviceId + FW_SECRET (build secret từ
     // .env) — cùng seed với DeviceIdentity (controlKey blob). Gọi sau
     // g_identity.begin(), TRƯỚC load() (xem main.cpp).
-    void setEncSeed(const char* seed) { _encSeed = seed; }
+    void setEncSeed(const char* seed) {
+        if (seed) {
+            strlcpy(_encSeed, seed, sizeof(_encSeed));
+        } else {
+            _encSeed[0] = '\0';
+        }
+    }
 
     bool load() { return load(_config); }
     bool load(T& cfg) {
@@ -84,7 +90,7 @@ public:
     bool save(const T& cfg) {
         T tmp = cfg;
         // Mã hoá mqttPass (bản rõ RAM) trước khi ghi flash — flash chỉ chứa bản mã.
-        if (_encSeed) {
+        if (_encSeed[0] != '\0') {
             if (_plainMqttPass[0] != '\0') {
                 uint8_t key[32];
                 if (crypto::cfgKeyFromSeed(_encSeed, key) && crypto::cfgEncryptPass(key, _plainMqttPass, tmp.mqttPassEnc)) {
@@ -172,7 +178,7 @@ private:
     }
 
     T _config;
-    const char* _encSeed = nullptr;
+    char _encSeed[64] = "";
     char _plainMqttPass[32] = "";
 };
 

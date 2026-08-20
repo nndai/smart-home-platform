@@ -735,6 +735,7 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
     }
 
     if (has("tasks")) {
+#ifndef ARDUINO_ARCH_ESP8266
         JsonArray tasks = resp["tasks"].to<JsonArray>();
         UBaseType_t numTasks = uxTaskGetNumberOfTasks();
         TaskStatus_t* taskArray = (TaskStatus_t*)pvPortMalloc(numTasks * sizeof(TaskStatus_t));
@@ -758,6 +759,9 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
             }
             vPortFree(taskArray);
         }
+#else
+        resp["tasks"] = "Unsupported on ESP8266 TaskScheduler";
+#endif
     }
 
     if (has("wifi")) {
@@ -834,7 +838,6 @@ void CommandHandlerT<T>::_onScanDone() {
     JsonDocument notify;
     notify["cmd"] = "scanWifi";
     notify["status"] = "completed";
-    vTaskDelay(100);
     _sendResponse(_scanSource, notify);
 }
 
@@ -880,7 +883,6 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     resp["wifiDrop"] = wifiDrop;
     _sendResponse(source, resp);
 
-    vTaskDelay(100);
 #if defined(ARDUINO_ARCH_ESP8266)
     static CommandHandlerT<T>* self = this;
     self = this;
