@@ -16,3 +16,6 @@ class LogManager;
 // Ghi các dòng lưu tạm vào file và xóa cấp phát động (gọi sau LITTLEFS init /
 // logManager.begin()). Từ đó trở đi log đẩy thẳng vào LogManager.
 void logCaptureFlushFile(LogManager* lm);
+
+// Gọi bởi các module hook UART (vd: compat/log_capture_esp8266.cpp)
+void logCaptureChar(char c);

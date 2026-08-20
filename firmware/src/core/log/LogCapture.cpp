@@ -18,11 +18,6 @@
 #include "compat/log_capture.h"
 #include "core/log/LogManager.h"
 
-#if defined(ARDUINO_ARCH_ESP8266)
-#include <ets_sys.h>
-#include <esp8266_peri.h>
-#endif
-
 #define LINE_LOG_MAX 256
 #define PREINIT_MAX 15
 #define PREINIT_LINE_MAX 128
@@ -60,27 +55,6 @@ void logCaptureChar(char c) {
     }
 }
 
-#if defined(LT_ARD_HAS_SERIAL)
-extern "C" void __real_putchar_p(char c, unsigned long port);
-extern "C" void __wrap_putchar_p(char c, unsigned long port) {
-    __real_putchar_p(c, port);
-    logCaptureChar(c);
-}
-#endif
-
-#if defined(ARDUINO_ARCH_ESP8266)
-static inline bool txFifoFull(int uart_nr) {
-    return ((USS(uart_nr) >> USTXC) & 0xff) >= 0x7f;
-}
-
-static void IRAM_ATTR capturePutc1(char c) {
-    // Giữ nguyên output serial (tương đương uart0_write_char của core)
-    while (txFifoFull(0)) esp_yield();
-    USF(0) = (uint8_t)c;
-    logCaptureChar(c);
-}
-#endif
-
 void logCaptureFlushFile(LogManager* lm) {
     if (s_fileFlushed) return;
     for (int i = 0; i < s_preCount; i++) {
@@ -90,11 +64,4 @@ void logCaptureFlushFile(LogManager* lm) {
     }
     s_preCount = 0;
     s_fileFlushed = true;
-}
-
-void logCaptureInit() {
-#if defined(ARDUINO_ARCH_ESP8266)
-    ets_install_putc1(capturePutc1);
-    // LibreTiny: --wrap=putchar_p đã hoạt động từ link time, không cần gì.
-#endif
 }
