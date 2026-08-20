@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Concrete DeviceChannel implementation.
@@ -87,7 +89,9 @@ class MqttDeviceChannel(
         _state.value = ConnectionState.Idle
     }
 
-    override suspend fun send(raw: String): Boolean {
+    private val sendMutex = Mutex()
+
+    override suspend fun send(raw: String): Boolean = sendMutex.withLock {
         val deviceId = deviceIdProvider()
         if (deviceId.isBlank()) return false
 

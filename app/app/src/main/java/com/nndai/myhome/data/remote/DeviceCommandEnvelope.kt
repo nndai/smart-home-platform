@@ -32,7 +32,7 @@ class DeviceCommandEnvelope(context: android.content.Context) {
             return null
         }
         val keyBytes = hexToBytes(keyHex) ?: run {
-            Log.e(TAG, "sign(): bad controlKey hex length for $deviceId")
+            Log.e(TAG, "sign(): bad controlKey hex length for $deviceId. Hex: '$keyHex', len: ${keyHex.length}")
             return null
         }
 
@@ -56,8 +56,13 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         val canonical = "$seq|$ts|$cmd|$payloadCompact|$src"
         val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
 
+        val reqId = cmdJson["reqId"]?.jsonPrimitive?.content
+
         return buildJsonObject {
             put("cmd", cmd)
+            if (reqId != null) {
+                put("reqId", reqId)
+            }
             put("payload", payload)
             put("seq", seq)
             put("ts", ts)

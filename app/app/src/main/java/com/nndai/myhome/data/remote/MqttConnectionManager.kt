@@ -261,6 +261,7 @@ class MqttConnectionManager(
             connectionTimeout = 10
             keepAliveInterval = 30
             isAutomaticReconnect = true
+            maxInflight = 100
             val user = usernameProvider()
             val pass = passwordProvider()
             if (user.isNotBlank()) {
