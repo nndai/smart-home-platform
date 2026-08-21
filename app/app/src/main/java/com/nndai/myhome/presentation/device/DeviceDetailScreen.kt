@@ -1,11 +1,17 @@
 package com.nndai.myhome.presentation.device
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
@@ -17,6 +23,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,6 +34,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -38,12 +46,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nndai.myhome.R
+import com.nndai.myhome.core.theme.CyanBlue
+import com.nndai.myhome.core.theme.GreenOk
+import com.nndai.myhome.core.theme.OrangeWarning
+import com.nndai.myhome.core.theme.RedError
 import com.nndai.myhome.data.di.PumpRepositoryProvider
+import com.nndai.myhome.data.model.ConnectionState
 import com.nndai.myhome.presentation.device.common.deviceinfo.DeviceInfoScreen
 import com.nndai.myhome.presentation.device.common.history.ToggleHistoryScreen
 import com.nndai.myhome.presentation.device.common.log.LogScreen
@@ -66,6 +83,19 @@ fun DeviceDetailScreen(
     profile: String,
     onNavigateBack: () -> Unit
 ) {
+    // Set active device synchronously before any child view models or composables run
+    if (deviceId.isNotBlank() && PumpRepositoryProvider.getActiveDeviceId() != deviceId) {
+        PumpRepositoryProvider.setActiveDeviceId(deviceId)
+    }
+
+    val repository = remember(deviceId) { PumpRepositoryProvider.provide(deviceId) }
+    val connectionState by repository.connectionState.collectAsStateWithLifecycle()
+    val pumpStatus by repository.pumpStatus.collectAsStateWithLifecycle()
+
+    val isConnected = connectionState is ConnectionState.Connected
+    val isConnecting = connectionState is ConnectionState.Connecting || connectionState is ConnectionState.TransportReady
+    val rssi = pumpStatus?.rssi ?: 0
+
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val isPump = profile.equals("pump", ignoreCase = true)
@@ -81,9 +111,34 @@ fun DeviceDetailScreen(
         )
     }
 
+    // Manage device streaming lifecycle: start status stream on entry, stop all streams on exit
+    androidx.compose.runtime.DisposableEffect(deviceId) {
+        repository.ensureStatusStream()
+        onDispose {
+            repository.stopAllStreams()
+        }
+    }
+
+    // Pre-fetch initial config and sysinfo (no stream) on entering device screen to optimize UX
     LaunchedEffect(deviceId) {
-        if (deviceId.isNotBlank()) {
-            PumpRepositoryProvider.setActiveDeviceId(deviceId)
+        repository.refreshConfig()
+        repository.refreshInfo(stream = false)
+    }
+
+    // Handle tab switching
+    LaunchedEffect(selectedTabIndex) {
+        when (selectedTabIndex) {
+            3 -> { // Settings
+                repository.stopSysInfoStream()
+                repository.refreshConfig()
+            }
+            4 -> { // System info
+                repository.ensureSysInfoStream()
+            }
+            else -> { // Dashboard (0), History (1), Log (2)
+                repository.stopSysInfoStream()
+                repository.ensureStatusStream()
+            }
         }
     }
 
@@ -92,21 +147,54 @@ fun DeviceDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Column(verticalArrangement = Arrangement.Center) {
                         Text(
                             text = when (profile.lowercase()) {
-                                "pump" -> "Pump Control"
+                                "pump" -> "Máy Bơm (Pump)"
                                 "remote_switch" -> "Remote Switch"
                                 else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
                             },
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = deviceId,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Live Status Dot
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            isConnected -> GreenOk
+                                            isConnecting -> OrangeWarning
+                                            else -> RedError
+                                        }
+                                    )
+                            )
+                            Text(
+                                text = when {
+                                    isConnected -> "Đã kết nối (MQTT)"
+                                    isConnecting -> "Đang kết nối..."
+                                    else -> "Mất kết nối"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isConnected) GreenOk else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "• $deviceId",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -115,6 +203,37 @@ fun DeviceDetailScreen(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.close)
                         )
+                    }
+                },
+                actions = {
+                    // RSSI Signal dBm Pill
+                    if (rssi != 0) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = CyanBlue.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, CyanBlue.copy(alpha = 0.3f)),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Wifi,
+                                    contentDescription = null,
+                                    tint = CyanBlue,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "$rssi dBm",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyanBlue
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

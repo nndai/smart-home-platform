@@ -20,10 +20,10 @@ class DeviceInfoViewModel(application: Application) : AndroidViewModel(applicati
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    fun refreshInfo(stream: Boolean = false) {
+    fun refreshInfo() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            runCatching { repository.refreshInfo(stream) }
+            runCatching { repository.ensureSysInfoStream() }
             _isRefreshing.value = false
         }
     }

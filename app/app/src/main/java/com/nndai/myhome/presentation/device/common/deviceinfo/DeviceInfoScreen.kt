@@ -64,10 +64,6 @@ fun DeviceInfoScreen(
     val info by viewModel.deviceInfo.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
-        viewModel.refreshInfo(stream = true)
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -104,7 +100,7 @@ fun DeviceInfoScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-            onClick = { viewModel.refreshInfo(stream = false) },
+            onClick = { viewModel.refreshInfo() },
             enabled = !isRefreshing,
             modifier = Modifier
                 .fillMaxWidth()

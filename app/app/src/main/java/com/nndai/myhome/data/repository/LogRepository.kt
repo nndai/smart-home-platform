@@ -48,10 +48,11 @@ private data class DirListPageState(
  */
 class LogRepository(
     private val context: Context,
+    val deviceId: String,
     private val remote: PumpCommandDataSource,
     private val scope: CoroutineScope
 ) {
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("device_logs_$deviceId", Context.MODE_PRIVATE)
 
     private val _userMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
     val userMessages: SharedFlow<String> = _userMessages.asSharedFlow()

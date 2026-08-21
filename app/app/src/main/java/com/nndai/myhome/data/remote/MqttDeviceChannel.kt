@@ -18,13 +18,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Concrete DeviceChannel implementation.
+ * Concrete DeviceChannel implementation for a specific deviceId.
  * Delegates transport connection to MqttConnectionManager and health status tracking to DeviceHandshakeManager.
  */
 class MqttDeviceChannel(
     private val connectionManager: MqttConnectionManager,
     private val handshakeManager: DeviceHandshakeManager,
-    private val deviceIdProvider: () -> String,
+    val deviceId: String,
     private val envelopeProvider: (String) -> String?,
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -43,7 +43,6 @@ class MqttDeviceChannel(
     private var activeJob: Job? = null
 
     override fun start() {
-        val deviceId = deviceIdProvider()
         if (deviceId.isBlank()) {
             _state.value = ConnectionState.Failed(IllegalStateException("Empty deviceId"))
             return
@@ -83,7 +82,7 @@ class MqttDeviceChannel(
     }
 
     override fun stop() {
-        Log.d(TAG, "MqttDeviceChannel.stop()")
+        Log.d(TAG, "MqttDeviceChannel.stop() for deviceId=$deviceId")
         activeJob?.cancel()
         activeJob = null
         _state.value = ConnectionState.Idle
@@ -92,7 +91,6 @@ class MqttDeviceChannel(
     private val sendMutex = Mutex()
 
     override suspend fun send(raw: String): Boolean = sendMutex.withLock {
-        val deviceId = deviceIdProvider()
         if (deviceId.isBlank()) return false
 
         val signedPayload = envelopeProvider(raw) ?: run {

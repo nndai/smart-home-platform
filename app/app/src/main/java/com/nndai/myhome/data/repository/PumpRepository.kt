@@ -9,7 +9,9 @@ import com.nndai.myhome.data.remote.DeviceChannel
 import com.nndai.myhome.data.remote.PumpCommandDataSource
 import com.nndai.myhome.data.remote.PumpCommandEvent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -17,11 +19,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
  * Single source of truth cho dữ liệu thiết bị.
- * Gom tất cả flow từ remote, cung cấp API thao tác cho ViewModel.
+ * Quản lý vòng đời stream status & system info theo chu kỳ 1 phút, chỉ stream khi người dùng ở trong màn hình/tab tương ứng.
  */
 class PumpRepository(
     private val remote: PumpCommandDataSource,
@@ -71,6 +74,13 @@ class PumpRepository(
 
     val connectionState: StateFlow<ConnectionState> = channel.state
 
+    // ── Stream Lifecycle Tracking ──
+    private var statusStreamJob: Job? = null
+    private var lastStatusStreamTimeMs: Long = 0L
+
+    private var sysInfoStreamJob: Job? = null
+    private var lastSysInfoStreamTimeMs: Long = 0L
+
     init {
         Log.d(TAG, "init: start device channel")
         channel.start()
@@ -101,17 +111,101 @@ class PumpRepository(
             }
         }
 
-        // Auto-refresh when connected
+        // When transport reconnects, renew active stream subscriptions if any
         scope.launch {
             connectionState.collectLatest { state ->
                 Log.d(TAG, "connection state=$state")
                 if (state is ConnectionState.Connected) {
-                    refreshStatus()
-                    refreshConfig()
-                    refreshInfo()
+                    if (statusStreamJob?.isActive == true) {
+                        ensureStatusStream()
+                    }
+                    if (sysInfoStreamJob?.isActive == true) {
+                        ensureSysInfoStream()
+                    }
                 }
             }
         }
+    }
+
+    // ── Stream Control API ──
+
+    /**
+     * Ensures status stream is active.
+     * If more than 60s has passed since the last stream request, sends getStatus(stream=true).
+     * Maintains a recurring 60s loop while active in device view.
+     */
+    fun ensureStatusStream() {
+        val now = System.currentTimeMillis()
+        if (now - lastStatusStreamTimeMs >= STREAM_RENEWAL_INTERVAL_MS) {
+            lastStatusStreamTimeMs = now
+            scope.launch {
+                Log.d(TAG, "ensureStatusStream: Sending getStatus(stream=true)")
+                remote.getStatus(stream = true)
+            }
+        }
+        if (statusStreamJob?.isActive != true) {
+            statusStreamJob = scope.launch {
+                while (isActive) {
+                    delay(STREAM_RENEWAL_INTERVAL_MS)
+                    lastStatusStreamTimeMs = System.currentTimeMillis()
+                    Log.d(TAG, "statusStreamLoop: Periodic 1min renewal getStatus(stream=true)")
+                    remote.getStatus(stream = true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Stops the repeating status stream loop.
+     */
+    fun stopStatusStream() {
+        Log.d(TAG, "stopStatusStream()")
+        statusStreamJob?.cancel()
+        statusStreamJob = null
+    }
+
+    /**
+     * Ensures system info stream is active (called ONLY when user is on System Info tab).
+     * If more than 60s has passed since the last sys info stream request, sends getInfo(stream=true).
+     * Maintains a recurring 60s loop while in System tab.
+     */
+    fun ensureSysInfoStream() {
+        val now = System.currentTimeMillis()
+        if (now - lastSysInfoStreamTimeMs >= STREAM_RENEWAL_INTERVAL_MS) {
+            lastSysInfoStreamTimeMs = now
+            scope.launch {
+                Log.d(TAG, "ensureSysInfoStream: Sending getInfo(stream=true)")
+                remote.getInfo(stream = true)
+            }
+        }
+        if (sysInfoStreamJob?.isActive != true) {
+            sysInfoStreamJob = scope.launch {
+                while (isActive) {
+                    delay(STREAM_RENEWAL_INTERVAL_MS)
+                    lastSysInfoStreamTimeMs = System.currentTimeMillis()
+                    Log.d(TAG, "sysInfoStreamLoop: Periodic 1min renewal getInfo(stream=true)")
+                    remote.getInfo(stream = true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Stops the system info stream loop (called when navigating away from System tab).
+     */
+    fun stopSysInfoStream() {
+        Log.d(TAG, "stopSysInfoStream()")
+        sysInfoStreamJob?.cancel()
+        sysInfoStreamJob = null
+    }
+
+    /**
+     * Stops all active streams (called when exiting DeviceDetailScreen).
+     */
+    fun stopAllStreams() {
+        Log.d(TAG, "stopAllStreams()")
+        stopStatusStream()
+        stopSysInfoStream()
     }
 
     // ── Public API ──
@@ -231,6 +325,7 @@ class PumpRepository(
 
     fun switchDevice() {
         Log.d(TAG, "switchDevice() clearing cached device state and restarting channel")
+        stopAllStreams()
         _pumpStatus.value = null
         _deviceConfig.value = null
         _deviceInfo.value = null
@@ -240,5 +335,6 @@ class PumpRepository(
 
     companion object {
         private const val TAG = "PumpRepository"
+        private const val STREAM_RENEWAL_INTERVAL_MS = 60_000L // 1 minute
     }
 }

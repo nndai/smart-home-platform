@@ -132,15 +132,7 @@ fun RemoteSwitchDashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Header Bar: Connection Status & Signal
-        ConnectionHeaderCard(
-            connectionState = connectionState,
-            rssi = status?.rssi ?: 0,
-            onRefresh = { viewModel.refreshStatus() },
-            onReconnect = { viewModel.reconnect() }
-        )
-
-        // 2. Hero Card: Target Device Control
+        // 1. Hero Card: Target Device Control
         if (isTargetConfigured) {
             ConfiguredTargetCard(
                 targetName = targetDisplayName,
@@ -244,95 +236,7 @@ fun RemoteSwitchDashboardScreen(
     }
 }
 
-// ── COMPONENT 1: Header Card ──
-@Composable
-private fun ConnectionHeaderCard(
-    connectionState: ConnectionState,
-    rssi: Int,
-    onRefresh: () -> Unit,
-    onReconnect: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                val isConnected = connectionState is ConnectionState.Connected
-                val dotColor = if (isConnected) GreenOk else OrangeWarning
 
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(dotColor)
-                )
-
-                Column {
-                    Text(
-                        text = if (isConnected) "Remote Switch Online" else "Đang kết nối...",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (isConnected) "MQTT TLS 8883 (E2E Encrypted)" else "Awaiting connection",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (rssi != 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Wifi,
-                            contentDescription = null,
-                            tint = CyanBlue,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "$rssi dBm",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = {
-                        if (connectionState is ConnectionState.Connected) onRefresh()
-                        else onReconnect()
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = if (connectionState is ConnectionState.Connected) Icons.Filled.Refresh else Icons.Filled.Sync,
-                        contentDescription = "Refresh",
-                        tint = CyanBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-    }
-}
 
 // ── COMPONENT 2: Hero Configured Target Card ──
 @Composable
