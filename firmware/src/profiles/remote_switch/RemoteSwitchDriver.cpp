@@ -11,6 +11,7 @@ void RemoteSwitchDriver::setServices(const DriverServices& svc) {
     _menuSteps[0] = { "Reset WiFi", [this]() { _menuResetWiFi(); } };
     _menuSteps[1] = { "DEBUG mode", [this]() { _menuDebugMode(); } };
     _menuSteps[2] = { "Factory reset", [this]() { _menuFactoryReset(); } };
+    _menuSteps[3] = { "STA MQTT mode", [this]() { _staMqttMode(); } };
 }
 
 void RemoteSwitchDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
@@ -27,7 +28,7 @@ void RemoteSwitchDriver::begin(DeviceConfig& cfg, ConfigSaveFn saveFn) {
     _button.attachClick([](void* p) { static_cast<RemoteSwitchDriver*>(p)->_onButtonClick(); }, this);
     _button.attachDoubleClick([](void* p) { static_cast<RemoteSwitchDriver*>(p)->_onButtonDoubleClick(); }, this);
     _button.attachLongPressStart([](void* p) { static_cast<RemoteSwitchDriver*>(p)->_onButtonLongPressStart(); }, this);
-    _menu.begin(&_ledStateGreen, _menuSteps, 3, BUTTON_LONG_PRESS_MS, BUTTON_CONFIRM_TIMEOUT_MS);
+    _menu.begin(&_ledStateGreen, _menuSteps, 4, BUTTON_LONG_PRESS_MS, BUTTON_CONFIRM_TIMEOUT_MS);
 
     // Bắt đầu đếm timeout status kể từ lúc boot (targetId có thể chưa cấu hình)
     _lastStatusRxMs = millis();
@@ -517,6 +518,14 @@ void RemoteSwitchDriver::_menuDebugMode() {
 void RemoteSwitchDriver::_menuFactoryReset() {
     LT_IM(BTN, "Button long press: Factory reset");
     if (_services.resetConfig) _services.resetConfig();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP.restart();
+}
+
+void RemoteSwitchDriver::_staMqttMode() {
+    LT_IM(BTN, "Button long press: Enter STA MQTT mode");
+    _cfg->connMode = ConnMode::STA_MQTT;
+    if (_saveCb) _saveCb();
     vTaskDelay(pdMS_TO_TICKS(1000));
     ESP.restart();
 }

@@ -49,7 +49,7 @@ private:
     LedController _ledStateRed;
     OneButton _button;
     ButtonMenu _menu;
-    ButtonMenu::Step _menuSteps[3];
+    ButtonMenu::Step _menuSteps[4];
 
     // ── Trạng thái visual (cặp 2) ──
     enum class TargetVisualState {
@@ -99,4 +99,5 @@ private:
     void _menuResetWiFi();
     void _menuDebugMode();
     void _menuFactoryReset();
+    void _staMqttMode();
 };

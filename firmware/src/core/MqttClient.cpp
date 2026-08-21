@@ -36,7 +36,7 @@ void MqttClient::setCallback(MessageCallback cb) {
 }
 
 bool MqttClient::connect() {
-    if (_mqtt.connected()) return true;
+    if (isConnected()) return true;
 
     _lastReconnect = millis();
 
@@ -70,18 +70,21 @@ void MqttClient::disconnect() {
 }
 
 bool MqttClient::publish(const String& topic, const String& payload, bool retained) {
-    if (_useTls && !_wifiClientTls.connected()) {
+    if (!isConnected()) {
         return false;
     }
     return _mqtt.publish(topic.c_str(), payload.c_str(), retained);
 }
 
 bool MqttClient::subscribe(const String& topic) {
+    if (!isConnected()) {
+        return false;
+    }
     return _mqtt.subscribe(topic.c_str());
 }
 
 bool MqttClient::loop() {
-    if (!_mqtt.connected()) {
+    if (!isConnected()) {
         if (millis() - _lastReconnect > MQTT_RECONNECT_INTERVAL_MS) return connect();
         return false;
     }
@@ -98,14 +101,14 @@ bool MqttClient::loop() {
 }
 
 bool MqttClient::isConnected() {
-    return _mqtt.connected();
+    return _mqtt.state() == MQTT_CONNECTED;
 }
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
-    if (!s_instance) return;
+    if (!s_instance || !topic) return;
     String msg;
     if (payload && len > 0) {
-        msg = String((char*)payload);
+        msg.concat((const char*)payload, len);
     }
     if (s_instance->_callback) {
         s_instance->_callback(String(topic), msg);
