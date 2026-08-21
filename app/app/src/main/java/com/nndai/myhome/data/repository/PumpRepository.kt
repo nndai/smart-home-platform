@@ -141,6 +141,28 @@ class PumpRepository(
         remote.setConfig(updates)
     }
 
+    suspend fun setRemoteSwitchTarget(targetId: String, targetType: String, targetKey: String) {
+        Log.d(TAG, "setRemoteSwitchTarget(targetId=$targetId, targetType=$targetType)")
+        remote.setConfig(
+            mapOf(
+                "targetId" to targetId,
+                "targetType" to targetType,
+                "targetKey" to targetKey
+            )
+        )
+    }
+
+    suspend fun clearRemoteSwitchTarget() {
+        Log.d(TAG, "clearRemoteSwitchTarget()")
+        remote.setConfig(
+            mapOf(
+                "targetId" to "",
+                "targetType" to "",
+                "targetKey" to ""
+            )
+        )
+    }
+
     suspend fun scanWifi() {
         Log.d(TAG, "scanWifi()")
         remote.scanWifi()
@@ -204,6 +226,15 @@ class PumpRepository(
 
     fun reconnect() {
         Log.d(TAG, "reconnect() restarting channel")
+        channel.restart()
+    }
+
+    fun switchDevice() {
+        Log.d(TAG, "switchDevice() clearing cached device state and restarting channel")
+        _pumpStatus.value = null
+        _deviceConfig.value = null
+        _deviceInfo.value = null
+        _isLogEnabled.value = false
         channel.restart()
     }
 

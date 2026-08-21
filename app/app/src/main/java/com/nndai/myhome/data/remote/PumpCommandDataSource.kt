@@ -256,7 +256,11 @@ class PumpCommandDataSource(
                 code = if (json.has("pumpState")) json.optInt("pumpState") else null,
                 str = json.optString("pumpStateStr", json.optString("pumpState"))
             ),
-            timestamp = json.optLong("timestamp", 0L)
+            timestamp = json.optLong("timestamp", 0L),
+            targetId = json.optString("targetId", ""),
+            targetType = json.optString("targetType", ""),
+            targetPaired = json.optBoolean("targetPaired", false),
+            targetError = json.optBoolean("targetError", false)
         )
         _events.tryEmit(PumpCommandEvent.StatusUpdate(status))
         _events.tryEmit(PumpCommandEvent.CommandResult("getStatus", true))
@@ -292,7 +296,10 @@ class PumpCommandDataSource(
             pCal = json.optDouble("pCal", 1.0),
             sysLogFileEnabled = json.optBoolean("sysLogFileEnabled", false),
             sysLogFileLevel = json.optInt("sysLogFileLevel", 0),
-            firmware = json.optString("firmware", "")
+            firmware = json.optString("firmware", ""),
+            targetId = json.optString("targetId", ""),
+            targetType = json.optString("targetType", ""),
+            targetKey = json.optString("targetKey", "")
         )
         _events.tryEmit(PumpCommandEvent.ConfigUpdate(config))
         _events.tryEmit(PumpCommandEvent.CommandResult("getConfig", true))

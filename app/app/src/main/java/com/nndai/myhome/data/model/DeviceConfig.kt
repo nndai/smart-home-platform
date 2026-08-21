@@ -32,6 +32,9 @@ data class DeviceConfig(
     val pCal: Double = 1.0,
     val sysLogFileEnabled: Boolean = false,
     val sysLogFileLevel: Int = 0,
-    val firmware: String = ""
+    val firmware: String = "",
+    val targetId: String = "",
+    val targetType: String = "",
+    val targetKey: String = ""
 )
 

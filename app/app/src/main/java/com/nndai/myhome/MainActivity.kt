@@ -13,6 +13,10 @@ import com.nndai.myhome.core.theme.RemotePumpTheme
 import com.nndai.myhome.core.utils.LocaleHelper
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.presentation.navigation.AppNavigation
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -41,8 +45,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         // Ngắt kết nối stream/log MQTT khi app bị đóng
-        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        @OptIn(DelicateCoroutinesApi::class)
+        GlobalScope.launch(Dispatchers.IO) {
             try {
                 PumpRepositoryProvider.provide().setLogMqtt(false)
             } catch (e: Exception) {

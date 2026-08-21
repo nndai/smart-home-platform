@@ -79,16 +79,14 @@ class DeviceHandshakeManager(
             MutableStateFlow(DeviceHealthStatus.Handshaking)
         }
 
-        if (isNewRegistration) {
-            scope.launch(dispatcher) {
-                // Subscribe to device's status and log topics
-                connectionManager.subscribe("devices/$deviceId/up")
-                connectionManager.subscribe("devices/$deviceId/log")
+        scope.launch(dispatcher) {
+            // Subscribe to device's status and log topics
+            connectionManager.subscribe("devices/$deviceId/up")
+            connectionManager.subscribe("devices/$deviceId/log")
 
-                // If transport is already connected, initiate handshake
-                if (connectionManager.transportState.value is MqttTransportState.Connected) {
-                    initiateHandshakeForDevice(deviceId, isInitialProbe = true)
-                }
+            // If transport is already connected, initiate handshake probe
+            if (connectionManager.transportState.value is MqttTransportState.Connected) {
+                initiateHandshakeForDevice(deviceId, isInitialProbe = true)
             }
         }
 

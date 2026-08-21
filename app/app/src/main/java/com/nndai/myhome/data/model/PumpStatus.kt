@@ -18,7 +18,11 @@ data class PumpStatus(
     val heap: Long = 0,
     val pumpMode: Boolean = true,
     val pumpState: PumpState = PumpState.OFF,
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    val targetId: String = "",
+    val targetType: String = "",
+    val targetPaired: Boolean = false,
+    val targetError: Boolean = false
 )
 
 enum class PumpState(val code: Int, val label: String, val isLatchedFault: Boolean) {

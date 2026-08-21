@@ -203,9 +203,10 @@ object PumpRepositoryProvider {
 
     /** Set active device ID for MQTT topic format devices/{deviceId}/cmd|up|log */
     fun setActiveDeviceId(deviceId: String) {
+        val oldId = getActiveDeviceId()
         getPrefs().edit().putString(KEY_DEVICE_ID, deviceId).apply()
-        Log.d(TAG, "setActiveDeviceId(): $deviceId")
-        repository?.reconnect()
+        Log.d(TAG, "setActiveDeviceId(): $deviceId (previous was: $oldId)")
+        repository?.switchDevice()
     }
 
     fun getActiveDeviceId(): String = getPrefs().getString(KEY_DEVICE_ID, null)

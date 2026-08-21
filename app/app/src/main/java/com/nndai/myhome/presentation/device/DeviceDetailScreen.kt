@@ -44,11 +44,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nndai.myhome.R
 import com.nndai.myhome.data.di.PumpRepositoryProvider
+import com.nndai.myhome.presentation.device.common.deviceinfo.DeviceInfoScreen
+import com.nndai.myhome.presentation.device.common.history.ToggleHistoryScreen
+import com.nndai.myhome.presentation.device.common.log.LogScreen
 import com.nndai.myhome.presentation.device.profiles.pump.DashboardScreen
-import com.nndai.myhome.presentation.device.profiles.pump.deviceinfo.DeviceInfoScreen
 import com.nndai.myhome.presentation.device.profiles.pump.history.EnergyHistoryScreen
-import com.nndai.myhome.presentation.device.profiles.pump.log.LogScreen
 import com.nndai.myhome.presentation.device.profiles.pump.settings.SettingsScreen
+import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchDashboardScreen
+import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchSettingsScreen
 
 private data class DeviceTabItem(
     val titleRes: Int,
@@ -65,8 +68,10 @@ fun DeviceDetailScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    val isPump = profile.equals("pump", ignoreCase = true)
+    val isRemoteSwitch = profile.equals("remote_switch", ignoreCase = true)
 
-    val tabs = remember {
+    val tabs = remember(profile) {
         listOf(
             DeviceTabItem(R.string.nav_dashboard, Icons.Filled.Dashboard, Icons.Outlined.Dashboard),
             DeviceTabItem(R.string.nav_history, Icons.Filled.BarChart, Icons.Outlined.BarChart),
@@ -89,7 +94,11 @@ fun DeviceDetailScreen(
                 title = {
                     Column {
                         Text(
-                            text = if (profile.equals("pump", ignoreCase = true)) "Pump Control" else "${profile.replaceFirstChar { it.uppercase() }} Control",
+                            text = when (profile.lowercase()) {
+                                "pump" -> "Pump Control"
+                                "remote_switch" -> "Remote Switch"
+                                else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -114,7 +123,7 @@ fun DeviceDetailScreen(
             )
         },
         bottomBar = {
-            if (profile.equals("pump", ignoreCase = true)) {
+            if (isPump || isRemoteSwitch) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.onSurface,
@@ -168,6 +177,21 @@ fun DeviceDetailScreen(
                             1 -> EnergyHistoryScreen()
                             2 -> LogScreen()
                             3 -> SettingsScreen(snackbarHostState = snackbarHostState)
+                            4 -> DeviceInfoScreen()
+                        }
+                    }
+                }
+                "remote_switch" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                    ) {
+                        when (selectedTabIndex) {
+                            0 -> RemoteSwitchDashboardScreen(snackbarHostState = snackbarHostState)
+                            1 -> ToggleHistoryScreen()
+                            2 -> LogScreen()
+                            3 -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
                             4 -> DeviceInfoScreen()
                         }
                     }
