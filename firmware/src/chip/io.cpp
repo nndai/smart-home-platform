@@ -27,6 +27,14 @@ namespace chip {
         return 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
     }
 
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        uint32_t max_pwm = 1000; // LibreTiny analogWrite default range
+        uint32_t val = (percent * max_pwm) / 100;
+        if (activeLow) val = max_pwm - val;
+        analogWrite(pin, val);
+    }
+
 String chipModelName() {
     String cpu_name = lt_cpu_get_model_code();
     cpu_name.toUpperCase();
@@ -56,6 +64,14 @@ namespace chip {
 
     float readWifiTempC() { return 0.0f; }
 
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        uint32_t max_pwm = 1023; // ESP8266 PWMRANGE
+        uint32_t val = (percent * max_pwm) / 100;
+        if (activeLow) val = max_pwm - val;
+        analogWrite(pin, val);
+    }
+
     String chipModelName() { return "ESP8266"; }
 
     uint32_t systemChipId() { return ESP.getChipId(); }
@@ -77,6 +93,14 @@ namespace chip {
 
     float readWifiTempC() {
         return 0.0f;
+    }
+
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        uint32_t max_pwm = 255; // ESP32 analogWrite default range
+        uint32_t val = (percent * max_pwm) / 100;
+        if (activeLow) val = max_pwm - val;
+        analogWrite(pin, val);
     }
 
     String chipModelName() {

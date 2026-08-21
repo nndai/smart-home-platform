@@ -37,4 +37,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Ngắt kết nối stream/log MQTT khi app bị đóng
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                PumpRepositoryProvider.provide().setLogMqtt(false)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }
