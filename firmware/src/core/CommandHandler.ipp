@@ -1,6 +1,5 @@
 #include "core/CommandHandler.h"
 #include "compat/log.h"
-#include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
 #include "core/Crypto.h"
 #include "compat/wifi_scan.h"
@@ -144,7 +143,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
     }
     String payloadStr;
     serializeJson(payload, payloadStr);
-    const String canonical = String(seq) + "|" + String(ts) + "|" + cmd["cmd"].as<String>() + "|" + payloadStr + "|" + src;
+    const String canonical = crypto::buildCanonical(seq, ts, cmd["cmd"].as<const char*>(), payloadStr, src);
 
     char expectedHex[65];
     if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
@@ -668,12 +667,10 @@ void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const JsonDocument& 
         _sendResponse(source, resp);
         return;
     }
-    size_t decodedMax = (b64.length() * 3) / 4;
+    size_t decodedMax = (b64.length() * 3) / 4 + 4;
     uint8_t* buf = new uint8_t[decodedMax];
-    size_t olen;
-    int r = mbedtls_base64_decode(buf, decodedMax, &olen,
-        (const unsigned char*)b64.c_str(), b64.length());
-    if (r != 0) {
+    size_t olen = 0;
+    if (!crypto::base64Decode(b64.c_str(), b64.length(), buf, decodedMax, &olen)) {
         delete[] buf;
         resp["status"] = "error";
         resp["message"] = "Base64 decode failed";

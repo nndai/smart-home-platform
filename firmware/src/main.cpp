@@ -152,7 +152,8 @@ void setup() {
         [&]() { 
             commandHandler.publishStatusToUp(); 
         }, 
-        identity.deviceId() 
+        identity.deviceId(),
+        &identity
         });
 
     driver->begin(configManager.get(), [&]() { return configManager.save(); });

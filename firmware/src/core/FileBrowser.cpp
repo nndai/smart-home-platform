@@ -1,7 +1,7 @@
 #include "core/FileBrowser.h"
 #include "compat/fs.h"
+#include "core/Crypto.h"
 #include <ArduinoJson.h>
-#include <mbedtls/base64.h>
 #include <vector>
 #include <algorithm>
 
@@ -151,18 +151,7 @@ String FileBrowser::readFile(const String& path, size_t offset, size_t limit, bo
             return out;
         }
         size_t n = f.read(buf, toRead);
-
-        size_t olen = 0;
-        mbedtls_base64_encode(NULL, 0, &olen, buf, n);
-        uint8_t* b64 = (uint8_t*)malloc(olen + 1);
-        if (b64) {
-            mbedtls_base64_encode(b64, olen + 1, &olen, buf, n);
-            b64[olen] = '\0';
-            doc["data"] = (const char*)b64;
-            free(b64);
-        } else {
-            doc["data"] = "";
-        }
+        doc["data"] = crypto::base64Encode(buf, n);
         free(buf);
         doc["more"] = (offset + n < fileSize);
     } else {

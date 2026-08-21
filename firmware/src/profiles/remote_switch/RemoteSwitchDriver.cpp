@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "compat/wifi.h"
 #include "core/Crypto.h"
+#include "core/DeviceIdentity.h"
 
 
 void RemoteSwitchDriver::setServices(const DriverServices& svc) {
@@ -216,8 +217,7 @@ bool RemoteSwitchDriver::buildEnvelope(const char* cmd, const JsonDocument& payl
     // src = our deviceId: target tracks seq per sender, so the app and this
     // remote switch never lock each other out (docs §3.2)
     const char* src = _services.deviceId ? _services.deviceId : "";
-
-    String canonical = String(seq) + "|" + String(ts) + "|" + String(cmd) + "|" + payloadStr + "|" + src;
+    const String canonical = crypto::buildCanonical(seq, ts, cmd, payloadStr, src);
 
     char hmacHex[65];
     if (!crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex)) {
@@ -404,17 +404,51 @@ bool RemoteSwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& re
     }
     if (payload["targetKey"].is<const char*>()) {
         const char* k = payload["targetKey"].as<const char*>();
-        if (strlen(k) != 64) {
-            LT_EM(CMD, "setConfig: targetKey must be 64 hex chars");
+        size_t klen = strlen(k);
+        if (klen == 0) {
+            _cfg->targetKey[0] = '\0';
+            changed = true;
+        } else if (klen == 64) {
+            strlcpy(_cfg->targetKey, k, sizeof(_cfg->targetKey));
+            changed = true;
+        } else if (klen == 128) {
+            // E2E Encrypted targetKey: 64 bytes blob [ IV(16) | ciphertext(32) | tag(16) ]
+            uint8_t blob[64];
+            if (!crypto::hexDecode(k, blob, sizeof(blob))) {
+                LT_EM(CMD, "setConfig: invalid hex in targetKeyEnc");
+                return false;
+            }
+
+            if (!_services.identity) {
+                LT_EM(CMD, "setConfig: identity service unavailable for E2E decrypt");
+                return false;
+            }
+
+            String myKeyHex;
+            uint8_t myKey[32];
+            if (!_services.identity->controlKeyHex(myKeyHex) || !crypto::hexDecode(myKeyHex.c_str(), myKey, sizeof(myKey))) {
+                LT_EM(CMD, "setConfig: cannot retrieve my controlKey for decrypt");
+                return false;
+            }
+
+            uint8_t plainTargetKey[32];
+            if (!crypto::decryptKey(myKey, blob, plainTargetKey)) {
+                LT_EM(CMD, "setConfig: targetKey E2E decrypt failed (bad tag/key)");
+                return false;
+            }
+
+            crypto::hexEncode(plainTargetKey, sizeof(plainTargetKey), _cfg->targetKey);
+            changed = true;
+            LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM");
+        } else {
+            LT_EM(CMD, "setConfig: targetKey must be 64 (plain) or 128 (encrypted) hex chars or empty");
             return false;
         }
-        strlcpy(_cfg->targetKey, k, sizeof(_cfg->targetKey));
-        changed = true;
     }
     if (payload["targetType"].is<const char*>()) {
         const char* t = payload["targetType"].as<const char*>();
-        if (strcmp(t, "pump") != 0 && strcmp(t, "switch") != 0) {
-            LT_EM(CMD, "setConfig: targetType must be 'pump' or 'switch'");
+        if (strlen(t) > 0 && strcmp(t, "pump") != 0 && strcmp(t, "switch") != 0) {
+            LT_EM(CMD, "setConfig: targetType must be 'pump', 'switch', or empty");
             return false;
         }
         strlcpy(_cfg->targetType, t, sizeof(_cfg->targetType));

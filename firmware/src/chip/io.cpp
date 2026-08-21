@@ -29,10 +29,12 @@ namespace chip {
 
     void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
         if (percent > 100) percent = 100;
-        uint32_t max_pwm = 1000; // LibreTiny analogWrite default range
-        uint32_t val = (percent * max_pwm) / 100;
-        if (activeLow) val = max_pwm - val;
-        analogWrite(pin, val);
+        // LibreTiny LN882H does not implement analogWrite in Arduino framework
+        if (percent == 0) {
+            digitalWrite(pin, activeLow ? HIGH : LOW);
+        } else {
+            digitalWrite(pin, activeLow ? LOW : HIGH);
+        }
     }
 
 String chipModelName() {

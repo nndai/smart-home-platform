@@ -6,6 +6,8 @@
 #include "core/ConfigManager.h"
 #include "core/log/LogManager.h"
 
+class DeviceIdentity;
+
 // ── Dịch vụ core cấp cho driver: log, lưu/reset config, gửi phản hồi ──
 // LED/nút nhấn KHÔNG nằm ở đây: chúng là phần cứng của thiết bị, driver tự khai
 // báo + tự quản (vd pump 1 LED 1 button, fan 5 LED 2 button, thêm bớt tùy profile).
@@ -29,6 +31,9 @@ struct DriverServices {
     // Định danh công khai của thiết bị này — dùng để ký envelope (field "src")
     // khi driver gửi lệnh device-to-device (xem RemoteSwitchDriver::buildEnvelope).
     const char* deviceId = nullptr;
+
+    // Con trỏ tới DeviceIdentity để driver truy xuất controlKey / giải mã E2E
+    DeviceIdentity* identity = nullptr;
 };
 
 // ── Interface thiết bị: core gọi mù, profile hiện thực ──

@@ -54,8 +54,5 @@ private:
     bool _save() const;  // mã hóa + ghi KV
     void _generateKeys();
 
-    static void _hex(const uint8_t* data, size_t len, char* out);
-    static bool _unhex(const char* hex, uint8_t* out, size_t maxLen, size_t* outLen);
-
     static const char* _kvKey() { return "ident"; }
 };
