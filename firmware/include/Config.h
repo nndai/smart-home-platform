@@ -3,11 +3,13 @@
 
 // ── Pins + tham số riêng theo profile (build_flags: -DPROFILE_PUMP / -DPROFILE_SWITCH) ──
 #if defined(PROFILE_PUMP)
-#include "profiles/pump/pins.h"
+#include "profiles/pump/config.h"
 #elif defined(PROFILE_SWITCH)
-#include "profiles/switch/pins.h"
+#include "profiles/switch/config.h"
+#elif defined(PROFILE_REMOTE_SWITCH)
+#include "profiles/remote_switch/config.h"
 #else
-#error "Phai define PROFILE_PUMP hoac PROFILE_SWITCH trong build_flags"
+#error "Please define PROFILE_PUMP, PROFILE_SWITCH, or PROFILE_REMOTE_SWITCH in build_flags"
 #endif
 
 // ── Network ──
@@ -30,13 +32,20 @@
 
 // ── System / RTOS ──
 #define WDT_TIMEOUT_MS            15000   // watchdog timeout
-#define WDT_FEED_INTERVAL_MS      2000    // task wdtFeed feed mỗi 2s
-#define HEAP_CRITICAL_BYTES       4096    // heap dưới mức này -> restart
+#define WDT_FEED_INTERVAL_MS      1000    // task wdtFeed feed mỗi 1s
+
+// heap dưới mức này -> restart
+#if defined(ARDUINO_ARCH_ESP8266)
+    #define HEAP_CRITICAL_BYTES   1024   
+#else
+    #define HEAP_CRITICAL_BYTES   4096
+#endif
+
 #define STREAM_DURATION_MS        120000  // thời lượng stream status/sysinfo (WS/MQTT)
 #define EPOCH_VALID_MIN           1700000000  // epoch >= mức này mới coi là đã đồng bộ giờ
 
 // ── Button ──
-#define BUTTON_ACTIVE_LOW          true    // nút nhấn xuống mức LOW (pull-up)
+#define BUTTON_ACTIVE_LOW         true    // nút nhấn xuống mức LOW (pull-up)
 #define BUTTON_LONG_PRESS_MS      5000    // giữ 5s để mở chuỗi thao tác; giữ thêm 5s -> bước kế
 #define BUTTON_CONFIRM_TIMEOUT_MS 3000    // nhả nút trong 3s để xác nhận bước đã chọn
 #define BUTTON_DEBOUNCE_MS        50
@@ -47,9 +56,14 @@
 // ── MQTT ──
 #define DEFAULT_MQTT_PORT          1883
 #define DEFAULT_MQTT_TOPIC         "pump"
-#define MQTT_BUFFER_SIZE           5000
 #define MQTT_SOCKET_TIMEOUT_SEC    7
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
+
+#if defined(ARDUINO_ARCH_ESP8266)
+#define MQTT_BUFFER_SIZE           3072
+#else
+#define MQTT_BUFFER_SIZE           5000
+#endif
 
 // TZ: UTC+7 (Việt Nam)
 # define TZ_OFFSET_SEC (7 * 3600)
@@ -59,20 +73,105 @@
 // Cách dùng: 2 lần boot power-on + giữ nút (lần 2 giữ >= OTA_BTN_HOLD_MS rồi
 // nhả trong OTA_BTN_RELEASE_MS) -> nối WiFi debug, tải DEFAULT_OTA_URL
 // (phải là file .uf2, không cần Content-Length), nạp rồi khởi động lại.
-#define OTA_BTN_KEY               "ota_btn"
+
+#define OTA_BTN_KEY               "ota_btn" // key lưu trạng thái nút nhấn trong ln_kv(LN882H)
 #define OTA_BTN_HOLD_MS           5000    // giữ nút liên tục ít nhất 5s...
 #define OTA_BTN_RELEASE_MS        5000    // ...rồi nhả trong 5s kế tiếp -> vào OTA
-#define DEFAULT_OTA_URL           "http://192.168.137.1:8090/firmware.uf2"
+#define DEFAULT_OTA_URL_LN882H    "http://192.168.137.1:8090/firmware.uf2"
+#define DEFAULT_OTA_URL_ESP8266   "http://192.168.137.1:8090/firmware.bin"
 #define OTA_WIFI_TIMEOUT_MS       60000   // chờ kết nối WiFi tối đa 60s
-#define OTA_TASK_STACK            8192    // stack cho task otaUpload
 #define OTA_CHUNK_SIZE            1400    // buffer đọc HTTP khi tải firmware
 
 
-// ── FreeRTOS task config ──
-#define TASK_NETWORK_STACK       4096
+// ── Log Sizes ──
+#if defined(ARDUINO_ARCH_ESP8266) || defined(ARDUINO_ARCH_ESP32)
+// ESP chips: Nhiều flash hơn -> x4 giới hạn log
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE (128 * 4)
+#endif
+#ifndef SYSLOG_MAX_FILE_SIZE
+#define SYSLOG_MAX_FILE_SIZE (40 * 1024)
+#endif
+#ifndef SYSLOG_MAX_LINE_LEN
+#define SYSLOG_MAX_LINE_LEN (100 * 4)
+#endif
+#ifndef SYSLOG_MAX_FILES
+#define SYSLOG_MAX_FILES (5 * 4)
+#endif
+#ifndef TOGGLELOG_MAX_FOLDER
+#define TOGGLELOG_MAX_FOLDER (400 * 1024)
+#endif
+#ifndef POWERLOG_MAX_FOLDER
+#define POWERLOG_MAX_FOLDER (800 * 1024)
+#endif
+#else
+// LN882H (LibreTiny): Giữ nguyên giới hạn nhỏ do LittleFS bé
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 128
+#endif
+#ifndef SYSLOG_MAX_FILE_SIZE
+#define SYSLOG_MAX_FILE_SIZE (10 * 1024)
+#endif
+#ifndef SYSLOG_MAX_LINE_LEN
+#define SYSLOG_MAX_LINE_LEN 100
+#endif
+#ifndef SYSLOG_MAX_FILES
+#define SYSLOG_MAX_FILES 5
+#endif
+#ifndef TOGGLELOG_MAX_FOLDER
+#define TOGGLELOG_MAX_FOLDER (100 * 1024)
+#endif
+#ifndef POWERLOG_MAX_FOLDER
+#define POWERLOG_MAX_FOLDER (200 * 1024)
+#endif
+#endif
+
+
+// ── FreeRTOS task config (Stack & Priority) ──
+#if defined(ARDUINO_ARCH_ESP8266)
+// ESP8266 (NonOS Shim): usStackDepth tính bằng BYTE
+#define TASK_NETWORK_STACK       4096   // 4KB
+#define TASK_SENSOR_STACK        3072   // 4KB (đủ cho LittleFS + JSON)
+#define TASK_NTP_STACK           1024   // 1KB
+#define TASK_WDT_STACK           512    // 512B
+#define TASK_STREAM_STACK        3072   // 3KB
+#define TASK_LOGWRITER_STACK     1024   // 1KB
+#define TASK_OTA_STACK           8192   // 8KB
+#elif defined(ARDUINO_ARCH_ESP32)
+// ESP32 (FreeRTOS chuẩn): usStackDepth tính bằng WORD (4 Bytes)
+#define TASK_NETWORK_STACK       2048   // 8192 Bytes
+#define TASK_SENSOR_STACK        1024   // 4096 Bytes
+#define TASK_NTP_STACK           512    // 2048 Bytes
+#define TASK_WDT_STACK           256    // 1024 Bytes
+#define TASK_STREAM_STACK        1024   // 4096 Bytes
+#define TASK_LOGWRITER_STACK     512    // 2048 Bytes
+#define TASK_OTA_STACK           2048   // 8192 Bytes
+#else
+// LN882H / LibreTiny (FreeRTOS chuẩn): usStackDepth tính bằng WORD (4 Bytes)
+#define TASK_NETWORK_STACK       2048   // 8192 Bytes
+#define TASK_SENSOR_STACK        2024   // 8096 Bytes
+#define TASK_NTP_STACK           512    // 2048 Bytes
+#define TASK_WDT_STACK           256    // 1024 Bytes
+#define TASK_STREAM_STACK        1024   // 4096 Bytes
+#define TASK_LOGWRITER_STACK     512    // 2048 Bytes
+#define TASK_OTA_STACK           2048   // 8192 Bytes
+#endif
+
+
+// Priorities
+#define TASK_WDT_PRIO            1
+#define TASK_LOGWRITER_PRIO      1
+#define TASK_STREAM_PRIO         2
 #define TASK_NETWORK_PRIO        3
-#define TASK_SENSOR_STACK        2024
+#define TASK_NTP_PRIO            3
 #define TASK_SENSOR_PRIO         4
-#define TASK_NTPCLIENT_STACK     512
+#define TASK_OTA_PRIO            4
+
+
+// Build secret từ .env (scripts/build_env.py). Fallback rỗng nếu build không
+// chạy extra_scripts → seed mã hóa chỉ còn deviceId.
+#ifndef FW_SECRET
+#define FW_SECRET ""
+#endif
 
 #endif // CONFIG_H

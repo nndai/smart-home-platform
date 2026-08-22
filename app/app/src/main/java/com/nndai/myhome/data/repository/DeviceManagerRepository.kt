@@ -3,6 +3,7 @@ package com.nndai.myhome.data.repository
 import android.content.Context
 import android.util.Log
 import com.nndai.myhome.data.model.Device
+import com.nndai.myhome.data.model.DeviceControlKey
 import com.nndai.myhome.data.pairing.PendingClaim
 import com.nndai.myhome.data.pairing.PendingClaimStore
 import com.nndai.myhome.data.remote.SupabaseConfig
@@ -28,7 +29,7 @@ sealed class ClaimError(message: String, cause: Throwable? = null) : Exception(m
         ClaimError(message, cause)
 }
 
-class DeviceManagerRepository(context: Context) {
+class DeviceManagerRepository(private val context: Context) {
     private val supabaseDb = SupabaseConfig.client.postgrest
     private val pendingStore = PendingClaimStore(context)
     private val localCache = com.nndai.myhome.data.local.LocalDeviceCache(context)
@@ -57,6 +58,20 @@ class DeviceManagerRepository(context: Context) {
             val result = supabaseDb.from("devices")
                 .select(Columns.list("id", "device_id", "profile", "name", "owner_id", "status"))
                 .decodeList<Device>()
+
+            // Fetch control keys securely via RPC (bypassing RLS read restrictions on the devices table)
+            try {
+                val keysResponse = supabaseDb.rpc("get_device_control_keys").decodeList<DeviceControlKey>()
+                val keyStore = com.nndai.myhome.data.pairing.ControlKeyStore(context)
+                keysResponse.forEach { item ->
+                    item.control_key?.let { hexKey ->
+                        // The RPC now returns the control_key directly as Hex
+                        keyStore.save(item.device_id, hexKey)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync control keys via RPC: ${e.message}")
+            }
 
             // Diffing: clean up unregistered devices from HandshakeManager
             val oldIds = oldList.map { it.device_id }.toSet()
@@ -120,9 +135,7 @@ class DeviceManagerRepository(context: Context) {
                 put("p_profile", profile)
                 put("p_name", name)
                 controlKeyHex?.let { hex ->
-                    hexToBase64(hex)?.let { base64 ->
-                        put("p_control_key", base64)
-                    }
+                    put("p_control_key", "\\x$hex")
                 }
             }
             val response = supabaseDb.rpc("claim_device", params)
@@ -256,6 +269,13 @@ class DeviceManagerRepository(context: Context) {
                 bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
             }
             android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        }.getOrNull()
+    }
+
+    private fun base64ToHex(base64: String): String? {
+        return runCatching {
+            val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+            bytes.joinToString("") { "%02x".format(it) }
         }.getOrNull()
     }
 }

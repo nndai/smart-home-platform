@@ -6,6 +6,8 @@
 #include "core/ConfigManager.h"
 #include "core/log/LogManager.h"
 
+class DeviceIdentity;
+
 // ── Dịch vụ core cấp cho driver: log, lưu/reset config, gửi phản hồi ──
 // LED/nút nhấn KHÔNG nằm ở đây: chúng là phần cứng của thiết bị, driver tự khai
 // báo + tự quản (vd pump 1 LED 1 button, fan 5 LED 2 button, thêm bớt tùy profile).
@@ -14,6 +16,24 @@ struct DriverServices {
     std::function<bool()> saveConfig;
     std::function<void()> resetConfig;
     std::function<void(const String&)> sendResponse;
+    std::function<bool()> isConnected;
+
+    // ── MQTT primitives (thiết bị có target, vd Remote Switch): core thực thi ──
+    // Driver publish/subscribe topic bất kỳ (vd devices/{targetId}/cmd, .../up)
+    // mà không cần biết chi tiết client — core lo reconnect + routing.
+    std::function<bool(const String& topic, const String& payload)> mqttPublish;
+    std::function<void(const String& topic)> mqttSubscribe;
+
+    // Publish status snapshot của thiết bị lên devices/{id}/up ngay lập tức
+    // (vd: driver báo lỗi bơm tức thì, không cần chờ stream). Core thực thi.
+    std::function<void()> publishStatus;
+
+    // Định danh công khai của thiết bị này — dùng để ký envelope (field "src")
+    // khi driver gửi lệnh device-to-device (xem RemoteSwitchDriver::buildEnvelope).
+    const char* deviceId = nullptr;
+
+    // Con trỏ tới DeviceIdentity để driver truy xuất controlKey / giải mã E2E
+    DeviceIdentity* identity = nullptr;
 };
 
 // ── Interface thiết bị: core gọi mù, profile hiện thực ──
@@ -49,4 +69,7 @@ public:
     virtual void setServices(const DriverServices& svc) { (void)svc; }
     virtual bool isRelayOn() { return false; }
     virtual void setRelay(bool on) { (void)on; }
+
+    // Dành cho thiết bị có target (vd: Remote Switch) để nhận status từ target
+    virtual void handleTargetStatus(const JsonDocument& doc) { (void)doc; }
 };

@@ -54,6 +54,8 @@ void LogManager::writeFile(const char* line) { _sysLog.writeFile(line); }
 void LogManager::setSysLogFileEnabled(bool en) { _sysLog.setEnabled(en); }
 void LogManager::setSysLogFileLevel(uint8_t lv) { _sysLog.setLevel(lv); }
 void LogManager::setLogCallback(LogCallback cb) { _sysLog.setCallback(cb); }
+void LogManager::setMqttLogEnabled(bool en) { _mqttLogEnabled = en; }
+bool LogManager::isMqttLogEnabled() const { return _mqttLogEnabled; }
 size_t LogManager::getSysLogSize() { return _sysLog.getSize(); }
 bool LogManager::readSysLog(String& out, size_t maxBytes) { return _sysLog.read(out, maxBytes); }
 void LogManager::clearSysLog() { _sysLog.clear(); }

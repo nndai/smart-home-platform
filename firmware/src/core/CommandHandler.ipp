@@ -1,6 +1,5 @@
 #include "core/CommandHandler.h"
 #include "compat/log.h"
-#include <mbedtls/base64.h>
 #include "core/BuildInfo.h"
 #include "core/Crypto.h"
 #include "compat/wifi_scan.h"
@@ -27,13 +26,9 @@ void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     _identity = identity;
     _profile = profile ? profile : "unknown";
 
-    // Nạp seq cuối đã duyệt (nếu thiết bị reboot, lệnh cũ seq thấp vẫn bị từ chối)
-    _lastSeq = 0;
-    _lastSeqPersisted = 0;
-    size_t storedLen = 0;
-    if (compat::kvGet(SEQ_KV_KEY, &_lastSeq, sizeof(_lastSeq), &storedLen) == KvError::Ok && storedLen == sizeof(_lastSeq)) {
-        _lastSeqPersisted = _lastSeq;
-    }
+    // Per-sender seq table lives in RAM only (intentional: no flash persistence).
+    // After reboot the ts window (60s) guards replay until NTP sync.
+    _seqCount = 0;
 }
 
 template <typename T>
@@ -78,9 +73,9 @@ void CommandHandlerT<T>::_sendResponse(const String& source, const String& json)
 }
 
 // ── Envelope verify (docs §3.2) ──
-// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac} với
-//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>")
-// Kiểm tra: seq tăng dần (chống replay, persisted qua reboot), |now-ts| <= 60s,
+// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac, src} với
+//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>|<src>")
+// Kiểm tra: seq tăng dần THEO TỪNG SENDER (chống replay, RAM-only), |now-ts| <= 60s,
 // HMAC đúng (chống giả mạo — kẻ khác không có controlKey).
 template <typename T>
 bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload) {
@@ -102,9 +97,29 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         return false;
     }
 
-    // Replay: seq phải lớn hơn seq đã duyệt (kể cả sau reboot nhờ persist).
-    if (seq <= _lastSeq) {
-        LT_EM(CMD, "Envelope: stale seq %u (last %u)", (unsigned)seq, (unsigned)_lastSeq);
+    // Nhiều controller (app, remote switch...) ký cùng controlKey nhưng giữ seq
+    // riêng → tìm/ tạo floor riêng cho từng sender ("" = legacy sender thiếu src).
+    const char* src = cmd["src"] | "";
+    SeqEntry* entry = nullptr;
+    for (uint8_t i = 0; i < _seqCount; i++) {
+        if (strcmp(_seqTable[i].src, src) == 0) {
+            entry = &_seqTable[i];
+            break;
+        }
+    }
+    if (!entry) {
+        if (_seqCount >= MAX_SEQ_ENTRIES) {
+            LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
+            return false;
+        }
+        entry = &_seqTable[_seqCount++];
+        strlcpy(entry->src, src, sizeof(entry->src));
+        entry->seq = 0;
+    }
+
+    // Replay: seq phải lớn hơn seq cuối đã duyệt của SENDER này.
+    if (seq <= entry->seq) {
+        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src);
         return false;
     }
 
@@ -120,7 +135,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         }
     }
 
-    // Canonical: "seq|ts|cmd|payload" — payload serialize lại từ doc (compact, giữ thứ tự key).
+    // Canonical: "seq|ts|cmd|payload|src" — payload serialize lại từ doc (compact, giữ thứ tự key).
     String keyHex;
     if (!_identity->controlKeyHex(keyHex)) {
         LT_EM(CMD, "Envelope: no controlKey");
@@ -128,7 +143,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
     }
     String payloadStr;
     serializeJson(payload, payloadStr);
-    const String canonical = String(seq) + "|" + String(ts) + "|" + cmd["cmd"].as<String>() + "|" + payloadStr;
+    const String canonical = crypto::buildCanonical(seq, ts, cmd["cmd"].as<const char*>(), payloadStr, src);
 
     char expectedHex[65];
     if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
@@ -140,23 +155,16 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         return false;
     }
 
-    _lastSeq = seq;
-    // Ghi flash có hạn (KV trên flash): persist cách quãng; sau reboot cửa sổ
-    // replay tối đa bằng SEQ_PERSIST_EVERY-1 seq.
-    if (seq - _lastSeqPersisted >= SEQ_PERSIST_EVERY) {
-        if (compat::kvSet(SEQ_KV_KEY, &seq, sizeof(seq)) == KvError::Ok) {
-            _lastSeqPersisted = seq;
-        }
-    }
+    entry->seq = seq;
+    // Cố ý KHÔNG persist floor xuống flash: sau reboot bảng rỗng, replay bị chặn
+    // bằng cửa sổ ts 60s — đánh đổi flash wear vs an toàn đã được chấp nhận.
     return true;
 }
 
-// Reset chuỗi seq — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
+// Reset floor của mọi sender — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
 template <typename T>
 void CommandHandlerT<T>::_resetSeq() {
-    _lastSeq = 0;
-    _lastSeqPersisted = 0;
-    compat::kvDel(SEQ_KV_KEY);
+    _seqCount = 0;
 }
 
 template <typename T>
@@ -260,7 +268,18 @@ void CommandHandlerT<T>::sendStream(StreamType type) {
         emptyPayload["fields"] = "all";
         _cmdGetSystemInfo(source, emptyPayload, resp);
         break;
+        case STREAM_COUNT:
+        default:
+            break;
     }
+}
+
+template <typename T>
+void CommandHandlerT<T>::publishStatusToUp() {
+    JsonDocument resp;
+    JsonDocument emptyPayload;
+    resp["cmd"] = "getStatus";
+    _cmdGetStatus("mqtt", emptyPayload, resp);
 }
 
 template <typename T>
@@ -526,9 +545,8 @@ void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocume
 
 template <typename T>
 void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    extern void setLogMqttEnable(bool);
     bool en = payload["enabled"].as<bool>();
-    setLogMqttEnable(en);
+    _log->setMqttLogEnabled(en);
     resp["status"] = "ok";
     resp["enabled"] = en;
     _sendResponse(source, resp);
@@ -536,9 +554,9 @@ void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument
 
 template <typename T>
 void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    extern bool isLogMqttEnabled();
+    (void)payload;
     resp["status"] = "ok";
-    resp["enabled"] = isLogMqttEnabled();
+    resp["enabled"] = _log->isMqttLogEnabled();
     _sendResponse(source, resp);
 }
 
@@ -649,12 +667,10 @@ void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const JsonDocument& 
         _sendResponse(source, resp);
         return;
     }
-    size_t decodedMax = (b64.length() * 3) / 4;
+    size_t decodedMax = (b64.length() * 3) / 4 + 4;
     uint8_t* buf = new uint8_t[decodedMax];
-    size_t olen;
-    int r = mbedtls_base64_decode(buf, decodedMax, &olen,
-        (const unsigned char*)b64.c_str(), b64.length());
-    if (r != 0) {
+    size_t olen = 0;
+    if (!crypto::base64Decode(b64.c_str(), b64.length(), buf, decodedMax, &olen)) {
         delete[] buf;
         resp["status"] = "error";
         resp["message"] = "Base64 decode failed";
@@ -713,6 +729,7 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
         JsonObject mem = resp["memory"].to<JsonObject>();
         mem["freeHeap"] = ESP.getFreeHeap();
         mem["minEverFreeHeap"] = (unsigned long)chip::heapMinFree();
+        mem["maxAllocHeap"] = (unsigned long)chip::heapMaxAlloc();
     }
 
     if (has("tasks")) {
@@ -815,7 +832,6 @@ void CommandHandlerT<T>::_onScanDone() {
     JsonDocument notify;
     notify["cmd"] = "scanWifi";
     notify["status"] = "completed";
-    vTaskDelay(100);
     _sendResponse(_scanSource, notify);
 }
 
@@ -833,46 +849,16 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     _scanPending = true;
     _scanSource = source;
 
-    if (!_scanEventHandlerId) {
-        LT_IM(CMD, "Registering WiFi scan event handler");
-#if defined(LT_ARD_HAS_SERIAL)
-        _scanEventHandlerId = WiFi.onEvent([this](EventId event, EventInfo info) {
-            (void)event; (void)info;
-            this->_onScanDone();
-        });
-#elif defined(ARDUINO_ARCH_ESP8266)
-        _scanEventHandlerId = 1;
-        // ESP8266 WiFiEvent_t does not have a SCAN_DONE event.
-        // We will use WiFi.scanNetworksAsync() instead.
-#else
-        _scanEventHandlerId = WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
-            (void)event; (void)info;
-            this->_onScanDone();
-        }, ARDUINO_EVENT_WIFI_SCAN_DONE);
-#endif
-    }
-
     LT_IM(CMD, "Starting async WiFi scan...");
-    bool wifiDrop = false;
-    
 
     resp["status"] = "ok";
     resp["message"] = "Scan started";
-    resp["wifiDrop"] = wifiDrop;
+    resp["wifiDrop"] = false;
     _sendResponse(source, resp);
 
-    vTaskDelay(100);
-#if defined(ARDUINO_ARCH_ESP8266)
-    static CommandHandlerT<T>* self = this;
-    self = this;
-    WiFi.scanDelete();
-    WiFi.scanNetworksAsync([](int count) {
-        (void)count;
-        if (self) self->_onScanDone();
+    compat::scanAsync([this]() {
+        this->_onScanDone();
     });
-#else
-    compat::scanStart();
-#endif
 }
 
 template <typename T>
@@ -976,7 +962,7 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payl
     ESP.restart();
 }
 
-// ── Provision (factory): inject/đổi deviceSecret + controlKey ──
+// ── Provision (factory): inject/đổi controlKey ──
 // Chỉ chấp nhận khi đang AP_WS (proximity). Hex 64 ký tự; bỏ trống = giữ nguyên.
 template <typename T>
 void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument& payload, JsonDocument& resp) {
@@ -993,12 +979,6 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument&
         return;
     }
 
-    if (payload["deviceSecret"].is<const char*>() && !_identity->setSecretHex(payload["deviceSecret"].as<const char*>())) {
-        resp["status"] = "error";
-        resp["message"] = "Invalid deviceSecret (need 64 hex chars)";
-        _sendResponse(source, resp);
-        return;
-    }
     if (payload["controlKey"].is<const char*>()) {
         if (!_identity->setControlKeyHex(payload["controlKey"].as<const char*>())) {
             resp["status"] = "error";

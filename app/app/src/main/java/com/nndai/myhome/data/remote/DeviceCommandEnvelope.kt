@@ -14,10 +14,13 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Ký envelope lệnh cho firmware (docs §3.2):
- *   canonical = "seq|ts|cmd|payloadJSONcompact"  (payload serialize compact,
+ *   canonical = "seq|ts|cmd|payloadJSONcompact|src"  (payload serialize compact,
  *               giữ thứ tự key — khớp ArduinoJson serializeJson)
  *   hmac      = HMAC-SHA256(controlKeyRaw32B, canonical) → hex 64 thường
- * Thiết bị chỉ thực thi lệnh MQTT có envelope hợp lệ (seq > last_seq, ts ±60s).
+ *   src       = appSenderId() ổn định — thiết bị track seq tăng RIÊNG cho từng
+ *               sender (app, remote switch...) nên không khóa nhau
+ * Thiết bị chỉ thực thi lệnh MQTT có envelope hợp lệ (seq > last_seq của sender,
+ * ts ±60s, hmac đúng).
  */
 class DeviceCommandEnvelope(context: android.content.Context) {
     private val keyStore = ControlKeyStore(context)
@@ -29,7 +32,7 @@ class DeviceCommandEnvelope(context: android.content.Context) {
             return null
         }
         val keyBytes = hexToBytes(keyHex) ?: run {
-            Log.e(TAG, "sign(): bad controlKey hex length for $deviceId")
+            Log.e(TAG, "sign(): bad controlKey hex length for $deviceId. Hex: '$keyHex', len: ${keyHex.length}")
             return null
         }
 
@@ -44,19 +47,26 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         }
         val payload = cmdJson["payload"] as? JsonObject ?: JsonObject(emptyMap())
 
+        val src = keyStore.appSenderId()
         val seq = keyStore.nextSeq(deviceId)
         // Firmware lấy giờ LOCAL cố định UTC+7 (NTPClient offset trong Config.h),
         // verify |ts - now| <= 60s → ts phải ở múi +7, không phải epoch UTC.
         val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
         val payloadCompact = Json.encodeToString(JsonObject.serializer(), payload)
-        val canonical = "$seq|$ts|$cmd|$payloadCompact"
+        val canonical = "$seq|$ts|$cmd|$payloadCompact|$src"
         val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
+
+        val reqId = cmdJson["reqId"]?.jsonPrimitive?.content
 
         return buildJsonObject {
             put("cmd", cmd)
+            if (reqId != null) {
+                put("reqId", reqId)
+            }
             put("payload", payload)
             put("seq", seq)
             put("ts", ts)
+            put("src", src)
             put("hmac", hmacHex)
         }.toString()
     }

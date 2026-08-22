@@ -27,11 +27,21 @@ namespace chip {
         return 25.0f + (cal_adc_read(ADC_CH0) - 770.0f) / 2.54f;
     }
 
-String chipModelName() {
-    String cpu_name = lt_cpu_get_model_code();
-    cpu_name.toUpperCase();
-    return cpu_name;
-}
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        // LibreTiny LN882H does not implement analogWrite in Arduino framework
+        if (percent == 0) {
+            digitalWrite(pin, activeLow ? HIGH : LOW);
+        } else {
+            digitalWrite(pin, activeLow ? LOW : HIGH);
+        }
+    }
+
+    String chipModelName() {
+        String cpu_name = lt_cpu_get_model_code();
+        cpu_name.toUpperCase();
+        return cpu_name;
+    }
 
     uint32_t systemChipId() {
         return ESP.getChipId();
@@ -43,6 +53,9 @@ String chipModelName() {
 
     size_t heapMinFree() {
         return (size_t)lt_heap_get_min_free();
+    }
+    size_t heapMaxAlloc() {
+        return (size_t)lt_heap_get_max_alloc();
     }
 }
 
@@ -56,6 +69,14 @@ namespace chip {
 
     float readWifiTempC() { return 0.0f; }
 
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        uint32_t max_pwm = 1023; // ESP8266 PWMRANGE
+        uint32_t val = (percent * max_pwm) / 100;
+        if (activeLow) val = max_pwm - val;
+        analogWrite(pin, val);
+    }
+
     String chipModelName() { return "ESP8266"; }
 
     uint32_t systemChipId() { return ESP.getChipId(); }
@@ -65,6 +86,7 @@ namespace chip {
     }
 
     size_t heapMinFree() { return ESP.getFreeHeap(); }
+    size_t heapMaxAlloc() { return ESP.getMaxFreeBlockSize(); }
 }
 
 #else
@@ -77,6 +99,14 @@ namespace chip {
 
     float readWifiTempC() {
         return 0.0f;
+    }
+
+    void writePwm(uint8_t pin, uint8_t percent, bool activeLow) {
+        if (percent > 100) percent = 100;
+        uint32_t max_pwm = 255; // ESP32 analogWrite default range
+        uint32_t val = (percent * max_pwm) / 100;
+        if (activeLow) val = max_pwm - val;
+        analogWrite(pin, val);
     }
 
     String chipModelName() {
@@ -119,6 +149,12 @@ namespace chip {
 
     size_t heapMinFree() {
         return ESP.getMinFreeHeap();
+    }
+    size_t heapMaxAlloc() {
+        return ESP.getMaxAllocHeap();
+    }
+    size_t psramMinFree() {
+        return ESP.getMinFreePsram();
     }
 }
 #endif

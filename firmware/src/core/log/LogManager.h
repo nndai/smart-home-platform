@@ -26,6 +26,8 @@ public:
     void setSysLogFileEnabled(bool en);
     void setSysLogFileLevel(uint8_t lv);
     void setLogCallback(LogCallback cb);
+    void setMqttLogEnabled(bool en);
+    bool isMqttLogEnabled() const;
     size_t getSysLogSize();
     bool readSysLog(String& out, size_t maxBytes = 4096);
     void clearSysLog();
@@ -65,4 +67,5 @@ private:
     SysLog _sysLog;
     ToggleLog _toggleLog;
     PowerLog _powerLog;
+    bool _mqttLogEnabled = false;
 };

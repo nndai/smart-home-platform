@@ -24,9 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeviceUnknown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.ModeFanOff
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Login
+import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -94,7 +95,7 @@ fun HomeDashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Login,
+                        imageVector = Icons.AutoMirrored.Outlined.Login,
                         contentDescription = null,
                         tint = CyanBlue,
                         modifier = Modifier.size(18.dp)
@@ -183,6 +184,10 @@ private fun DeviceCard(
         "fan" -> {
             icon = Icons.Filled.ModeFanOff
             iconTint = GreenOk
+        }
+        "remote_switch" -> {
+            icon = Icons.Filled.Sensors
+            iconTint = androidx.compose.ui.graphics.Color(0xFFAB47BC)
         }
         "lamp", "switch" -> {
             icon = Icons.Filled.Lightbulb

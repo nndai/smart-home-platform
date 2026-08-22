@@ -9,7 +9,6 @@ import com.nndai.myhome.data.remote.DeviceCommandEnvelope
 import com.nndai.myhome.data.remote.MqttCredentialRemoteDataSource
 import com.nndai.myhome.data.remote.MqttDeviceChannel
 import com.nndai.myhome.data.remote.PumpCommandDataSource
-import com.nndai.myhome.data.remote.WebSocketDeviceChannel
 import com.nndai.myhome.data.repository.CredentialSyncResult
 import com.nndai.myhome.data.repository.LogRepository
 import com.nndai.myhome.data.repository.MqttCredentialRepository
@@ -22,9 +21,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Manual DI singleton for PumpRepository, LogRepository, and MqttCredentialRepository.
+ * Encapsulates the entire data and communication stack for a single deviceId.
+ * Guarantees 100% data isolation between distinct devices.
+ */
+data class DeviceRepositoryBundle(
+    val deviceId: String,
+    val channel: MqttDeviceChannel,
+    val dataSource: PumpCommandDataSource,
+    val pumpRepository: PumpRepository,
+    val logRepository: LogRepository
+)
+
+/**
+ * DI Provider managing Per-Device Repository Bundles, MQTT Connection Manager,
+ * and MqttCredentialRepository.
  */
 object PumpRepositoryProvider {
 
@@ -37,11 +50,7 @@ object PumpRepositoryProvider {
     private const val KEY_WS_URL = "ws_url"
     private const val KEY_DEVICE_ID = "active_device_id"
 
-    @Volatile
-    private var repository: PumpRepository? = null
-
-    @Volatile
-    private var logRepository: LogRepository? = null
+    private val deviceBundles = ConcurrentHashMap<String, DeviceRepositoryBundle>()
 
     @Volatile
     private var credentialRepository: MqttCredentialRepository? = null
@@ -79,6 +88,7 @@ object PumpRepositoryProvider {
     fun provideMqttConnectionManager(): com.nndai.myhome.data.remote.MqttConnectionManager {
         return mqttConnectionManager ?: synchronized(this) {
             mqttConnectionManager ?: com.nndai.myhome.data.remote.MqttConnectionManager(
+                context = appContext,
                 hostProvider = { getMqttHost() },
                 portProvider = { getMqttPort() },
                 usernameProvider = { getMqttUser() },
@@ -109,11 +119,6 @@ object PumpRepositoryProvider {
         }
     }
 
-    /**
-     * Background sync loop to sync credentials from Supabase RPC with Android Keystore.
-     * Waits until Supabase Auth session is Authenticated (restored/logged in) before calling RPC,
-     * preventing 42501 (permission denied) errors during cold start session restoration.
-     */
     private fun startBackgroundCredentialSync() {
         appScope.launch {
             SupabaseConfig.client.auth.sessionStatus.collect { status ->
@@ -123,8 +128,8 @@ object PumpRepositoryProvider {
                         val repo = provideCredentialRepository()
                         when (val result = repo.syncWithRemote()) {
                             is CredentialSyncResult.Updated -> {
-                                Log.d(TAG, "startBackgroundCredentialSync(): Credential updated! Reconnecting MQTT channel...")
-                                repository?.reconnect()
+                                Log.d(TAG, "startBackgroundCredentialSync(): Credential updated! Reconnecting MQTT channels...")
+                                deviceBundles.values.forEach { it.pumpRepository.reconnect() }
                                 break
                             }
                             is CredentialSyncResult.Unchanged -> {
@@ -142,21 +147,68 @@ object PumpRepositoryProvider {
         }
     }
 
-    fun provide(): PumpRepository {
-        return repository ?: synchronized(this) {
-            repository ?: buildRepositories().first.also { repository = it }
-        }
-    }
-
-    fun provideLogRepository(): LogRepository {
-        return logRepository ?: synchronized(this) {
-            logRepository ?: buildRepositories().second.also { logRepository = it }
-        }
+    /**
+     * Retrieves the dedicated PumpRepository for a specific deviceId (or active deviceId).
+     */
+    fun provide(deviceId: String = getActiveDeviceId()): PumpRepository {
+        return getOrCreateBundle(deviceId).pumpRepository
     }
 
     /**
-     * Save custom MQTT config entered by user. Calls reconnect() after saving.
+     * Retrieves the dedicated LogRepository for a specific deviceId (or active deviceId).
      */
+    fun provideLogRepository(deviceId: String = getActiveDeviceId()): LogRepository {
+        return getOrCreateBundle(deviceId).logRepository
+    }
+
+    /**
+     * Gets or creates a completely isolated DeviceRepositoryBundle for the specified deviceId.
+     */
+    fun getOrCreateBundle(targetDeviceId: String): DeviceRepositoryBundle {
+        val id = targetDeviceId.ifBlank { getActiveDeviceId() }.ifBlank { "default_device" }
+        return deviceBundles.getOrPut(id) {
+            buildDeviceBundle(id)
+        }
+    }
+
+    private fun buildDeviceBundle(targetDeviceId: String): DeviceRepositoryBundle {
+        val ctx = appContext ?: throw IllegalStateException("PumpRepositoryProvider.init() not called")
+        val envelope = DeviceCommandEnvelope(ctx)
+        val mqttChannel = MqttDeviceChannel(
+            connectionManager = provideMqttConnectionManager(),
+            handshakeManager = provideDeviceHandshakeManager(),
+            deviceId = targetDeviceId,
+            envelopeProvider = { raw -> envelope.sign(targetDeviceId, raw) },
+            scope = appScope
+        )
+        val dataSource = PumpCommandDataSource(mqttChannel, appScope)
+        val pumpRepo = PumpRepository(dataSource, mqttChannel, appScope)
+        val logRepo = LogRepository(ctx, targetDeviceId, dataSource, appScope)
+
+        Log.d(TAG, "buildDeviceBundle(): Created isolated repository stack for deviceId=$targetDeviceId")
+        return DeviceRepositoryBundle(
+            deviceId = targetDeviceId,
+            channel = mqttChannel,
+            dataSource = dataSource,
+            pumpRepository = pumpRepo,
+            logRepository = logRepo
+        )
+    }
+
+    /** Set active device ID and ensure its isolated channel is started. */
+    fun setActiveDeviceId(deviceId: String) {
+        if (deviceId.isBlank()) return
+        val oldId = getActiveDeviceId()
+        getPrefs().edit().putString(KEY_DEVICE_ID, deviceId).apply()
+        Log.d(TAG, "setActiveDeviceId(): $deviceId (previous was: $oldId)")
+
+        val bundle = getOrCreateBundle(deviceId)
+        bundle.channel.start()
+    }
+
+    fun getActiveDeviceId(): String = getPrefs().getString(KEY_DEVICE_ID, null)
+        ?.takeIf { it.isNotBlank() } ?: ""
+
     fun saveMqttConfig(
         host: String,
         port: Int,
@@ -174,12 +226,12 @@ object PumpRepositoryProvider {
             .putString(KEY_WS_URL, wsUrl)
             .apply()
 
-        repository?.reconnect()
+        deviceBundles.values.forEach { it.pumpRepository.reconnect() }
     }
 
     fun resetMqttConfigToDefaults() {
         getPrefs().edit().clear().apply()
-        repository?.reconnect()
+        deviceBundles.values.forEach { it.pumpRepository.reconnect() }
     }
 
     fun getMqttHost(): String = getPrefs().getString(KEY_MQTT_HOST, null)
@@ -201,16 +253,6 @@ object PumpRepositoryProvider {
     fun getMqttTopic(): String = getPrefs().getString(KEY_MQTT_TOPIC, null)
         ?.takeIf { it.isNotBlank() } ?: BuildConfig.MQTT_TOPIC
 
-    /** Set active device ID for MQTT topic format devices/{deviceId}/cmd|up|log */
-    fun setActiveDeviceId(deviceId: String) {
-        getPrefs().edit().putString(KEY_DEVICE_ID, deviceId).apply()
-        Log.d(TAG, "setActiveDeviceId(): $deviceId")
-        repository?.reconnect()
-    }
-
-    fun getActiveDeviceId(): String = getPrefs().getString(KEY_DEVICE_ID, null)
-        ?.takeIf { it.isNotBlank() } ?: ""
-
     fun getWsUrl(): String {
         val saved = getPrefs().getString(KEY_WS_URL, null)?.takeIf { it.isNotBlank() }
         if (saved != null && !saved.contains("192.168.137.111")) {
@@ -223,28 +265,6 @@ object PumpRepositoryProvider {
         return BuildConfig.WEBSOCKET_URL
     }
 
-    private fun buildRepositories(): Pair<PumpRepository, LogRepository> {
-        val ctx = appContext ?: throw IllegalStateException("PumpRepositoryProvider.init() not called")
-        val envelope = DeviceCommandEnvelope(ctx)
-        val mqttChannel = MqttDeviceChannel(
-            connectionManager = provideMqttConnectionManager(),
-            handshakeManager = provideDeviceHandshakeManager(),
-            deviceIdProvider = { getActiveDeviceId() },
-            envelopeProvider = { raw -> envelope.sign(getActiveDeviceId(), raw) },
-            scope = appScope
-        )
-        val wsChannel = WebSocketDeviceChannel(
-            urlProvider = { getWsUrl() },
-            scope = appScope
-        )
-        val dataSource = PumpCommandDataSource(mqttChannel, appScope)
-        val pumpRepo = PumpRepository(dataSource, mqttChannel, appScope)
-        val logRepo = LogRepository(ctx, dataSource, appScope)
-        logRepository = logRepo
-        repository = pumpRepo
-        return Pair(pumpRepo, logRepo)
-    }
-
     private fun getPrefs(): SharedPreferences {
         return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             ?: throw IllegalStateException("PumpRepositoryProvider.init() not called")
@@ -253,4 +273,3 @@ object PumpRepositoryProvider {
     private const val TAG = "PumpRepositoryProvider"
     private const val CREDENTIAL_RETRY_MS = 10_000L
 }
-

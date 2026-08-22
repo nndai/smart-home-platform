@@ -2,6 +2,7 @@
 #define LEDCONTROLLER_H
 
 #include <Arduino.h>
+#include "chip/io.h"
 
 class LedController {
 private:
@@ -22,17 +23,47 @@ private:
     uint8_t _blinkIndex;
     uint32_t _onInterval;
     uint32_t _offInterval;
+    
+    uint8_t _brightness;
+    bool _usePwm;
+
+    void _applyState(bool on) {
+        if (!on) {
+            digitalWrite(_pin, _activeLow ? HIGH : LOW);
+        } else {
+            if (!_usePwm || _brightness == 100) {
+                digitalWrite(_pin, _activeLow ? LOW : HIGH);
+            } else {
+                chip::writePwm(_pin, _brightness, _activeLow);
+            }
+        }
+    }
 
 public:
     LedController()
         : _pin(0), _isOn(0), _activeLow(true), _blinkInterval(0), _lastToggleTime(0),
-        _state(OFF), _blinkCount(0), _blinkIndex(0), _onInterval(0), _offInterval(0) {}
+        _state(OFF), _blinkCount(0), _blinkIndex(0), _onInterval(0), _offInterval(0),
+        _brightness(100), _usePwm(false) {}
+
+    void setBrightness(uint8_t percentage) {
+        if (percentage > 100) percentage = 100;
+        _brightness = percentage;
+        _usePwm = true;
+        // Cập nhật ngay nếu đang bật
+        if (_isOn) _applyState(true);
+    }
+
+    void disablePwm() {
+        _usePwm = false;
+        _brightness = 100;
+        if (_isOn) _applyState(true);
+    }
 
     void begin(uint8_t pin, bool activeLow = true) {
         _pin = pin;
         _activeLow = activeLow;
         pinMode(_pin, OUTPUT);
-        digitalWrite(_pin, _activeLow ? HIGH : LOW);
+        _applyState(false);
     }
 
     void blink(uint32_t intervalMs) {
@@ -61,7 +92,7 @@ public:
         _state = ON;
         _isOn = 1;
         _blinkInterval = 0;
-        digitalWrite(_pin, _activeLow ? LOW : HIGH);
+        _applyState(true);
     }
 
     void off() {
@@ -69,7 +100,7 @@ public:
         _state = OFF;
         _isOn = 0;
         _blinkInterval = 0;
-        digitalWrite(_pin, _activeLow ? HIGH : LOW);
+        _applyState(false);
     }
 
     void update() {
@@ -78,12 +109,12 @@ public:
             if (_blinkIndex < _blinkCount) {
                 if (!_isOn && currentTime - _lastToggleTime >= _onInterval) {
                     _isOn = true;
-                    digitalWrite(_pin, (_isOn ^ _activeLow) ? HIGH : LOW);
+                    _applyState(true);
                     _lastToggleTime = currentTime;
                 }
                 else if (_isOn && currentTime - _lastToggleTime >= _onInterval) {
                     _isOn = false;
-                    digitalWrite(_pin, (_isOn ^ _activeLow) ? HIGH : LOW);
+                    _applyState(false);
                     _lastToggleTime = currentTime;
                     _blinkIndex++;
                 }
@@ -97,7 +128,7 @@ public:
         else if (_state == BLINK) {
             if (currentTime - _lastToggleTime >= _blinkInterval) {
                 _isOn = !_isOn;
-                digitalWrite(_pin, (_isOn ^ _activeLow) ? HIGH : LOW);
+                _applyState(_isOn);
                 _lastToggleTime = currentTime;
             }
         }

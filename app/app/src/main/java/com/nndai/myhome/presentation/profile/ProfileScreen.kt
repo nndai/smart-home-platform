@@ -1,7 +1,9 @@
 package com.nndai.myhome.presentation.profile
 
+import android.app.Activity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +22,10 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -31,16 +34,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.RedError
 import com.nndai.myhome.core.theme.SecondaryText
+import com.nndai.myhome.core.utils.LocaleHelper
 import com.nndai.myhome.data.repository.AuthRepository
 import kotlinx.coroutines.launch
 
@@ -50,7 +62,12 @@ fun ProfileScreen(
     isLoggedIn: Boolean,
     onNavigateToLogin: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var showLanguageDialog by remember { mutableStateOf(false) }
+
+    val currentLangCode = remember { LocaleHelper.getLanguageCode(context) }
+    val currentLangName = if (currentLangCode == "vi") stringResource(R.string.lang_vi) else stringResource(R.string.lang_en)
 
     Column(
         modifier = Modifier
@@ -58,11 +75,11 @@ fun ProfileScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Header
         Text(
-            text = "Profile",
+            text = stringResource(R.string.profile_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
@@ -99,13 +116,13 @@ fun ProfileScreen(
 
                 if (isLoggedIn) {
                     Text(
-                        text = "Signed in",
+                        text = stringResource(R.string.profile_signed_in),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Your devices are synced",
+                        text = stringResource(R.string.profile_devices_synced),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -127,17 +144,17 @@ fun ProfileScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Sign out", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.profile_sign_out), fontWeight = FontWeight.Medium)
                     }
                 } else {
                     Text(
-                        text = "Guest",
+                        text = stringResource(R.string.profile_guest),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Sign in to manage your devices",
+                        text = stringResource(R.string.profile_sign_in_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -153,18 +170,26 @@ fun ProfileScreen(
                         shape = MaterialTheme.shapes.small
                     ) {
                         Icon(
-                            Icons.Filled.Login,
+                            Icons.AutoMirrored.Filled.Login,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Sign in", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.profile_sign_in), fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
 
-        // Settings section
+        // App Settings section
+        Text(
+            text = stringResource(R.string.profile_app_settings),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        )
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
@@ -172,17 +197,108 @@ fun ProfileScreen(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
         ) {
             Column {
-                SettingsRow(icon = Icons.Filled.Language, label = "Language", value = "English")
+                SettingsRow(
+                    icon = Icons.Filled.Language,
+                    label = stringResource(R.string.profile_language),
+                    value = currentLangName,
+                    onClick = { showLanguageDialog = true }
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                SettingsRow(icon = Icons.Filled.DarkMode, label = "Appearance", value = "System")
+                SettingsRow(
+                    icon = Icons.Filled.DarkMode,
+                    label = stringResource(R.string.profile_appearance),
+                    value = stringResource(R.string.profile_theme_system),
+                    onClick = {}
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                SettingsRow(icon = Icons.Filled.Shield, label = "Privacy", value = null)
+                SettingsRow(
+                    icon = Icons.Filled.Shield,
+                    label = stringResource(R.string.profile_privacy),
+                    value = null,
+                    onClick = {}
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                SettingsRow(icon = Icons.Filled.Info, label = "About", value = "v1.0.0")
+                SettingsRow(
+                    icon = Icons.Filled.Info,
+                    label = stringResource(R.string.profile_about),
+                    value = stringResource(R.string.profile_version, "1.0.0"),
+                    onClick = {}
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    // Language Selector Dialog
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.profile_select_language),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "vi" to stringResource(R.string.lang_vi),
+                        "en" to stringResource(R.string.lang_en)
+                    ).forEach { (code, label) ->
+                        val isSelected = currentLangCode == code
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable {
+                                    showLanguageDialog = false
+                                    if (code != currentLangCode) {
+                                        LocaleHelper.setLanguageCode(context, code)
+                                        (context as? Activity)?.recreate()
+                                    }
+                                },
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isSelected) CyanBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                            border = if (isSelected) BorderStroke(1.5.dp, CyanBlue) else null
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) CyanBlue else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (isSelected) {
+                                    Text(
+                                        text = "✓",
+                                        fontWeight = FontWeight.Bold,
+                                        color = CyanBlue
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                Button(
+                    onClick = { showLanguageDialog = false },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
     }
 }
 
@@ -190,11 +306,13 @@ fun ProfileScreen(
 private fun SettingsRow(
     icon: ImageVector,
     label: String,
-    value: String?
+    value: String?,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -202,7 +320,7 @@ private fun SettingsRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(20.dp)
         )
         Text(

@@ -26,7 +26,7 @@ sealed interface DeviceHealthStatus {
 
 /**
  * Manages per-device handshake and health monitoring independently for each registered device ID.
- * Handshakes use HMAC control keys. Detects per-device data timeouts without affecting global MQTT connections.
+ * Features seamless background heartbeat probes that do NOT cause UI state flickering when devices are idle.
  */
 class DeviceHandshakeManager(
     context: Context,
@@ -45,6 +45,9 @@ class DeviceHandshakeManager(
 
     // Map of deviceId -> Last RX timestamp
     private val lastRxTimes = ConcurrentHashMap<String, Long>()
+
+    // Track consecutive failed handshake attempts per device
+    private val failedAttempts = ConcurrentHashMap<String, Int>()
 
     init {
         // Listen to incoming MQTT messages globally
@@ -73,21 +76,25 @@ class DeviceHandshakeManager(
      * Preserves existing health state if device is already registered (e.g. on screen resume).
      */
     fun registerDevice(deviceId: String): StateFlow<DeviceHealthStatus> {
-        var isNewRegistration = false
+        val isExisting = healthStates.containsKey(deviceId)
         val stateFlow = healthStates.getOrPut(deviceId) {
-            isNewRegistration = true
             MutableStateFlow(DeviceHealthStatus.Handshaking)
         }
 
-        if (isNewRegistration) {
-            scope.launch(dispatcher) {
-                // Subscribe to device's status and log topics
-                connectionManager.subscribe("devices/$deviceId/up")
-                connectionManager.subscribe("devices/$deviceId/log")
+        scope.launch(dispatcher) {
+            // Subscribe to device's status and log topics
+            connectionManager.subscribe("devices/$deviceId/up")
+            connectionManager.subscribe("devices/$deviceId/log")
 
-                // If transport is already connected, initiate handshake
-                if (connectionManager.transportState.value is MqttTransportState.Connected) {
-                    initiateHandshakeForDevice(deviceId, isInitialProbe = true)
+            // If transport is already connected, initiate handshake probe
+            if (connectionManager.transportState.value is MqttTransportState.Connected) {
+                if (!isExisting) {
+                    initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
+                } else {
+                    val currentState = stateFlow.value
+                    if (currentState is DeviceHealthStatus.Unknown) {
+                        initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
+                    }
                 }
             }
         }
@@ -116,27 +123,37 @@ class DeviceHandshakeManager(
         return healthStates[deviceId]?.asStateFlow()
     }
 
-    // Track consecutive failed handshake attempts per device
-    private val failedAttempts = ConcurrentHashMap<String, Int>()
-
     /**
      * Initiates a fast handshake status request for a specific device using its signed controlKey.
      */
     fun triggerHandshake(deviceId: String) {
         scope.launch(dispatcher) {
-            initiateHandshakeForDevice(deviceId, isInitialProbe = true)
+            initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
         }
     }
 
-    private suspend fun initiateHandshakeForDevice(deviceId: String, isInitialProbe: Boolean = false) {
+    /**
+     * Sends a getStatus probe to the device.
+     * @param isSilentProbe If true, does NOT change state to Handshaking (Connecting...) on UI.
+     * @param isInitialProbe If true, forces state to Handshaking (Connecting...) for new screens/connections.
+     */
+    private suspend fun initiateHandshakeForDevice(
+        deviceId: String,
+        isSilentProbe: Boolean = false,
+        isInitialProbe: Boolean = false
+    ) {
         val stateFlow = healthStates[deviceId] ?: return
         val attempts = failedAttempts.getOrDefault(deviceId, 0)
 
-        // Show Handshaking (Connecting...) on initial probe or early attempts
-        if (isInitialProbe || attempts < 2) {
+        // Only update UI to Handshaking if it's an initial probe OR if silent probe has already failed
+        if (isInitialProbe || (!isSilentProbe && attempts >= 1)) {
             stateFlow.value = DeviceHealthStatus.Handshaking
         }
-        Log.d(TAG, "initiateHandshakeForDevice(): Sending getStatus to $deviceId (attempt ${attempts + 1})")
+
+        Log.d(
+            TAG,
+            "initiateHandshakeForDevice(): Sending getStatus to $deviceId (attempt ${attempts + 1}, silent=$isSilentProbe)"
+        )
 
         val rawCmd = JSONObject().apply {
             put("cmd", "getStatus")
@@ -157,7 +174,8 @@ class DeviceHandshakeManager(
             return
         }
 
-        startDeviceWatchdog(deviceId)
+        // Start response timeout watchdog for this probe
+        startProbeResponseWatchdog(deviceId, isSilentProbe)
     }
 
     private fun handleIncomingMqttMessage(topic: String, payload: String) {
@@ -176,24 +194,43 @@ class DeviceHandshakeManager(
 
         stateFlow.value = DeviceHealthStatus.Online(lastRxTimeMs = now, snapshotJson = payload)
 
-        // Reset watchdog timer on successful payload arrival
-        startDeviceWatchdog(deviceId)
+        // Schedule next idle check watchdog
+        scheduleIdleWatchdog(deviceId)
     }
 
-    private fun startDeviceWatchdog(deviceId: String) {
+    /**
+     * Schedules an idle watchdog when device is Online.
+     * When device has been idle for ONLINE_IDLE_CHECK_INTERVAL_MS (30s), sends a silent check probe.
+     */
+    private fun scheduleIdleWatchdog(deviceId: String) {
         watchdogJobs[deviceId]?.cancel()
         watchdogJobs[deviceId] = scope.launch(dispatcher) {
-            val stateFlow = healthStates[deviceId]
-            val isOnline = stateFlow?.value is DeviceHealthStatus.Online
-            val timeoutMs = if (isOnline) ONLINE_HEARTBEAT_TIMEOUT_MS else HANDSHAKE_RESPONSE_TIMEOUT_MS
-
-            delay(timeoutMs)
+            delay(ONLINE_IDLE_CHECK_INTERVAL_MS)
 
             val lastRx = lastRxTimes[deviceId] ?: 0L
             val elapsed = System.currentTimeMillis() - lastRx
 
-            if (elapsed >= timeoutMs) {
-                Log.w(TAG, "Device watchdog timeout for $deviceId (elapsed=${elapsed}ms). Handling failure...")
+            if (elapsed >= ONLINE_IDLE_CHECK_INTERVAL_MS) {
+                Log.d(TAG, "Device $deviceId idle for ${elapsed}ms -> Sending Silent Probe 1 (keeping Online state)")
+                initiateHandshakeForDevice(deviceId, isSilentProbe = true, isInitialProbe = false)
+            }
+        }
+    }
+
+    /**
+     * Watches for response after sending a probe.
+     */
+    private fun startProbeResponseWatchdog(deviceId: String, isSilentProbe: Boolean) {
+        watchdogJobs[deviceId]?.cancel()
+        watchdogJobs[deviceId] = scope.launch(dispatcher) {
+            delay(PROBE_RESPONSE_TIMEOUT_MS)
+
+            val lastRx = lastRxTimes[deviceId] ?: 0L
+            val elapsed = System.currentTimeMillis() - lastRx
+
+            // If no message arrived within the response timeout window
+            if (elapsed >= PROBE_RESPONSE_TIMEOUT_MS) {
+                Log.w(TAG, "Probe response timeout for $deviceId (silent=$isSilentProbe, elapsed=${elapsed}ms)")
                 handleHandshakeFailure(deviceId)
             }
         }
@@ -205,26 +242,34 @@ class DeviceHandshakeManager(
         val stateFlow = healthStates[deviceId] ?: return
         val lastRx = lastRxTimes[deviceId] ?: 0L
 
-        if (currentAttempts >= MAX_FAILED_HANDSHAKE_ATTEMPTS) {
-            // Mark Offline after 2 consecutive failed handshake attempts
-            Log.w(TAG, "Device $deviceId marked OFFLINE after $currentAttempts failed handshake attempts.")
-            stateFlow.value = DeviceHealthStatus.Offline(lastRx, "$currentAttempts failed handshakes")
+        when {
+            currentAttempts == 1 -> {
+                // Check 1 (Silent Probe) failed -> Now transition UI to Handshaking (Connecting...) and send Check 2 (Retry)
+                Log.d(TAG, "Device $deviceId check 1 failed -> Transitioning to Connecting... and sending Check 2")
+                stateFlow.value = DeviceHealthStatus.Handshaking
+                delay(300L)
+                initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = false)
+            }
+            currentAttempts >= MAX_FAILED_HANDSHAKE_ATTEMPTS -> {
+                // Check 2 failed -> Mark Offline
+                Log.w(TAG, "Device $deviceId marked OFFLINE after $currentAttempts failed handshake attempts.")
+                stateFlow.value = DeviceHealthStatus.Offline(lastRx, "$currentAttempts failed handshakes")
 
-            // Continue background probing periodically without UI flickering
-            delay(OFFLINE_PROBE_INTERVAL_MS)
-            initiateHandshakeForDevice(deviceId)
-        } else {
-            // Attempt 1 failed -> retry immediately (Attempt 2)
-            Log.d(TAG, "Device $deviceId handshake attempt $currentAttempts failed. Retrying immediately...")
-            delay(500L)
-            initiateHandshakeForDevice(deviceId)
+                // Schedule background retry probe periodically
+                delay(OFFLINE_PROBE_INTERVAL_MS)
+                initiateHandshakeForDevice(deviceId, isSilentProbe = true, isInitialProbe = false)
+            }
+            else -> {
+                delay(1000L)
+                initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = false)
+            }
         }
     }
 
     private fun triggerHandshakeForAllDevices() {
         healthStates.keys.forEach { deviceId ->
             scope.launch(dispatcher) {
-                initiateHandshakeForDevice(deviceId)
+                initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
             }
         }
     }
@@ -249,8 +294,8 @@ class DeviceHandshakeManager(
     companion object {
         private const val TAG = "DeviceHandshakeMgr"
         private const val MAX_FAILED_HANDSHAKE_ATTEMPTS = 2
-        private const val HANDSHAKE_RESPONSE_TIMEOUT_MS = 4_000L
-        private const val ONLINE_HEARTBEAT_TIMEOUT_MS = 15_000L
-        private const val OFFLINE_PROBE_INTERVAL_MS = 10_000L
+        private const val ONLINE_IDLE_CHECK_INTERVAL_MS = 30_000L // 30 seconds idle check
+        private const val PROBE_RESPONSE_TIMEOUT_MS = 5_000L     // 5 seconds wait for probe reply
+        private const val OFFLINE_PROBE_INTERVAL_MS = 15_000L     // 15 seconds retry while offline
     }
 }

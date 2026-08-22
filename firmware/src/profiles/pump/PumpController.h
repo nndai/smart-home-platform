@@ -10,7 +10,7 @@ enum class PumpState {
     RUNNING_OK,
     HIGH_CURRENT,      // > _threshRunning (pump mode only, transient)
     DRY_RUN,           // pump mode, latched
-    CRITICAL_CURRENT,  // > _threshRunning*125%, pump mode, latched
+    CRITICAL_CURRENT,  // > _threshRunning*140%, pump mode, latched
     OVERLOAD           // all modes, latched
 };
 

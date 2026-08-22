@@ -5,6 +5,7 @@ void PumpDriver::setServices(const DriverServices& svc) {
     _saveConfig = svc.saveConfig;
     _resetConfig = svc.resetConfig;
     _sendResponse = svc.sendResponse;
+    _publishStatus = svc.publishStatus;
 
     _menuSteps[0] = { "Reset WiFi", [this]() { _menuResetWiFi(); } };
     _menuSteps[1] = { "DEBUG mode", [this]() { _menuDebugMode(); } };
@@ -303,17 +304,23 @@ void PumpDriver::_onPumpState(PumpState state, float current, bool isOn, const c
     (void)current;
     (void)msg;
 
+    // Báo lỗi tức thì cho các thiết bị theo dõi (Remote Switch...) mà không cần
+    // chờ stream: gửi 1 status ngay khi vào trạng thái lỗi.
     if (state == PumpState::DRY_RUN) {
         _led.blink(500);
+        if (_publishStatus) _publishStatus();
     }
     else if (state == PumpState::OVERLOAD) {
         _led.blink(200);
+        if (_publishStatus) _publishStatus();
     }
     else if (state == PumpState::HIGH_CURRENT) {
         _led.blink(2, 500, 3000);
+        //if (_publishStatus) _publishStatus();
     }
     else if (state == PumpState::CRITICAL_CURRENT) {
         _led.blink(3, 200, 1000);
+        if (_publishStatus) _publishStatus();
     }
     else if (isOn == false) {
         _led.off();

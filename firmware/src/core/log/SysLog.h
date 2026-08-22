@@ -1,5 +1,9 @@
 #pragma once
 #include "LogBase.h"
+
+#include <Config.h>
+#include <FS.h>
+#include <LittleFS.h>
 #include "compat/log.h"
 #include "compat/task.h"
 #include <functional>
@@ -27,17 +31,17 @@ private:
     };
 
     QueueHandle_t _queue = nullptr;
-    TaskHandle_t _writerTaskHandle = nullptr;
+    SysTaskHandle _writerTaskHandle = nullptr;
     bool _fileEnabled = true;
     uint8_t _fileLevel = LT_LEVEL_INFO;
     LogCallback _cb;
 
-    static void _writerTask(void* param);
+    static uint32_t _writerTaskCb();
     void _writeLine(const char* line);
     void _rotate();
 
-    static constexpr size_t QUEUE_SIZE = 128;
-    static constexpr size_t MAX_FILE_SIZE = 10 * 1024;
-    static constexpr size_t MAX_LINE_LEN = 100;
-    static constexpr size_t MAX_FILES = 5;
+    static constexpr size_t QUEUE_SIZE = SYSLOG_QUEUE_SIZE;
+    static constexpr size_t MAX_FILE_SIZE = SYSLOG_MAX_FILE_SIZE;
+    static constexpr size_t MAX_LINE_LEN = SYSLOG_MAX_LINE_LEN;
+    static constexpr size_t MAX_FILES = SYSLOG_MAX_FILES;
 };

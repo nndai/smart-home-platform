@@ -1,5 +1,10 @@
 package com.nndai.myhome.data.remote
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
@@ -36,9 +43,10 @@ sealed interface MqttTransportState {
 
 /**
  * High-level manager responsible ONLY for establishing and maintaining the global MQTT socket connection.
- * Does NOT contain any per-device handshake, telemetry streaming, or watchdog logic.
+ * Features automated socket recovery, exponential backoff reconnects, and Android network change listeners.
  */
 class MqttConnectionManager(
+    context: Context? = null,
     private val hostProvider: () -> String,
     private val portProvider: () -> Int,
     private val usernameProvider: () -> String,
@@ -57,8 +65,10 @@ class MqttConnectionManager(
     )
     val incomingMessages: SharedFlow<Pair<String, String>> = _incomingMessages.asSharedFlow()
 
+    @Volatile
     private var client: MqttClient? = null
     private var connectJob: Job? = null
+    private val connectMutex = Mutex()
     private val subscribedTopics = mutableSetOf<String>()
 
     @Volatile
@@ -75,7 +85,6 @@ class MqttConnectionManager(
 
         override fun connectionLost(cause: Throwable?) {
             Log.w(TAG, "MQTT connectionLost: ${cause?.message}", cause)
-            client = null
             _transportState.value = MqttTransportState.Disconnected(cause?.message)
             if (!isExplicitlyStopped) {
                 scheduleAutoReconnect()
@@ -91,15 +100,46 @@ class MqttConnectionManager(
         override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
     }
 
+    init {
+        // Register Android system network callback for immediate reconnect upon network availability
+        context?.applicationContext?.let { ctx ->
+            runCatching {
+                val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+                cm?.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        Log.d(TAG, "Android Network became available -> Triggering fast MQTT reconnect")
+                        if (!isExplicitlyStopped && client?.isConnected != true) {
+                            connect()
+                        }
+                    }
+
+                    override fun onLost(network: Network) {
+                        Log.w(TAG, "Android Network lost!")
+                        _transportState.value = MqttTransportState.Disconnected("Network lost")
+                    }
+                })
+            }.onFailure { e ->
+                Log.w(TAG, "Failed to register network callback: ${e.message}")
+            }
+        }
+    }
+
     /**
      * Starts establishing the global MQTT connection asynchronously.
      */
     fun connect() {
-        if (client?.isConnected == true || connectJob?.isActive == true) {
-            Log.d(TAG, "connect() skipped: already connected or connecting")
+        if (client?.isConnected == true) {
+            Log.d(TAG, "connect() skipped: already connected")
             return
         }
         isExplicitlyStopped = false
+        if (connectJob?.isActive == true) {
+            Log.d(TAG, "connect() skipped: connection loop already active")
+            return
+        }
         Log.d(TAG, "connect() initiating dial to ${hostProvider()}:${portProvider()}")
         connectJob = scope.launch(dispatcher) {
             runConnectionLoop()
@@ -175,15 +215,25 @@ class MqttConnectionManager(
     }
 
     private suspend fun runConnectionLoop() {
-        while (!isExplicitlyStopped) {
-            _transportState.value = MqttTransportState.Connecting
-            val success = attemptSingleConnect()
-            if (success) {
-                return
+        connectMutex.withLock {
+            var currentBackoffMs = INITIAL_RETRY_INTERVAL_MS
+            while (!isExplicitlyStopped) {
+                if (client?.isConnected == true) {
+                    _transportState.value = MqttTransportState.Connected(client?.serverURI ?: "")
+                    return
+                }
+
+                _transportState.value = MqttTransportState.Connecting
+                val success = attemptSingleConnect()
+                if (success) {
+                    return
+                }
+                if (isExplicitlyStopped) return
+
+                Log.d(TAG, "Connection loop retrying in ${currentBackoffMs}ms")
+                delay(currentBackoffMs)
+                currentBackoffMs = (currentBackoffMs * 1.5).toLong().coerceAtMost(MAX_RETRY_INTERVAL_MS)
             }
-            if (isExplicitlyStopped) return
-            Log.d(TAG, "Connection loop retrying in ${RETRY_INTERVAL_MS}ms")
-            delay(RETRY_INTERVAL_MS)
         }
     }
 
@@ -195,11 +245,21 @@ class MqttConnectionManager(
             val uri = if (useTls) "ssl://$host:$port" else "tcp://$host:$port"
 
             Log.d(TAG, "attemptSingleConnect() connecting to $uri")
+
+            // Close any existing client safely before establishing a new one
+            runCatching {
+                client?.apply {
+                    if (isConnected) disconnectForcibly(500)
+                    close()
+                }
+            }
+
             val mqttClient = MqttClient(uri, buildClientId(), MemoryPersistence()).apply {
                 setCallback(callback)
             }
-            client = mqttClient
             mqttClient.connect(buildOptions())
+            client = mqttClient
+
             resubscribeAllTopics()
             Log.d(TAG, "attemptSingleConnect() SUCCESS. Broker connected.")
             _transportState.value = MqttTransportState.Connected(uri)
@@ -209,20 +269,15 @@ class MqttConnectionManager(
             closeSocketInternal(e.message, updateState = false)
             _transportState.value = MqttTransportState.Failed(e)
             false
-        } finally {
-            connectJob = null
-            if (client?.isConnected != true) {
-                client = null
-            }
         }
     }
 
     private fun scheduleAutoReconnect() {
         if (isExplicitlyStopped || connectJob?.isActive == true) return
-        Log.d(TAG, "scheduleAutoReconnect() scheduling retry in ${RETRY_INTERVAL_MS}ms")
+        Log.d(TAG, "scheduleAutoReconnect() scheduling retry in ${INITIAL_RETRY_INTERVAL_MS}ms")
         _transportState.value = MqttTransportState.Connecting
         connectJob = scope.launch(dispatcher) {
-            delay(RETRY_INTERVAL_MS)
+            delay(INITIAL_RETRY_INTERVAL_MS)
             if (!isExplicitlyStopped) {
                 runConnectionLoop()
             }
@@ -260,7 +315,8 @@ class MqttConnectionManager(
             isCleanSession = true
             connectionTimeout = 10
             keepAliveInterval = 30
-            isAutomaticReconnect = true
+            isAutomaticReconnect = false // Controlled via Kotlin coroutine backoff loop
+            maxInflight = 100
             val user = usernameProvider()
             val pass = passwordProvider()
             if (user.isNotBlank()) {
@@ -272,6 +328,7 @@ class MqttConnectionManager(
 
     companion object {
         private const val TAG = "MqttConnectionMgr"
-        private const val RETRY_INTERVAL_MS = 3_000L
+        private const val INITIAL_RETRY_INTERVAL_MS = 2_000L
+        private const val MAX_RETRY_INTERVAL_MS = 15_000L
     }
 }

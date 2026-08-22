@@ -218,19 +218,12 @@ fun DashboardScreenContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Connection banner
-        ConnectionBanner(
-            state = connectionState,
-            onReconnect = onReconnect
-        )
-
-        // 2. Metrics & Status grid (Aligned in 2-column FlowRow)
+        // 1. Metrics & Status grid (Aligned in 2-column FlowRow)
         AnimatedVisibility(
             visible = status != null,
             enter = fadeIn(),

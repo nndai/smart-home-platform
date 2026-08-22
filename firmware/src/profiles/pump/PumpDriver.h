@@ -44,6 +44,7 @@ private:
     std::function<bool()> _saveConfig;
     std::function<void()> _resetConfig;
     std::function<void(const String&)> _sendResponse;
+    std::function<void()> _publishStatus;
     ButtonMenu::Step _menuSteps[3];
 
     // ── Nhịp nội bộ ──

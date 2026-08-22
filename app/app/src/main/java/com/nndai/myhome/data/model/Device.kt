@@ -13,7 +13,8 @@ data class Device(
     val profile: String, // "pump", "switch", "fan"
     val status: String? = null,
     val owner_id: String? = null,
-    val role: String? = null // "OWNER", "ADMIN", "MEMBER", "VIEWER", "TRANSFERRED"
+    val role: String? = null, // "OWNER", "ADMIN", "MEMBER", "VIEWER", "TRANSFERRED"
+    val control_key: String? = null // Base64 encoded from Supabase
 ) {
     /**
      * Checks if this device ownership has been transferred to a new user account.
@@ -24,3 +25,9 @@ data class Device(
         return false
     }
 }
+
+@Serializable
+data class DeviceControlKey(
+    val device_id: String,
+    val control_key: String?
+)
