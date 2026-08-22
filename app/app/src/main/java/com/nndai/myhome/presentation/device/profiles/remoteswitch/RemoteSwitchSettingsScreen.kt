@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nndai.myhome.core.theme.CyanBlue
@@ -107,6 +109,8 @@ fun RemoteSwitchSettingsScreen(
     var showClearTargetDialog by remember { mutableStateOf(false) }
     var showRebootDialog by remember { mutableStateOf(false) }
     var showFactoryResetDialog by remember { mutableStateOf(false) }
+    var showLogSwitchDialog by remember { mutableStateOf<Boolean?>(null) }
+    var showLogLevelDialog by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         settingsViewModel.messages.collect { msg ->
@@ -178,17 +182,15 @@ fun RemoteSwitchSettingsScreen(
         // 3. SysLog Settings Card (Shared)
         SysLogSettingsCard(
             sysLogFileEnabled = sysLogFileEnabled,
-            onSysLogFileEnabledChange = { sysLogFileEnabled = it },
-            sysLogFileLevel = sysLogFileLevel,
-            onSysLogFileLevelChange = { sysLogFileLevel = it },
-            onSaveSysLogClick = {
-                val updates = mapOf<String, Any>(
-                    "sysLogFileEnabled" to sysLogFileEnabled,
-                    "sysLogFileLevel" to (sysLogFileLevel.toIntOrNull() ?: 0)
-                )
-                settingsViewModel.saveConfig(updates)
+            onSysLogFileEnabledChange = { newState ->
+                if (newState != sysLogFileEnabled) showLogSwitchDialog = newState
             },
-            isSaving = isSaving
+            sysLogFileLevel = sysLogFileLevel,
+            onSysLogFileLevelChange = { newLevel ->
+                if (newLevel != sysLogFileLevel) {
+                    showLogLevelDialog = newLevel
+                }
+            }
         )
 
         // 4. Device Actions Card (Shared Reboot / Factory Reset)
@@ -230,6 +232,45 @@ fun RemoteSwitchSettingsScreen(
             onDismiss = { showClearTargetDialog = false }
         )
     }
+    
+    // SysLog Switch Confirm Dialog
+    showLogSwitchDialog?.let { targetState ->
+        ConfirmDialog(
+            title = if (targetState) "Bật SysLog" else "Tắt SysLog",
+            message = if (targetState) "Bật ghi log hệ thống vào tệp flash (có thể ảnh hưởng tuổi thọ flash)?" else "Tắt ghi log hệ thống?",
+            confirmText = "Đồng ý",
+            onConfirm = {
+                showLogSwitchDialog = null
+                sysLogFileEnabled = targetState
+                settingsViewModel.saveConfig(mapOf("sysLogFileEnabled" to targetState))
+            },
+            onDismiss = { showLogSwitchDialog = null }
+        )
+    }
+
+    // SysLog Level Confirm Dialog
+    showLogLevelDialog?.let { targetLevel ->
+        val levelName = when (targetLevel) {
+            "0" -> "TRACE (Nhiều nhất)"
+            "1" -> "DEBUG (Chi tiết)"
+            "2" -> "INFO (Thông tin)"
+            "3" -> "WARN (Cảnh báo)"
+            "4" -> "ERROR (Lỗi)"
+            "5" -> "FATAL (Nghiêm trọng)"
+            else -> "Mức $targetLevel"
+        }
+        ConfirmDialog(
+            title = "Thay đổi Mức độ Log",
+            message = "Bạn có muốn đổi mức độ ghi log thành $levelName không?",
+            confirmText = "Đồng ý",
+            onConfirm = {
+                showLogLevelDialog = null
+                sysLogFileLevel = targetLevel
+                settingsViewModel.saveConfig(mapOf("sysLogFileLevel" to (targetLevel.toIntOrNull() ?: 0)))
+            },
+            onDismiss = { showLogLevelDialog = null }
+        )
+    }
 
     // Reboot Confirmation Dialog
     if (showRebootDialog || showRebootPrompt) {
@@ -248,6 +289,52 @@ fun RemoteSwitchSettingsScreen(
         )
     }
 
+    // Saving Spinner Dialog
+    if (isSaving) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                    Text(
+                        text = "Đang lưu cấu hình...",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+    }
+
+    // Rebooting Spinner Dialog
+    if (isRebooting) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                    Text(
+                        text = "Đang khởi động lại...",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+    }
+
     // Factory Reset Confirmation Dialog
     if (showFactoryResetDialog) {
         ConfirmDialog(
@@ -255,6 +342,7 @@ fun RemoteSwitchSettingsScreen(
             message = "Thao tác này sẽ xóa toàn bộ thông tin WiFi, cấu hình mục tiêu và mã hóa trên công tắc. Thiết bị sẽ trở về trạng thái xuất xưởng.",
             confirmText = "Khôi phục gốc",
             isDangerous = true,
+            requiredInput = "reset",
             onConfirm = {
                 showFactoryResetDialog = false
                 settingsViewModel.factoryReset()

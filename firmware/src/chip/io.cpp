@@ -37,11 +37,11 @@ namespace chip {
         }
     }
 
-String chipModelName() {
-    String cpu_name = lt_cpu_get_model_code();
-    cpu_name.toUpperCase();
-    return cpu_name;
-}
+    String chipModelName() {
+        String cpu_name = lt_cpu_get_model_code();
+        cpu_name.toUpperCase();
+        return cpu_name;
+    }
 
     uint32_t systemChipId() {
         return ESP.getChipId();
@@ -53,6 +53,9 @@ String chipModelName() {
 
     size_t heapMinFree() {
         return (size_t)lt_heap_get_min_free();
+    }
+    size_t heapMaxAlloc() {
+        return (size_t)lt_heap_get_max_alloc();
     }
 }
 
@@ -83,6 +86,7 @@ namespace chip {
     }
 
     size_t heapMinFree() { return ESP.getFreeHeap(); }
+    size_t heapMaxAlloc() { return ESP.getMaxFreeBlockSize(); }
 }
 
 #else
@@ -145,6 +149,12 @@ namespace chip {
 
     size_t heapMinFree() {
         return ESP.getMinFreeHeap();
+    }
+    size_t heapMaxAlloc() {
+        return ESP.getMaxAllocHeap();
+    }
+    size_t psramMinFree() {
+        return ESP.getMinFreePsram();
     }
 }
 #endif

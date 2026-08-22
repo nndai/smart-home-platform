@@ -238,9 +238,6 @@ static void setupAP_WS(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
-    wsServer.begin();
-    wsServer.setCallback(onWsMessage);
-    wsServer.setBinaryCallback(onWsBinary);
 }
 
 static void setupSTA_MQTT(ProfileConfig& cfg) {
@@ -328,7 +325,7 @@ uint32_t taskMqttLoop_cb() {
         logLostConnection = false;
     }
 
-    return otaManager.isRunning() ? 10 : 50;
+    return otaManager.isRunning() ? 10 : 20;
 }
 
 // ── Task: NTP Update ──

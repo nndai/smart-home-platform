@@ -729,6 +729,7 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
         JsonObject mem = resp["memory"].to<JsonObject>();
         mem["freeHeap"] = ESP.getFreeHeap();
         mem["minEverFreeHeap"] = (unsigned long)chip::heapMinFree();
+        mem["maxAllocHeap"] = (unsigned long)chip::heapMaxAlloc();
     }
 
     if (has("tasks")) {

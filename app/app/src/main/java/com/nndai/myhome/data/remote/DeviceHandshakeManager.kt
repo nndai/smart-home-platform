@@ -76,6 +76,7 @@ class DeviceHandshakeManager(
      * Preserves existing health state if device is already registered (e.g. on screen resume).
      */
     fun registerDevice(deviceId: String): StateFlow<DeviceHealthStatus> {
+        val isExisting = healthStates.containsKey(deviceId)
         val stateFlow = healthStates.getOrPut(deviceId) {
             MutableStateFlow(DeviceHealthStatus.Handshaking)
         }
@@ -85,9 +86,16 @@ class DeviceHandshakeManager(
             connectionManager.subscribe("devices/$deviceId/up")
             connectionManager.subscribe("devices/$deviceId/log")
 
-            // If transport is already connected, initiate initial handshake probe
+            // If transport is already connected, initiate handshake probe
             if (connectionManager.transportState.value is MqttTransportState.Connected) {
-                initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
+                if (!isExisting) {
+                    initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
+                } else {
+                    val currentState = stateFlow.value
+                    if (currentState is DeviceHealthStatus.Unknown) {
+                        initiateHandshakeForDevice(deviceId, isSilentProbe = false, isInitialProbe = true)
+                    }
+                }
             }
         }
 

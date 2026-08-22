@@ -111,10 +111,34 @@ fun DeviceDetailScreen(
         )
     }
 
-    // Manage device streaming lifecycle: start status stream on entry, stop all streams on exit
-    androidx.compose.runtime.DisposableEffect(deviceId) {
-        repository.ensureStatusStream()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+    // Manage device streaming lifecycle: start/stop based on app foreground/background and exit
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, deviceId) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                // Resume streams based on current tab
+                if (selectedTabIndex == 4) {
+                    repository.ensureSysInfoStream()
+                } else if (selectedTabIndex != 3) {
+                    repository.ensureStatusStream()
+                }
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                // Stop streams when app goes to background
+                repository.stopAllStreams()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        
+        // Start status stream on first entry (if not in settings/sysinfo tab)
+        if (selectedTabIndex != 3 && selectedTabIndex != 4) {
+            repository.ensureStatusStream()
+        } else if (selectedTabIndex == 4) {
+            repository.ensureSysInfoStream()
+        }
+
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             repository.stopAllStreams()
         }
     }

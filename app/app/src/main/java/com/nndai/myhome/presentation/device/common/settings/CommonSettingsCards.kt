@@ -121,7 +121,7 @@ fun NetworkConnectionModeCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
-                    "WiFi Trạm (STA)" to 1,
+                    "WiFi STA (MQTT)" to 1,
                     "Điểm phát AP" to 0,
                     "WiFi Debug" to 2
                 ).forEach { (label, modeIndex) ->
@@ -154,7 +154,7 @@ fun NetworkConnectionModeCard(
             if (connMode == 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Thông tin WiFi nhà (STA)",
+                        text = "Thông tin WiFi",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -168,17 +168,15 @@ fun NetworkConnectionModeCard(
                         CompactTextField(
                             value = wifiSSID,
                             onValueChange = onWifiSSIDChange,
-                            label = "Tên mạng WiFi (SSID)",
+                            label = "Tên mạng WiFi",
                             modifier = Modifier.weight(1f)
                         )
                         Button(
                             onClick = onScanWifiClick,
                             enabled = !isScanningWifi,
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .height(46.dp),
+                            modifier = Modifier.height(42.dp),
                             shape = MaterialTheme.shapes.small,
-                            contentPadding = PaddingValues(horizontal = 12.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp)
                         ) {
                             if (isScanningWifi) {
                                 CircularProgressIndicator(
@@ -315,8 +313,6 @@ fun SysLogSettingsCard(
     onSysLogFileEnabledChange: (Boolean) -> Unit,
     sysLogFileLevel: String,
     onSysLogFileLevelChange: (String) -> Unit,
-    onSaveSysLogClick: () -> Unit,
-    isSaving: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -388,16 +384,10 @@ fun SysLogSettingsCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            "0: ERROR" to "0",
-                            "1: WARN" to "1",
-                            "2: INFO" to "2",
-                            "3: DEBUG" to "3"
-                        ).forEach { (label, levelVal) ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val levels = listOf("DEBUG" to "1", "INFO" to "2", "WARN" to "3", "ERROR" to "4")
+
+                        levels.forEach { (label, levelVal) ->
                             val selected = sysLogFileLevel == levelVal
                             Surface(
                                 modifier = Modifier
@@ -410,39 +400,21 @@ fun SysLogSettingsCard(
                                 border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
                             ) {
                                 Box(
-                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    modifier = Modifier.padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = label,
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        fontSize = 11.sp
                                     )
                                 }
                             }
                         }
                     }
                 }
-            }
-
-            Button(
-                onClick = onSaveSysLogClick,
-                enabled = !isSaving,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Save,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Lưu cấu hình Log",
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }
