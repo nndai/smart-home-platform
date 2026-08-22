@@ -147,6 +147,7 @@ fun AppNavigation(
             DeviceDetailScreen(
                 deviceId = deviceId,
                 profile = profile,
+                deviceRepository = deviceRepository,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

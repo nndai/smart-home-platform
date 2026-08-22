@@ -47,6 +47,7 @@ import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.core.theme.SecondaryText
+import com.nndai.myhome.presentation.device.components.DeviceHealthIndicator
 import com.nndai.myhome.data.model.Device
 import com.nndai.myhome.data.repository.DeviceManagerRepository
 
@@ -289,13 +290,24 @@ private fun DeviceListItem(
                 shape = MaterialTheme.shapes.extraSmall,
                 color = statusBg,
             ) {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    fontWeight = FontWeight.Medium,
-                    color = statusColor,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    DeviceHealthIndicator(
+                        healthState = healthState,
+                        isTransferred = isTransferred,
+                        dotSize = 6.dp,
+                        iconSize = 10.dp
+                    )
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = statusColor
+                    )
+                }
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -59,8 +60,10 @@ import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.core.theme.RedError
+import com.nndai.myhome.presentation.device.components.ConnectionStatusIndicator
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.data.model.ConnectionState
+import com.nndai.myhome.data.repository.DeviceManagerRepository
 import com.nndai.myhome.presentation.device.common.deviceinfo.DeviceInfoScreen
 import com.nndai.myhome.presentation.device.common.history.ToggleHistoryScreen
 import com.nndai.myhome.presentation.device.common.log.LogScreen
@@ -81,6 +84,7 @@ private data class DeviceTabItem(
 fun DeviceDetailScreen(
     deviceId: String,
     profile: String,
+    deviceRepository: DeviceManagerRepository? = null,
     onNavigateBack: () -> Unit
 ) {
     // Set active device synchronously before any child view models or composables run
@@ -91,6 +95,16 @@ fun DeviceDetailScreen(
     val repository = remember(deviceId) { PumpRepositoryProvider.provide(deviceId) }
     val connectionState by repository.connectionState.collectAsStateWithLifecycle()
     val pumpStatus by repository.pumpStatus.collectAsStateWithLifecycle()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val deviceManager = remember { deviceRepository ?: DeviceManagerRepository(context.applicationContext) }
+    val devices by deviceManager.devices.collectAsStateWithLifecycle()
+    val device = remember(devices, deviceId) { devices.find { it.device_id == deviceId } }
+    val deviceName = device?.name ?: when (profile.lowercase()) {
+        "pump" -> "Máy Bơm (Pump)"
+        "remote_switch" -> "Remote Switch"
+        else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
+    }
 
     val isConnected = connectionState is ConnectionState.Connected
     val isConnecting = connectionState is ConnectionState.Connecting || connectionState is ConnectionState.TransportReady
@@ -129,7 +143,7 @@ fun DeviceDetailScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        
+
         // Start status stream on first entry (if not in settings/sysinfo tab)
         if (selectedTabIndex != 3 && selectedTabIndex != 4) {
             repository.ensureStatusStream()
@@ -173,50 +187,32 @@ fun DeviceDetailScreen(
                 title = {
                     Column(verticalArrangement = Arrangement.Center) {
                         Text(
-                            text = when (profile.lowercase()) {
-                                "pump" -> "Máy Bơm (Pump)"
-                                "remote_switch" -> "Remote Switch"
-                                else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
-                            },
+                            text = deviceName,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Live Status Dot
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            isConnected -> GreenOk
-                                            isConnecting -> OrangeWarning
-                                            else -> RedError
-                                        }
-                                    )
+                            ConnectionStatusIndicator(
+                                isConnected = isConnected,
+                                isConnecting = isConnecting,
+                                dotSize = 6.dp,
+                                iconSize = 11.dp
                             )
                             Text(
                                 text = when {
-                                    isConnected -> "Đã kết nối (MQTT)"
+                                    isConnected -> "Đã kết nối qua MQTT"
                                     isConnecting -> "Đang kết nối..."
                                     else -> "Mất kết nối"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
-                                color = if (isConnected) GreenOk else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "• $deviceId",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = if (isConnected) GreenOk else ( if (isConnecting) OrangeWarning else MaterialTheme.colorScheme.onSurfaceVariant)
                             )
                         }
                     }
