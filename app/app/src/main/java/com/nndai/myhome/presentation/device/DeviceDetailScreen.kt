@@ -95,6 +95,7 @@ fun DeviceDetailScreen(
     val repository = remember(deviceId) { PumpRepositoryProvider.provide(deviceId) }
     val connectionState by repository.connectionState.collectAsStateWithLifecycle()
     val pumpStatus by repository.pumpStatus.collectAsStateWithLifecycle()
+    val statusLatencyMs by repository.statusLatencyMs.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val deviceManager = remember { deviceRepository ?: DeviceManagerRepository(context.applicationContext) }
@@ -226,33 +227,49 @@ fun DeviceDetailScreen(
                     }
                 },
                 actions = {
-                    // RSSI Signal dBm Pill
-                    if (rssi != 0) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CyanBlue.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, CyanBlue.copy(alpha = 0.3f)),
-                            modifier = Modifier.padding(end = 8.dp)
+                    // RSSI Signal (dBm) [Top] + Latency (ms) [Bottom] Right-Aligned Stacked Pill
+                    val pillColor = if (isConnected) CyanBlue else RedError
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = pillColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, pillColor.copy(alpha = 0.3f)),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Wifi,
-                                    contentDescription = null,
-                                    tint = CyanBlue,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "$rssi dBm",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CyanBlue
-                                )
+                            // Row 1 (Top): WiFi RSSI (dBm)
+                            if (isConnected && rssi != 0) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Wifi,
+                                        contentDescription = null,
+                                        tint = CyanBlue,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = "$rssi dBm",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = CyanBlue
+                                    )
+                                }
                             }
+
+                            // Row 2 (Bottom): Latency (ms) or 9999 (when disconnected)
+                            Text(
+                                text = if (!isConnected) "+9999ms" else (statusLatencyMs?.let { "${it}ms" } ?: "--ms"),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isConnected) RedError else CyanBlue
+                            )
                         }
                     }
                 },

@@ -35,6 +35,10 @@ class PumpRepository(
     private val _pumpStatus = MutableStateFlow<PumpStatus?>(null)
     val pumpStatus: StateFlow<PumpStatus?> = _pumpStatus.asStateFlow()
 
+    private var lastStatusReceivedTime: Long = 0L
+    private val _statusLatencyMs = MutableStateFlow<Long?>(null)
+    val statusLatencyMs: StateFlow<Long?> = _statusLatencyMs.asStateFlow()
+
     private val _deviceConfig = MutableStateFlow<DeviceConfig?>(null)
     val deviceConfig: StateFlow<DeviceConfig?> = _deviceConfig.asStateFlow()
 
@@ -89,7 +93,14 @@ class PumpRepository(
         scope.launch {
             remote.events.collect { event ->
                 when (event) {
-                    is PumpCommandEvent.StatusUpdate -> _pumpStatus.value = event.status
+                    is PumpCommandEvent.StatusUpdate -> {
+                        val now = System.currentTimeMillis()
+                        if (lastStatusReceivedTime > 0L) {
+                            _statusLatencyMs.value = now - lastStatusReceivedTime
+                        }
+                        lastStatusReceivedTime = now
+                        _pumpStatus.value = event.status
+                    }
                     is PumpCommandEvent.ConfigUpdate -> _deviceConfig.value = event.config
                     is PumpCommandEvent.InfoUpdate -> _deviceInfo.value = event.info
                     is PumpCommandEvent.CommandResult -> {
@@ -122,6 +133,9 @@ class PumpRepository(
                     if (sysInfoStreamJob?.isActive == true) {
                         ensureSysInfoStream()
                     }
+                } else {
+                    lastStatusReceivedTime = 0L
+                    _statusLatencyMs.value = null
                 }
             }
         }
@@ -326,6 +340,8 @@ class PumpRepository(
     fun switchDevice() {
         Log.d(TAG, "switchDevice() clearing cached device state and restarting channel")
         stopAllStreams()
+        lastStatusReceivedTime = 0L
+        _statusLatencyMs.value = null
         _pumpStatus.value = null
         _deviceConfig.value = null
         _deviceInfo.value = null
