@@ -23,6 +23,7 @@ import com.nndai.myhome.data.repository.AuthRepository
 import com.nndai.myhome.data.repository.DeviceManagerRepository
 import com.nndai.myhome.presentation.auth.LoginScreen
 import com.nndai.myhome.presentation.device.DeviceDetailScreen
+import com.nndai.myhome.presentation.device.share.MemberManageScreen
 import com.nndai.myhome.presentation.main.MainScreen
 import com.nndai.myhome.presentation.pairing.PairingFlowScreen
 import kotlinx.coroutines.launch
@@ -35,6 +36,9 @@ fun AppNavigation(
 ) {
     val isLoggedIn by authRepository.isLoggedIn.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+
+    // Register for the session listener (purges control keys + device cache on sign-out)
+    com.nndai.myhome.data.di.PumpRepositoryProvider.deviceManagerRepository = deviceRepository
 
     // Start directly with the main screen (which contains the bottom navigation)
     val startDestination = "main_screen"
@@ -143,11 +147,22 @@ fun AppNavigation(
         composable("device/{deviceId}/{profile}") { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: ""
             val profile = backStackEntry.arguments?.getString("profile") ?: "pump"
-            
+
             DeviceDetailScreen(
                 deviceId = deviceId,
                 profile = profile,
                 deviceRepository = deviceRepository,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // Quản lý thành viên/thiết bị chia sẻ. deviceUuid = devices.id (UUID),
+        // deviceKey = device_id ("dev-xxx") dùng cho các luồng MQTT sẵn có.
+        composable("members/{deviceUuid}/{deviceKey}/{deviceName}") { backStackEntry ->
+            MemberManageScreen(
+                deviceUuid = backStackEntry.arguments?.getString("deviceUuid") ?: "",
+                deviceKey = backStackEntry.arguments?.getString("deviceKey") ?: "",
+                deviceName = backStackEntry.arguments?.getString("deviceName") ?: "",
                 onNavigateBack = { navController.popBackStack() }
             )
         }

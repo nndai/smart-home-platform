@@ -153,6 +153,11 @@ fun MainScreen(
                     onAddDeviceClick = { parentNavController.navigate("pairing") },
                     onNavigateToDevice = { deviceId, profile ->
                         parentNavController.navigate("device/$deviceId/$profile")
+                    },
+                    onManageMembers = { uuid, key, name ->
+                        parentNavController.navigate(
+                            "members/$uuid/$key/${android.net.Uri.encode(name)}"
+                        )
                     }
                 )
             }

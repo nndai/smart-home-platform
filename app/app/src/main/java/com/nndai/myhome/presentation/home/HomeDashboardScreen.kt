@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeviceUnknown
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.ModeFanOff
 import androidx.compose.material.icons.filled.Sensors
@@ -35,8 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import io.github.jan.supabase.auth.auth
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +69,16 @@ fun HomeDashboardScreen(
 ) {
     val devices by deviceRepository.devices.collectAsState()
 
+    // Nhập mã chia sẻ (redeem invite)
+    var showRedeemDialog by remember { mutableStateOf(false) }
+    val shareRepo = remember { com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceShareRepository() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var isRedeeming by remember { mutableStateOf(false) }
+    var redeemedDevice by remember {
+        mutableStateOf<com.nndai.myhome.data.model.RedeemedDevice?>(null)
+    }
+    var redeemError by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -72,13 +87,47 @@ fun HomeDashboardScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Header
-        Text(
-            text = "My Home",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        // Header + redeem entry
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "My Home",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            if (isLoggedIn) {
+                Surface(
+                    modifier = Modifier.clip(MaterialTheme.shapes.small).clickable {
+                        showRedeemDialog = true
+                    },
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.GroupAdd,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Nhập mã chia sẻ",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
 
         // Guest banner
         if (!isLoggedIn) {
@@ -166,6 +215,38 @@ fun HomeDashboardScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    // ── Redeem invite dialog ──
+    if (showRedeemDialog) {
+        com.nndai.myhome.presentation.device.share.RedeemInviteDialog(
+            isBusy = isRedeeming,
+            successDevice = redeemedDevice,
+            serverError = redeemError,
+            onDismiss = {
+                showRedeemDialog = false
+                redeemedDevice = null
+                redeemError = null
+            },
+            onSuccessShown = {
+                showRedeemDialog = false
+                redeemedDevice = null
+                // Làm mới danh sách thiết bị sau khi tham gia thành công
+                scope.launch { deviceRepository.fetchDevices() }
+            },
+            onRedeem = { code ->
+                scope.launch {
+                    isRedeeming = true
+                    shareRepo.redeemInvite(code)
+                        .onSuccess {
+                            redeemedDevice = it
+                            deviceRepository.fetchDevices()
+                        }
+                        .onFailure { redeemError = it.message }
+                    isRedeeming = false
+                }
+            }
+        )
     }
 }
 

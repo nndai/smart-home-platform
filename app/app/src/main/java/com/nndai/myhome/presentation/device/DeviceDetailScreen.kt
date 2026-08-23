@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,6 +75,7 @@ import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchDa
 import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchSettingsScreen
 
 private data class DeviceTabItem(
+    val route: String,
     val titleRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
@@ -116,15 +118,25 @@ fun DeviceDetailScreen(
     val isPump = profile.equals("pump", ignoreCase = true)
     val isRemoteSwitch = profile.equals("remote_switch", ignoreCase = true)
 
-    val tabs = remember(profile) {
-        listOf(
-            DeviceTabItem(R.string.nav_dashboard, Icons.Filled.Dashboard, Icons.Outlined.Dashboard),
-            DeviceTabItem(R.string.nav_history, Icons.Filled.BarChart, Icons.Outlined.BarChart),
-            DeviceTabItem(R.string.nav_log, Icons.Filled.Terminal, Icons.Filled.Terminal),
-            DeviceTabItem(R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings),
-            DeviceTabItem(R.string.nav_system, Icons.Filled.Info, Icons.Outlined.Info)
-        )
+    // VIEWER của thiết bị được chia sẻ: chỉ xem — không điều khiển, không cài đặt.
+    // (Firmware vẫn là ranh giới cuối: VIEWER không có control_key để ký lệnh.)
+    val isViewer = device?.role?.uppercase() == com.nndai.myhome.data.model.DeviceRoles.VIEWER
+
+    // Settings tab là tập hợp lệnh ghi (setConfig/reboot/factory reset) → ẩn
+    // hẳn với VIEWER. Dispatch nội dung theo route key để không lệch index
+    // khi danh sách tab thay đổi.
+    val tabs = remember(profile, isViewer) {
+        buildList {
+            add(DeviceTabItem("dash", R.string.nav_dashboard, Icons.Filled.Dashboard, Icons.Outlined.Dashboard))
+            add(DeviceTabItem("hist", R.string.nav_history, Icons.Filled.BarChart, Icons.Outlined.BarChart))
+            add(DeviceTabItem("log", R.string.nav_log, Icons.Filled.Terminal, Icons.Filled.Terminal))
+            if (!isViewer) {
+                add(DeviceTabItem("settings", R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings))
+            }
+            add(DeviceTabItem("sysinfo", R.string.nav_system, Icons.Filled.Info, Icons.Outlined.Info))
+        }
     }
+    val currentTabRoute = tabs.getOrNull(selectedTabIndex)?.route ?: "dash"
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
@@ -133,10 +145,10 @@ fun DeviceDetailScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
                 // Resume streams based on current tab
-                if (selectedTabIndex == 4) {
-                    repository.ensureSysInfoStream()
-                } else if (selectedTabIndex != 3) {
-                    repository.ensureStatusStream()
+                when (currentTabRoute) {
+                    "sysinfo" -> repository.ensureSysInfoStream()
+                    "settings" -> { /* settings không stream */ }
+                    else -> repository.ensureStatusStream()
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 // Stop streams when app goes to background
@@ -146,10 +158,10 @@ fun DeviceDetailScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
 
         // Start status stream on first entry (if not in settings/sysinfo tab)
-        if (selectedTabIndex != 3 && selectedTabIndex != 4) {
-            repository.ensureStatusStream()
-        } else if (selectedTabIndex == 4) {
-            repository.ensureSysInfoStream()
+        when (currentTabRoute) {
+            "sysinfo" -> repository.ensureSysInfoStream()
+            "settings" -> { /* settings không stream */ }
+            else -> repository.ensureStatusStream()
         }
 
         onDispose {
@@ -165,16 +177,16 @@ fun DeviceDetailScreen(
     }
 
     // Handle tab switching
-    LaunchedEffect(selectedTabIndex) {
-        when (selectedTabIndex) {
-            3 -> { // Settings
+    LaunchedEffect(currentTabRoute) {
+        when (currentTabRoute) {
+            "settings" -> { // Settings
                 repository.stopSysInfoStream()
                 repository.refreshConfig()
             }
-            4 -> { // System info
+            "sysinfo" -> { // System info
                 repository.ensureSysInfoStream()
             }
-            else -> { // Dashboard (0), History (1), Log (2)
+            else -> { // Dashboard, History, Log
                 repository.stopSysInfoStream()
                 repository.ensureStatusStream()
             }
@@ -321,6 +333,32 @@ fun DeviceDetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ── VIEWER banner: chế độ chỉ xem ──
+            if (isViewer) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "Chế độ chỉ xem — bạn không có quyền điều khiển và cài đặt thiết bị này",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             when (profile.lowercase()) {
                 "pump" -> {
                     Box(
@@ -328,12 +366,15 @@ fun DeviceDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        when (selectedTabIndex) {
-                            0 -> DashboardScreen(snackbarHostState = snackbarHostState)
-                            1 -> EnergyHistoryScreen()
-                            2 -> LogScreen()
-                            3 -> SettingsScreen(snackbarHostState = snackbarHostState)
-                            4 -> DeviceInfoScreen()
+                        when (currentTabRoute) {
+                            "dash" -> DashboardScreen(
+                                snackbarHostState = snackbarHostState,
+                                readOnly = isViewer
+                            )
+                            "hist" -> EnergyHistoryScreen()
+                            "log" -> LogScreen()
+                            "settings" -> SettingsScreen(snackbarHostState = snackbarHostState)
+                            "sysinfo" -> DeviceInfoScreen()
                         }
                     }
                 }
@@ -343,12 +384,15 @@ fun DeviceDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        when (selectedTabIndex) {
-                            0 -> RemoteSwitchDashboardScreen(snackbarHostState = snackbarHostState)
-                            1 -> ToggleHistoryScreen()
-                            2 -> LogScreen()
-                            3 -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
-                            4 -> DeviceInfoScreen()
+                        when (currentTabRoute) {
+                            "dash" -> RemoteSwitchDashboardScreen(
+                                snackbarHostState = snackbarHostState,
+                                readOnly = isViewer
+                            )
+                            "hist" -> ToggleHistoryScreen()
+                            "log" -> LogScreen()
+                            "settings" -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
+                            "sysinfo" -> DeviceInfoScreen()
                         }
                     }
                 }

@@ -87,6 +87,7 @@ private val PurpleDryRun = Color(0xFF9C27B0)
 @Composable
 fun DashboardScreen(
     snackbarHostState: SnackbarHostState,
+    readOnly: Boolean = false,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val status by viewModel.pumpStatus.collectAsStateWithLifecycle()
@@ -104,6 +105,7 @@ fun DashboardScreen(
         status = status,
         connectionState = connectionState,
         isToggling = isToggling,
+        readOnly = readOnly,
         onToggle = { viewModel.togglePump() },
         onReconnect = { viewModel.reconnect() },
         onClearFault = { viewModel.clearPumpFault() }
@@ -118,7 +120,8 @@ fun DashboardScreenContent(
     isToggling: Boolean,
     onToggle: () -> Unit,
     onReconnect: () -> Unit,
-    onClearFault: () -> Unit
+    onClearFault: () -> Unit,
+    readOnly: Boolean = false
 ) {
     var dismissedFaultState by remember { mutableStateOf<PumpState?>(null) }
     var activeFaultDialogState by remember { mutableStateOf<PumpState?>(null) }
@@ -204,6 +207,7 @@ fun DashboardScreenContent(
                             activeFaultDialogState = null
                             onClearFault()
                         },
+                        enabled = !readOnly,
                         colors = ButtonDefaults.buttonColors(containerColor = RedError),
                         shape = MaterialTheme.shapes.small
                     ) {
@@ -462,7 +466,7 @@ fun DashboardScreenContent(
 
                 PumpControlButton(
                     isOn = status?.relay == true,
-                    enabled = !isToggling,
+                    enabled = !isToggling && !readOnly,
                     isLoading = isToggling,
                     onClick = onToggle
                 )

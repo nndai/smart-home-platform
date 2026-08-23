@@ -91,6 +91,7 @@ import com.nndai.myhome.data.model.Device
 @Composable
 fun RemoteSwitchDashboardScreen(
     snackbarHostState: SnackbarHostState,
+    readOnly: Boolean = false,
     viewModel: RemoteSwitchViewModel = viewModel()
 ) {
     val status by viewModel.deviceStatus.collectAsStateWithLifecycle()
@@ -141,11 +142,12 @@ fun RemoteSwitchDashboardScreen(
                 isRelayOn = isRelayOn,
                 isToggling = isToggling,
                 hasError = hasTargetError,
+                readOnly = readOnly,
                 onToggleRelay = { viewModel.toggleRelay() },
                 onChangeTarget = { showTargetSelectorSheet = true },
                 onClearTarget = { showConfirmClearDialog = true }
             )
-        } else {
+        } else if (!readOnly) {
             UnconfiguredTargetCard(
                 onSelectTarget = { showTargetSelectorSheet = true }
             )
@@ -249,7 +251,8 @@ private fun ConfiguredTargetCard(
     hasError: Boolean,
     onToggleRelay: () -> Unit,
     onChangeTarget: () -> Unit,
-    onClearTarget: () -> Unit
+    onClearTarget: () -> Unit,
+    readOnly: Boolean = false
 ) {
     val targetIcon = getProfileIcon(targetType)
     val powerColor by animateColorAsState(
@@ -412,7 +415,7 @@ private fun ConfiguredTargetCard(
                         modifier = Modifier
                             .size(100.dp)
                             .clip(CircleShape)
-                            .clickable(enabled = !isToggling, onClick = onToggleRelay),
+                            .clickable(enabled = !isToggling && !readOnly, onClick = onToggleRelay),
                         shape = CircleShape,
                         color = if (isRelayOn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(3.dp, powerColor),
@@ -493,6 +496,7 @@ private fun ConfiguredTargetCard(
             ) {
                 OutlinedButton(
                     onClick = onChangeTarget,
+                    enabled = !readOnly,
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp),
@@ -516,6 +520,7 @@ private fun ConfiguredTargetCard(
 
                 Button(
                     onClick = onClearTarget,
+                    enabled = !readOnly,
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp),

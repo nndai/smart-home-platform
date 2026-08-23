@@ -61,6 +61,30 @@ class ControlKeyStore(context: Context) {
             .apply()
     }
 
+    /**
+     * Removes only user-scoped secrets (control keys + their IVs).
+     * Called when the session ends (logout / token revoked) so a different
+     * account signing in on this device cannot reuse the previous account's
+     * keys — critical for shared VIEWER accounts.
+     *
+     * Deliberately KEEPS seq_* counters and app_sender_id: seq is tied to the
+     * stable sender id for replay protection; wiping it while keeping the same
+     * sender id would make the device reject commands (seq below floor) until
+     * the counter catches up. Seq alone is useless without the key.
+     */
+    fun clearUserSecrets() {
+        val editor = prefs.edit()
+        secretKeys().forEach { editor.remove(it) }
+        editor.apply()
+    }
+
+    /** Device ids that currently have a stored control key. */
+    fun storedIds(): Set<String> =
+        secretKeys().map { it.removePrefix("enc_") }.toSet()
+
+    private fun secretKeys(): List<String> =
+        prefs.all.keys.filter { it.startsWith("enc_") || it.startsWith("iv_") }
+
     fun get(deviceId: String): String? {
         val encryptedBase64 = prefs.getString("enc_$deviceId", null) ?: return null
         val ivBase64 = prefs.getString("iv_$deviceId", null) ?: return null

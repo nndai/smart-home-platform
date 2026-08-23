@@ -70,6 +70,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nndai.myhome.data.pairing.PairingDevice
 import com.nndai.myhome.data.pairing.PairingState
 import com.nndai.myhome.data.pairing.WifiNetworkInfo
+import com.nndai.myhome.presentation.device.components.WifiSignalBars
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -559,61 +560,7 @@ private fun WifiSelectContent(
     }
 }
 
-@Composable
-private fun WifiSignalBars(
-    rssi: Int,
-    modifier: Modifier = Modifier
-) {
-    val activeLevel = when {
-        rssi >= -55 -> 4
-        rssi >= -67 -> 3
-        rssi >= -78 -> 2
-        else -> 1
-    }
 
-    val activeColor = MaterialTheme.colorScheme.primary
-    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
-
-    androidx.compose.foundation.Canvas(
-        modifier = modifier.size(20.dp)
-    ) {
-        val strokeWidth = 2.dp.toPx()
-        val centerX = size.width / 2f
-        val centerY = size.height - strokeWidth / 2f
-
-        val dotRadius = strokeWidth * 0.9f
-        drawCircle(
-            color = if (activeLevel >= 1) activeColor else inactiveColor,
-            radius = dotRadius,
-            center = androidx.compose.ui.geometry.Offset(centerX, centerY - dotRadius)
-        )
-
-        val radii = listOf(
-            strokeWidth * 2.6f,
-            strokeWidth * 4.4f,
-            strokeWidth * 6.2f
-        )
-
-        for (i in 0 until 3) {
-            val level = i + 2
-            val r = radii[i]
-            val color = if (activeLevel >= level) activeColor else inactiveColor
-
-            drawArc(
-                color = color,
-                startAngle = 225f,
-                sweepAngle = 90f,
-                useCenter = false,
-                topLeft = androidx.compose.ui.geometry.Offset(centerX - r, (centerY - dotRadius) - r),
-                size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                    width = strokeWidth,
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-            )
-        }
-    }
-}
 
 @Composable
 private fun SuccessContent(

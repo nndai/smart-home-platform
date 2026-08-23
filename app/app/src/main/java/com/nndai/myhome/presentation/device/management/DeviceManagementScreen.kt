@@ -26,7 +26,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeviceUnknown
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.ModeFanOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -84,7 +86,8 @@ fun DeviceManagementScreen(
     isLoggedIn: Boolean,
     onNavigateToLogin: () -> Unit,
     onAddDeviceClick: () -> Unit,
-    onNavigateToDevice: (String, String) -> Unit
+    onNavigateToDevice: (String, String) -> Unit,
+    onManageMembers: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     val devices by deviceRepository.devices.collectAsState()
     val lastError by deviceRepository.lastError.collectAsState()
@@ -94,6 +97,7 @@ fun DeviceManagementScreen(
 
     var deviceToRename by remember { mutableStateOf<Device?>(null) }
     var deviceToDelete by remember { mutableStateOf<Device?>(null) }
+    var deviceToLeave by remember { mutableStateOf<Device?>(null) }
     var isBusy by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
@@ -189,7 +193,11 @@ fun DeviceManagementScreen(
                                 else onNavigateToLogin()
                             },
                             onRenameClick = { deviceToRename = device },
-                            onDeleteClick = { deviceToDelete = device }
+                            onDeleteClick = { deviceToDelete = device },
+                            onManageMembers = {
+                                onManageMembers(device.id, device.device_id, device.name)
+                            },
+                            onLeaveDevice = { deviceToLeave = device }
                         )
                     }
                 }
@@ -302,6 +310,34 @@ fun DeviceManagementScreen(
         )
     }
 
+    // ── Leave Device Dialog (member rời thiết bị được chia sẻ) ──
+    deviceToLeave?.let { targetDevice ->
+        ConfirmDialog(
+            title = "Rời khỏi thiết bị",
+            message = "Bạn sẽ mất toàn bộ quyền truy cập vào " +
+                    "'${targetDevice.name}' (${targetDevice.device_id}).",
+            confirmText = "Rời thiết bị",
+            isDangerous = true,
+            icon = Icons.Filled.LinkOff,
+            onConfirm = {
+                val uuid = targetDevice.id
+                val key = targetDevice.device_id
+                deviceToLeave = null
+                scope.launch {
+                    isBusy = true
+                    val r = deviceRepository.leaveSharedDevice(key, uuid)
+                    if (r.isSuccess) {
+                        snackbarHostState.showSnackbar("Đã rời khỏi thiết bị")
+                    } else {
+                        snackbarHostState.showSnackbar(r.exceptionOrNull()?.message ?: "Không thể rời thiết bị")
+                    }
+                    isBusy = false
+                }
+            },
+            onDismiss = { deviceToLeave = null }
+        )
+    }
+
     // ── Busy Overlay ──
     if (isBusy) {
         Dialog(onDismissRequest = {}) {
@@ -340,7 +376,9 @@ private fun DeviceListItem(
     device: Device,
     onClick: () -> Unit,
     onRenameClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onManageMembers: () -> Unit,
+    onLeaveDevice: () -> Unit
 ) {
     // Profile-based icon & accent color
     val icon = when (device.profile.lowercase()) {
@@ -355,6 +393,12 @@ private fun DeviceListItem(
         "lamp", "switch", "remote_switch" -> OrangeWarning
         else -> SecondaryText
     }
+
+    // Quyền của chính mình trên thiết bị này (từ RPC get_my_devices).
+    // role trống = dữ liệu cache cũ trước migration → mặc định coi như OWNER
+    // để không khóa nhầm menu (sẽ tự chuẩn sau lần fetch đầu).
+    val myRole = device.role?.uppercase()
+    val canManage = myRole == null || com.nndai.myhome.data.model.DeviceRoles.canManage(myRole)
 
     // Ownership check
     val currentUserId = remember {
@@ -439,28 +483,52 @@ private fun DeviceListItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             // ── Device Info ──
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = device.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = device.device_id,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = device.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = device.device_id,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // ── Role badge (thiết bị được chia sẻ với mình) ──
+                if (!device.role.isNullOrBlank() &&
+                    device.role.uppercase() != "OWNER" &&
+                    !device.isTransferred(currentUserId)
+                ) {
+                    val roleColor = when (device.role.uppercase()) {
+                        com.nndai.myhome.data.model.DeviceRoles.ADMIN -> OrangeWarning
+                        else -> CyanBlue
+                    }
+                    Surface(
+                        shape = MaterialTheme.shapes.extraSmall,
+                        color = roleColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = com.nndai.myhome.data.model.DeviceRoles.label(device.role),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = roleColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
 
             // ── Status Badge ──
             Surface(
@@ -508,53 +576,102 @@ private fun DeviceListItem(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 4.dp
                 ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "Đổi tên",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                        onClick = {
-                            showMenu = false
-                            onRenameClick()
-                        }
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "Xóa thiết bị",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                        onClick = {
-                            showMenu = false
-                            onDeleteClick()
-                        }
-                    )
+                    // Quản lý thành viên — chỉ OWNER/ADMIN
+                    if (canManage) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Thành viên",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Group,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                            onClick = {
+                                showMenu = false
+                                onManageMembers()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Đổi tên",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Edit,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                            onClick = {
+                                showMenu = false
+                                onRenameClick()
+                            }
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Xóa thiết bị",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                            onClick = {
+                                showMenu = false
+                                onDeleteClick()
+                            }
+                        )
+                    } else if (!device.role.isNullOrBlank()) {
+                        // Member/Viewer của thiết bị chia sẻ: chỉ được tự rời
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Rời khỏi thiết bị",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.LinkOff,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                            onClick = {
+                                showMenu = false
+                                onLeaveDevice()
+                            }
+                        )
+                    }
                 }
             }
         }
