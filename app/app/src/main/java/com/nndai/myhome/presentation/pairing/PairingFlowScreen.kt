@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeviceUnknown
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ModeFanOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WaterDrop
@@ -457,8 +459,9 @@ private fun WifiSelectContent(
                 }
             }
         } else {
+            val sortedNetworks = networks.sortedByDescending { it.rssi }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                items(networks) { network ->
+                items(sortedNetworks) { network ->
                     val isSelected = selected == network.name
                     Surface(
                         modifier = Modifier
@@ -481,20 +484,27 @@ private fun WifiSelectContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                imageVector = if (network.encrypted) Icons.Filled.WifiLock else Icons.Filled.Wifi,
-                                contentDescription = if (network.encrypted) "Encrypted WiFi" else "Open WiFi",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            WifiSignalBars(rssi = network.rssi)
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = network.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = network.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (network.encrypted) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.Lock,
+                                            contentDescription = "Encrypted",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp).offset(y = (-1).dp)
+                                        )
+                                    }
+                                }
                                 if (network.bssid.isNotBlank()) {
                                     Text(
                                         text = network.bssid.uppercase(),
@@ -505,15 +515,11 @@ private fun WifiSelectContent(
                                     )
                                 }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                WifiSignalBars(rssi = network.rssi)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "${network.rssi} dBm",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = "${network.rssi} dBm",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
