@@ -34,6 +34,29 @@ static ScanResult s_scanResults[kMaxScanResults];
 static int s_scanCount = -1;
 static SemaphoreHandle_t s_scanDoneSem = nullptr;
 
+// Which engine produced the pending/current results.
+//  false = softAP scan buffer (s_scanResults), true = wifi_manager AP list.
+static bool s_staPath = false;
+
+// STA scan completion settle: SCAN_COMPLETE arrives on request-ack while
+// per-AP reports still stream in. Wait this long after the event before
+// publishing SCAN_DONE so the manager list is populated.
+static const uint32_t kStaScanSettleMs = 3000;
+static uint32_t s_staDoneTick = 0;
+static bool s_donePending = false;
+
+// ── wifi_manager bridge (ABI notes) ─────────────────────────────────────────
+// wifi_manager API comes from its official header (pulled in via
+// sdk_private.h → wifi_manager.h — no local re-declaration needed).
+// wifi_manager.c is compiled FROM SOURCE with the same flags as this firmware,
+// so calling those functions is safe. Only libln882h_wifi.a is prebuilt with
+// short-enums. Its touchpoints here:
+//   - wifi_sta_scan() fed with our hand-packed ScanCfg (same trick as the
+//     working softAP path)
+//   - the AP records it REPORTS: ap_info_list_update() memcpy's them raw into
+//     list nodes, so node payloads keep the LIB's short-enums layout — read
+//     them back through ApInfoRaw (MgrNode below), NOT through ap_info_t.
+
 // Layout wifi_scan_cfg_t như lib hiểu (short-enums): channel@0, scan_type@1, scan_time@2
 struct ScanCfg {
     uint8_t channel;
@@ -57,6 +80,17 @@ struct ApInfoRaw {
 };
 static_assert(sizeof(ApInfoRaw) == 48, "ApInfoRaw phai khop layout lib (stride 48)");
 static ApInfoRaw s_apBuf[kMaxScanResults];
+
+// Node của AP list nội bộ wifi_manager: {ln_list_t(next,prev), ap_info_t,
+// life_ticks}. Phần info là byte-thô do lib ghi (memcpy trong
+// ap_info_list_update) → dùng ApInfoRaw, KHÔNG dùng ap_info_t từ header
+// (header compile -fno-short-enums → sizeof=52 ≠ 48B lib ghi).
+struct MgrNode {
+    void*     next;
+    void*     prev;
+    ApInfoRaw info;
+    uint32_t  lifeTicks;
+};
 
 static void softApScanCb(void* arg) {
     (void)arg;
@@ -87,6 +121,26 @@ static void softApScanCb(void* arg) {
     // Không gọi WiFi.postEvent ở đây (xem comment đầu file — chạy trong wifi
     // lib task → deadlock/WDT). Chỉ đánh dấu semaphore; scanPumpDoneEvent()
     // gọi postEvent từ task thường (taskWsLoop).
+    s_staDoneTick = millis();
+    if (!s_scanDoneSem) {
+        s_scanDoneSem = xSemaphoreCreateBinary();
+    }
+    if (s_scanDoneSem) {
+        xSemaphoreGive(s_scanDoneSem);
+    }
+}
+
+// Runs in wifi lib task context (mac_task) — same constraints as softApScanCb:
+// only signal the semaphore, all real work happens in scanPumpDoneEvent().
+//
+// IMPORTANT: for the STA engine, SCAN_COMPLETE fires when the firmware ACKs
+// the scan request — per-AP reports (sta_scan_report → wifi_manager list)
+// keep arriving AFTER it while channels are hopped. Reading the list at
+// event time yields 0 APs. We record the tick and let scanPumpDoneEvent()
+// delay posting until reports settle.
+static void staScanDoneBridge(void* arg) {
+    (void)arg;
+    s_staDoneTick = millis();
     if (!s_scanDoneSem) {
         s_scanDoneSem = xSemaphoreCreateBinary();
     }
@@ -99,12 +153,24 @@ static void softApScanCb(void* arg) {
 // gọi WiFi.postEvent đồng bộ — lambda SCAN_DONE chạy trong context task này.
 void scanPumpDoneEvent() {
     if (!s_scanDoneSem) return;
-    if (xSemaphoreTake(s_scanDoneSem, 0) != pdTRUE) return;
+    if (!s_donePending) {
+        if (xSemaphoreTake(s_scanDoneSem, 0) != pdTRUE) return;
+        s_donePending = true;
+    }
+    // STA engine: give per-AP reports time to land in wifi_manager's list.
+    // The softAP engine only fires its callback after a real channel sweep,
+    // so it can publish immediately.
+    if (s_staPath && (millis() - s_staDoneTick) < kStaScanSettleMs) return;
+    s_donePending = false;
+
+    int count = s_staPath ? scanGetScanCount() : s_scanCount;
+    LT_IM(NET, "scan done: path=%s count=%d",
+          s_staPath ? "sta" : "softap", count);
 
     EventInfo eventInfo;
     memset(&eventInfo, 0, sizeof(EventInfo));
     eventInfo.wifi_scan_done.status = 0;
-    eventInfo.wifi_scan_done.number = s_scanCount;
+    eventInfo.wifi_scan_done.number = count;
     WiFi.postEvent(ARDUINO_EVENT_WIFI_SCAN_DONE, eventInfo);
 }
 
@@ -113,10 +179,37 @@ int scanStart() {
     if (s_scanDoneSem) {
         xSemaphoreTake(s_scanDoneSem, 0);   // drain event cũ từ lần scan trước
     }
+
+    // Mode-aware engine selection:
+    //  - softAP present (AP_WS pairing): wifi_softap_scan — proven path,
+    //    AP stays up, phone keeps its connection.
+    //  - pure STA (DEBUG_WS / STA_MQTT): wifi_softap_scan cannot run (no AP
+    //    interface → its callback never fires and _scanPending would stick).
+    //    Use the SDK STA scan instead; results are collected by wifi_manager
+    //    through ITS OWN registered callbacks (source-compiled, ABI-safe).
+    const bool apActive = ((WiFi.getMode() & WIFI_MODE_AP) != WIFI_MODE_NULL);
+    if (!apActive) {
+        s_staPath = true;
+        s_donePending = false;                  // reset settle state from last run
+        wifi_manager_reg_event_callback(WIFI_MGR_EVENT_STA_SCAN_COMPLETE, staScanDoneBridge);
+        wifi_manager_cleanup_scan_results();
+        // Required: ap_info_list_update() drops reports while disabled.
+        wifi_manager_ap_list_update_enable(1);
+        ScanCfg cfg = {};
+        cfg.channel = 0;                        // scan all channels
+        cfg.scan_type = (uint8_t)WIFI_SCAN_TYPE_ACTIVE;
+        cfg.scan_time = 700;
+        int ret = wifi_sta_scan((wifi_scan_cfg_t*)&cfg);
+        LT_IM(NET, "wifi_sta_scan started: ret=%d", ret);
+        return ret;
+    }
+    s_staPath = false;
+    s_donePending = false;
+
     ScanCfg cfg = {};
     cfg.channel = 0;                        // quét tất cả kênh
     cfg.scan_type = (uint8_t)WIFI_SCAN_TYPE_ACTIVE;
-    cfg.scan_time = 1000;
+    cfg.scan_time = 700;
     int ret = wifi_softap_scan((wifi_scan_cfg_t*)&cfg, s_apBuf, kMaxScanResults, softApScanCb);
     if (ret != 0) LT_EM(NET, "wifi_softap_scan start failed: %d", ret);
     return ret;
@@ -124,12 +217,41 @@ int scanStart() {
 
 int scanGetResults(ScanResult* out, int maxCount) {
     if (!out || maxCount <= 0) return 0;
+
+    if (s_staPath) {
+        // Read from wifi_manager's internal AP list. Node payloads are raw
+        // lib-formatted records (short-enums layout) — see MgrNode comment.
+        ln_list_t* head = nullptr;
+        uint8_t count = 0;
+        if (wifi_manager_get_ap_list(&head, &count) != 0 || !head) return 0;
+        MgrNode* anchor = (MgrNode*)head;
+        int n = 0;
+        for (MgrNode* it = (MgrNode*)anchor->next;
+             it != anchor && it != nullptr && n < maxCount;
+             it = (MgrNode*)it->next) {
+            strncpy(out[n].ssid, it->info.ssid, sizeof(out[n].ssid) - 1);
+            out[n].ssid[sizeof(out[n].ssid) - 1] = '\0';
+            out[n].rssi = it->info.rssi;          // ApInfoRaw: rssi@42
+            memcpy(out[n].bssid, it->info.bssid, 6);
+            // WIFI_AUTH_OPEN == 0 in ln_types.h
+            out[n].isEncrypt = (it->info.authmode != 0);
+            n++;
+        }
+        return n;
+    }
+
     int n = (s_scanCount > 0) ? (s_scanCount < maxCount ? s_scanCount : maxCount) : 0;
     for (int i = 0; i < n; i++) out[i] = s_scanResults[i];
     return n;
 }
 
 int scanGetScanCount() {
+    if (s_staPath) {
+        ln_list_t* head = nullptr;
+        uint8_t count = 0;
+        if (wifi_manager_get_ap_list(&head, &count) != 0) return -1;
+        return (int)count;
+    }
     return s_scanCount;
 }
 }

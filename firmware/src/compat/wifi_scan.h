@@ -40,10 +40,15 @@ inline void scanAsync(std::function<void()> onDone) {
 // LibreTiny (LN882H)
 inline void scanAsync(std::function<void()> onDone) {
     static std::function<void()> s_onDone;
+    // Filtered on SCAN_DONE only. Without the filter, ANY WiFi event
+    // (STA connect/disconnect...) would fire the done-callback prematurely.
+    // Works for both engines: chip layer posts this exact event via
+    // scanPumpDoneEvent() for softAP scans, and the Arduino core posts it
+    // itself for STA scans.
     static auto _scanEventHandlerId = WiFi.onEvent([](EventId event, EventInfo info) {
         (void)event; (void)info;
         if (s_onDone) s_onDone();
-    });
+    }, ARDUINO_EVENT_WIFI_SCAN_DONE);
     (void)_scanEventHandlerId; // silence unused warning
     s_onDone = onDone;
     chip::scanStart();
