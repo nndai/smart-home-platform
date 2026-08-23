@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.auth
+﻿package com.nndai.myhome.presentation.auth
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
@@ -58,6 +58,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 
 /**
@@ -143,13 +145,13 @@ fun LoginScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Welcome Back",
+            text = stringResource(R.string.login_title),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Sign in to control your smart home",
+            text = stringResource(R.string.login_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)
@@ -170,7 +172,7 @@ fun LoginScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Sign In with Email",
+                    text = stringResource(R.string.login_email_action),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -179,7 +181,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email Address") },
+                    label = { Text(stringResource(R.string.login_label_email)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Mail,
@@ -210,7 +212,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text(stringResource(R.string.login_label_password)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Lock,
@@ -232,7 +234,7 @@ fun LoginScreen(
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Filled.Visibility
                                 else Icons.Filled.VisibilityOff,
-                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                contentDescription = stringResource(if (passwordVisible) R.string.login_hide_password_desc else R.string.login_show_password_desc),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -279,7 +281,7 @@ fun LoginScreen(
                         )
                     } else {
                         Text(
-                            text = "Sign In",
+                            text = stringResource(R.string.login_submit),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -300,7 +302,7 @@ fun LoginScreen(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
             )
             Text(
-                text = "or sign in with",
+                text = stringResource(R.string.login_or_divider),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -345,7 +347,7 @@ fun LoginScreen(
                     GoogleLogoIcon(modifier = Modifier.size(22.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Continue with Google",
+                        text = stringResource(R.string.login_google),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )

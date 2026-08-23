@@ -3,6 +3,7 @@ package com.nndai.myhome.data.model
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import com.nndai.myhome.R
 
 /**
  * Điện năng tiêu thụ theo từng giờ (0..23h).
@@ -46,11 +47,11 @@ data class MonthlyEnergyLog(
  * Nguồn bật/tắt relay.
  * Mapped từ LogManager.h (0: Button, 1: App/Web, 2: Schedule).
  */
-enum class ToggleSource(val code: Int, val label: String) {
-    BUTTON(0, "Nút bấm cơ"),
-    ONLINE(1, "App / Web"),
-    SCHEDULE(2, "Hẹn giờ"),
-    UNKNOWN(-1, "Khác");
+enum class ToggleSource(val code: Int, val labelRes: Int) {
+    BUTTON(0, R.string.toggle_source_button),
+    ONLINE(1, R.string.toggle_source_online),
+    SCHEDULE(2, R.string.toggle_source_schedule),
+    UNKNOWN(-1, R.string.toggle_source_unknown);
 
     companion object {
         fun fromCode(code: Int): ToggleSource = when (code) {

@@ -768,7 +768,7 @@ private fun MonthlyBarChartCard(
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp)
                     ) {
                         Text(
-                            text = "Tháng ${selectedMonthLog.yearMonthStr}: $displayWh",
+                            text = stringResource(R.string.history_month_log_label, selectedMonthLog.yearMonthStr, displayWh),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = GreenOk,
@@ -1013,7 +1013,7 @@ private fun ToggleEventsCard(
                                     color = MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Text(
-                                        text = item.source.label,
+                                        text = stringResource(item.source.labelRes),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

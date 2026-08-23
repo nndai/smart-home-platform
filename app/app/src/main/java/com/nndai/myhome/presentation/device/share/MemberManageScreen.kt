@@ -52,10 +52,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.data.model.ActiveInvite
@@ -76,6 +78,7 @@ fun MemberManageScreen(
     deviceName: String,
     onNavigateBack: () -> Unit
 ) {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application
     val viewModel: MemberManageViewModel = viewModel(
         key = deviceUuid,
         factory = remember {
@@ -83,7 +86,10 @@ fun MemberManageScreen(
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : androidx.lifecycle.ViewModel> create(
                     modelClass: Class<T>
-                ): T = MemberManageViewModel(deviceUuid) as T
+                ): T = MemberManageViewModel(
+                    deviceUuid = deviceUuid,
+                    application = appContext
+                ) as T
             }
         }
     )
@@ -133,13 +139,13 @@ fun MemberManageScreen(
                 IconButton(onClick = onNavigateBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Quay lại",
+                        contentDescription = stringResource(R.string.close),
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Thành viên",
+                        text = stringResource(R.string.members_title),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
@@ -163,7 +169,7 @@ fun MemberManageScreen(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.size(4.dp))
-                    Text("Chia sẻ")
+                    Text(stringResource(R.string.share_button))
                 }
             }
 
@@ -178,7 +184,7 @@ fun MemberManageScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // ── Members ──
-                    item { SectionLabel("Thành viên (${members.size})") }
+                    item { SectionLabel(stringResource(R.string.share_section_members, members.size)) }
                     items(members, key = { it.user_id }) { member ->
                         MemberRow(
                             member = member,
@@ -190,11 +196,11 @@ fun MemberManageScreen(
                     }
 
                     // ── Active invites ──
-                    item { SectionLabel("Mã đang hoạt động (${invites.size})") }
+                    item { SectionLabel(stringResource(R.string.share_section_invites, invites.size)) }
                     if (invites.isEmpty()) {
                         item {
                             Text(
-                                text = "Không có mã nào đang hoạt động",
+                                text = stringResource(R.string.share_no_active_codes),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -231,11 +237,11 @@ fun MemberManageScreen(
 
     // ── Remove member confirm ──
     memberToRemove?.let { target ->
+        val displayName = target.email.orEmpty().ifBlank { shortId(target.user_id) }
         ConfirmDialog(
-            title = "Xóa thành viên",
-            message = "Xóa '${target.email.orEmpty().ifBlank { shortId(target.user_id) }}' " +
-                    "khỏi thiết bị này? Họ sẽ mất toàn bộ quyền truy cập.",
-            confirmText = "Xóa",
+            title = stringResource(R.string.member_remove_title),
+            message = stringResource(R.string.member_remove_message, displayName),
+            confirmText = stringResource(R.string.member_remove),
             isDangerous = true,
             onConfirm = {
                 viewModel.removeMember(target.user_id)
@@ -248,9 +254,9 @@ fun MemberManageScreen(
     // ── Revoke invite confirm ──
     inviteToRevoke?.let { invite ->
         ConfirmDialog(
-            title = "Thu hồi mã",
-            message = "Thu hồi mã ${invite.code}? Ai chưa dùng mã này sẽ không thể tham gia nữa.",
-            confirmText = "Thu hồi",
+            title = stringResource(R.string.revoke_invite_title),
+            message = stringResource(R.string.revoke_invite_message, invite.code),
+            confirmText = stringResource(R.string.invite_revoke),
             isDangerous = true,
             icon = Icons.Filled.LinkOff,
             onConfirm = {
@@ -288,6 +294,17 @@ private fun SectionLabel(text: String) {
 
 private fun shortId(userId: String): String =
     if (userId.length <= 10) userId else userId.take(8) + "..."
+
+/** Localized role label (DeviceRoles.label is non-composable, cannot resolve resources). */
+@Composable
+private fun roleLabel(role: String): String = stringResource(
+    when (role.uppercase()) {
+        DeviceRoles.OWNER -> R.string.role_owner
+        DeviceRoles.ADMIN -> R.string.role_admin
+        DeviceRoles.MEMBER -> R.string.role_member
+        else -> R.string.role_viewer
+    }
+)
 
 /** Role accent color theo theme palette. */
 private fun roleColor(role: String): Color = when (role.uppercase()) {
@@ -347,7 +364,7 @@ private fun MemberRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = member.email.orEmpty().ifBlank { shortId(member.user_id) } +
-                            if (isMe) " (Bạn)" else "",
+                            if (isMe) stringResource(R.string.member_me_suffix) else "",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -355,7 +372,7 @@ private fun MemberRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = DeviceRoles.label(member.role),
+                    text = roleLabel(member.role),
                     style = MaterialTheme.typography.labelMedium,
                     color = roleColor(member.role)
                 )
@@ -364,16 +381,16 @@ private fun MemberRow(
             if (canManageTarget) {
                 Box {
                     IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            Icons.Filled.PersonRemove,
-                            contentDescription = "Tùy chọn thành viên",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    Icon(
+                        Icons.Filled.PersonRemove,
+                        contentDescription = stringResource(R.string.member_options_desc),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text("Đổi vai trò") },
+                            text = { Text(stringResource(R.string.member_change_role)) },
                             onClick = {
                                 showMenu = false
                                 onChangeRole()
@@ -381,7 +398,7 @@ private fun MemberRow(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                         DropdownMenuItem(
-                            text = { Text("Xóa khỏi thiết bị", color = MaterialTheme.colorScheme.error) },
+                            text = { Text(stringResource(R.string.member_remove), color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Filled.Delete,
@@ -433,7 +450,7 @@ private fun InviteRow(invite: ActiveInvite, onRevoke: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Vai trò: ${DeviceRoles.label(invite.role)} • dùng một lần",
+                    text = stringResource(R.string.invite_single_use, roleLabel(invite.role)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -445,7 +462,7 @@ private fun InviteRow(invite: ActiveInvite, onRevoke: () -> Unit) {
                 ),
                 shape = MaterialTheme.shapes.small
             ) {
-                Text("Thu hồi", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.invite_revoke), style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -485,7 +502,7 @@ private fun RoleChangeDialog(
                 }
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "Đổi vai trò",
+                    text = stringResource(R.string.role_change_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -499,15 +516,23 @@ private fun RoleChangeDialog(
         },
         text = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(DeviceRoles.ADMIN to "Quản lý", DeviceRoles.MEMBER to "Thành viên", DeviceRoles.VIEWER to "Chỉ xem")
-                    .forEach { (role, label) ->
-                        FilterChip(
-                            selected = selected == role,
-                            enabled = !isBusy,
-                            onClick = { selected = role },
-                            label = { Text(label, style = MaterialTheme.typography.labelMedium) }
-                        )
-                    }
+                listOf(
+                    DeviceRoles.ADMIN to R.string.role_label_admin,
+                    DeviceRoles.MEMBER to R.string.role_label_member,
+                    DeviceRoles.VIEWER to R.string.role_label_viewer
+                ).forEach { (role, labelRes) ->
+                    FilterChip(
+                        selected = selected == role,
+                        enabled = !isBusy,
+                        onClick = { selected = role },
+                        label = {
+                            Text(
+                                stringResource(labelRes),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    )
+                }
             }
         },
         confirmButton = {
@@ -521,7 +546,7 @@ private fun RoleChangeDialog(
                     ),
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text("Hủy")
+                    Text(stringResource(R.string.action_cancel))
                 }
                 Button(
                     onClick = { onConfirm(selected) },
@@ -533,7 +558,7 @@ private fun RoleChangeDialog(
                     ),
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text("Lưu", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_save), fontWeight = FontWeight.SemiBold)
                 }
             }
         },

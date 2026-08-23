@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.share
+﻿package com.nndai.myhome.presentation.device.share
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -31,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.nndai.myhome.R
 import com.nndai.myhome.data.model.DeviceRoles
 import com.nndai.myhome.data.model.RedeemedDevice
 
@@ -49,6 +51,7 @@ fun RedeemInviteDialog(
 ) {
     var code by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
@@ -75,7 +78,7 @@ fun RedeemInviteDialog(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "Nhập mã chia sẻ",
+                    text = stringResource(R.string.redeem_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -87,7 +90,7 @@ fun RedeemInviteDialog(
             if (successDevice == null) {
                 Column {
                     Text(
-                        text = "Nhập mã do chủ thiết bị gửi cho bạn:",
+                        text = stringResource(R.string.redeem_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -101,7 +104,7 @@ fun RedeemInviteDialog(
                             code = filtered
                             if (filtered.length == 18) errorText = null
                         },
-                        label = { Text("Mã chia sẻ") },
+                        label = { Text(stringResource(R.string.redeem_label)) },
                         singleLine = true,
                         isError = errorText != null || serverError != null,
                         supportingText = (errorText ?: serverError)?.let {
@@ -118,7 +121,7 @@ fun RedeemInviteDialog(
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Đã thêm thiết bị:",
+                        text = stringResource(R.string.redeem_success_title),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -130,7 +133,7 @@ fun RedeemInviteDialog(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Vai trò của bạn: ${roleLabel(successDevice.role)}",
+                        text = stringResource(R.string.redeem_success_role, roleLabel(successDevice.role)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -150,12 +153,12 @@ fun RedeemInviteDialog(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("Hủy")
+                        Text(stringResource(R.string.action_cancel))
                     }
                     Button(
                         onClick = {
                             when {
-                                code.length < 18 -> errorText = "Mã phải đủ 18 ký tự"
+                                code.length < 18 -> errorText = context.getString(R.string.redeem_error_length)
                                 else -> onRedeem(code)
                             }
                         },
@@ -167,7 +170,7 @@ fun RedeemInviteDialog(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text(if (isBusy) "Đang xử lý..." else "Thêm thiết bị", fontWeight = FontWeight.SemiBold)
+                        Text(if (isBusy) stringResource(R.string.processing) else stringResource(R.string.redeem_action), fontWeight = FontWeight.SemiBold)
                     }
                 }
             } else {
@@ -181,7 +184,7 @@ fun RedeemInviteDialog(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("Xong", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.action_done), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -192,4 +195,12 @@ fun RedeemInviteDialog(
     )
 }
 
-private fun roleLabel(role: String): String = DeviceRoles.label(role)
+@Composable
+private fun roleLabel(role: String): String = stringResource(
+    when (role.uppercase()) {
+        DeviceRoles.OWNER -> R.string.role_owner
+        DeviceRoles.ADMIN -> R.string.role_admin
+        DeviceRoles.MEMBER -> R.string.role_member
+        else -> R.string.role_viewer
+    }
+)

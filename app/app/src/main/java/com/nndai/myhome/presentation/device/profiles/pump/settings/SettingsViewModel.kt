@@ -1,9 +1,10 @@
-package com.nndai.myhome.presentation.device.profiles.pump.settings
+﻿package com.nndai.myhome.presentation.device.profiles.pump.settings
 
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nndai.myhome.R
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.data.model.ConnectionState
 import com.nndai.myhome.data.model.DeviceConfig
@@ -63,7 +64,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         saveTimeoutJob?.cancel()
                         if (_isSaving.value) {
                             _isSaving.value = false
-                            _messages.tryEmit(event.message ?: if (event.success) "Config saved" else "Save failed")
+                            _messages.tryEmit(event.message ?: if (event.success) getString(R.string.svm_msg_saved) else getString(R.string.svm_msg_save_failed))
                             if (event.success) {
                                 refreshConfig()
                                 if (event.needReboot) {
@@ -76,21 +77,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         rebootTimeoutJob?.cancel()
                         if (_isRebooting.value) {
                             _isRebooting.value = false
-                            _messages.tryEmit(event.message ?: "Device rebooting...")
+                            _messages.tryEmit(event.message ?: getString(R.string.svm_msg_rebooting))
                         }
                     }
                     "calibrate", "resetCalibration" -> {
                         saveTimeoutJob?.cancel()
                         if (_isSaving.value) {
                             _isSaving.value = false
-                            _messages.tryEmit(event.message ?: if (event.success) "Calibration updated" else "Calibration failed")
+                            _messages.tryEmit(event.message ?: if (event.success) getString(R.string.svm_msg_calib_updated) else getString(R.string.svm_msg_calib_failed))
                             if (event.success) {
                                 refreshConfig()
                             }
                         }
                     }
                     "factoryReset" -> {
-                        _messages.tryEmit("Factory reset initiated, device rebooting...")
+                        _messages.tryEmit(getString(R.string.svm_msg_factory_started))
                     }
                 }
             }
@@ -111,10 +112,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     _wifiNetworks.value = result.networks
                     _showWifiScanDialog.value = true
                     if (result.networks.isEmpty()) {
-                        _messages.tryEmit("No Wi-Fi networks found")
+                        _messages.tryEmit(getString(R.string.svm_msg_no_wifi))
                     }
                 } else {
-                    _messages.tryEmit(result.message ?: "WiFi scan failed")
+                    _messages.tryEmit(result.message ?: getString(R.string.svm_msg_wifi_scan_failed))
                 }
             }
         }
@@ -133,7 +134,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             runCatching { repository.scanWifi() }
                 .onFailure {
                     _isScanningWifi.value = false
-                    _messages.tryEmit("Failed to request Wi-Fi scan")
+                    _messages.tryEmit(getString(R.string.svm_msg_scan_request_failed))
                     return@launch
                 }
 
@@ -169,7 +170,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
                 if (_isScanningWifi.value) {
                     _isScanningWifi.value = false
-                    _messages.tryEmit("WiFi scan timed out (1 min)")
+                    _messages.tryEmit(getString(R.string.svm_msg_wifi_scan_timeout))
                 }
             }
         }
@@ -181,7 +182,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun saveConfig(updates: Map<String, Any>) {
         if (updates.isEmpty()) {
-            _messages.tryEmit("No changes to save")
+            _messages.tryEmit(getString(R.string.svm_msg_no_changes))
             return
         }
         viewModelScope.launch {
@@ -189,7 +190,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             runCatching { repository.setConfig(updates) }
                 .onFailure {
                     _isSaving.value = false
-                    _messages.tryEmit("Failed to send config")
+                    _messages.tryEmit(getString(R.string.svm_msg_send_config_failed))
                     return@launch
                 }
             saveTimeoutJob?.cancel()
@@ -197,7 +198,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 delay(10000L)
                 if (_isSaving.value) {
                     _isSaving.value = false
-                    _messages.tryEmit("Save config timed out (10s)")
+                    _messages.tryEmit(getString(R.string.svm_msg_save_timeout))
                 }
             }
         }
@@ -210,7 +211,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             runCatching { repository.reboot() }
                 .onFailure {
                     _isRebooting.value = false
-                    _messages.tryEmit("Failed to send reboot command")
+                    _messages.tryEmit(getString(R.string.svm_msg_reboot_cmd_failed))
                     return@launch
                 }
             rebootTimeoutJob?.cancel()
@@ -218,7 +219,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 delay(10000L)
                 if (_isRebooting.value) {
                     _isRebooting.value = false
-                    _messages.tryEmit("Reboot command sent (10s timeout reached)")
+                    _messages.tryEmit(getString(R.string.svm_msg_reboot_sent_timeout))
                 }
             }
         }
@@ -231,7 +232,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun factoryReset() {
         viewModelScope.launch {
             runCatching { repository.factoryReset() }
-                .onFailure { _messages.tryEmit("Failed to send factory reset command") }
+                .onFailure { _messages.tryEmit(getString(R.string.svm_msg_factory_cmd_failed)) }
         }
     }
 
@@ -244,14 +245,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 delay(10000L)
                 if (_isSaving.value) {
                     _isSaving.value = false
-                    _messages.tryEmit("Calibration request timed out (10s)")
+                    _messages.tryEmit(getString(R.string.svm_msg_calib_req_timeout))
                 }
             }
             runCatching { repository.calibrate(payload) }
                 .onFailure {
                     saveTimeoutJob?.cancel()
                     _isSaving.value = false
-                    _messages.tryEmit("Failed to send calibration command")
+                    _messages.tryEmit(getString(R.string.svm_msg_calib_send_failed))
                 }
         }
     }
@@ -264,17 +265,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 delay(10000L)
                 if (_isSaving.value) {
                     _isSaving.value = false
-                    _messages.tryEmit("Reset calibration timed out (10s)")
+                    _messages.tryEmit(getString(R.string.svm_msg_reset_calib_timeout))
                 }
             }
             runCatching { repository.resetCalibration() }
                 .onFailure {
                     saveTimeoutJob?.cancel()
                     _isSaving.value = false
-                    _messages.tryEmit("Failed to send reset calibration command")
+                    _messages.tryEmit(getString(R.string.svm_msg_reset_calib_failed))
                 }
         }
     }
+
+    private fun getString(resId: Int): String =
+        getApplication<Application>().getString(resId)
 
     companion object {
         private const val TAG = "SettingsViewModel"

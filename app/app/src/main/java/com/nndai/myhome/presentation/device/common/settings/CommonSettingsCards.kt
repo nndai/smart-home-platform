@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.common.settings
+﻿package com.nndai.myhome.presentation.device.common.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -110,7 +110,7 @@ fun NetworkConnectionModeCard(
                     }
                 }
                 Text(
-                    text = "Chế độ kết nối mạng",
+                    text = stringResource(R.string.cs_network_mode),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -123,9 +123,9 @@ fun NetworkConnectionModeCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
-                    "WiFi STA (MQTT)" to 1,
-                    "Điểm phát AP" to 0,
-                    "WiFi Debug" to 2
+                    stringResource(R.string.settings_wifi_mqtt) to 1,
+                    stringResource(R.string.cs_ap_hotspot) to 0,
+                    stringResource(R.string.settings_wifi_debug) to 2
                 ).forEach { (label, modeIndex) ->
                     val selected = connMode == modeIndex
                     Surface(
@@ -156,7 +156,7 @@ fun NetworkConnectionModeCard(
             if (connMode == 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Thông tin WiFi",
+                        text = stringResource(R.string.cs_wifi_info),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -170,7 +170,7 @@ fun NetworkConnectionModeCard(
                         CompactTextField(
                             value = wifiSSID,
                             onValueChange = onWifiSSIDChange,
-                            label = "Tên mạng WiFi",
+                            label = stringResource(R.string.cs_label_wifi_ssid),
                             modifier = Modifier.weight(1f)
                         )
                         Button(
@@ -187,7 +187,7 @@ fun NetworkConnectionModeCard(
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Quét...", fontSize = 12.sp)
+                                Text(stringResource(R.string.cs_scanning), fontSize = 12.sp)
                             } else {
                                 Icon(
                                     imageVector = Icons.Filled.Wifi,
@@ -195,7 +195,7 @@ fun NetworkConnectionModeCard(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Quét", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.cs_scan), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -204,7 +204,7 @@ fun NetworkConnectionModeCard(
                         CompactTextField(
                             value = wifiPass,
                             onValueChange = onWifiPassChange,
-                            label = "Mật khẩu WiFi",
+                            label = stringResource(R.string.cs_label_wifi_password),
                             isPassword = true
                         )
                     } else {
@@ -225,7 +225,7 @@ fun NetworkConnectionModeCard(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "Mạng không có mật khẩu (Open Network)",
+                                    text = stringResource(R.string.cs_open_network),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
@@ -254,7 +254,7 @@ fun NetworkConnectionModeCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Ở chế độ này, thiết bị sẽ phát sóng WiFi riêng (dạng myhome-<model>-xxxx) để kết nối và điều khiển trực tiếp qua WebSocket nội bộ.",
+                            text = stringResource(R.string.cs_ap_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -266,7 +266,7 @@ fun NetworkConnectionModeCard(
             if (connMode == 2) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Thông tin WiFi Debug",
+                        text = stringResource(R.string.cs_debug_wifi_info),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -275,12 +275,12 @@ fun NetworkConnectionModeCard(
                     CompactTextField(
                         value = debugSSID,
                         onValueChange = onDebugSSIDChange,
-                        label = "Tên WiFi Debug (SSID)"
+                        label = stringResource(R.string.cs_label_debug_ssid)
                     )
                     CompactTextField(
                         value = debugPass,
                         onValueChange = onDebugPassChange,
-                        label = "Mật khẩu WiFi Debug",
+                        label = stringResource(R.string.cs_label_debug_password),
                         isPassword = true
                     )
                 }
@@ -301,7 +301,7 @@ fun NetworkConnectionModeCard(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (isSaving) "Đang lưu cấu hình..." else "Lưu cấu hình mạng",
+                    text = if (isSaving) stringResource(R.string.cs_saving_config) else stringResource(R.string.cs_save_network),
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -346,7 +346,7 @@ fun SysLogSettingsCard(
                     }
                 }
                 Text(
-                    text = "Ghi log hệ thống vào Flash",
+                    text = stringResource(R.string.cs_syslog_flash),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -360,13 +360,13 @@ fun SysLogSettingsCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Lưu file log (/logs/sys/)",
+                        text = stringResource(R.string.cs_syslog_file),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (sysLogFileEnabled) "Đang bật lưu file log hệ thống" else "Đang tắt ghi file log",
+                        text = stringResource(if (sysLogFileEnabled) R.string.cs_syslog_on else R.string.cs_syslog_off),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (sysLogFileEnabled) GreenOk else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -380,7 +380,7 @@ fun SysLogSettingsCard(
             AnimatedVisibility(visible = sysLogFileEnabled) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Mức độ chi tiết (Log Level)",
+                        text = stringResource(R.string.cs_log_level_label),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -440,7 +440,7 @@ fun DeviceActionsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Thao tác hệ thống",
+                text = stringResource(R.string.cs_system_actions),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -464,7 +464,7 @@ fun DeviceActionsCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isRebooting) "Đang khởi động..." else "Khởi động lại", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(if (isRebooting) stringResource(R.string.cs_rebooting) else stringResource(R.string.cs_reboot), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
@@ -485,7 +485,7 @@ fun DeviceActionsCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Khôi phục gốc", color = RedError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.cs_factory_reset), color = RedError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -515,7 +515,7 @@ fun WifiScanDialog(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Chọn mạng WiFi",
+                    text = stringResource(R.string.cs_pick_wifi_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -533,14 +533,14 @@ fun WifiScanDialog(
                     CircularProgressIndicator(modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Đang quét các mạng WiFi xung quanh...",
+                        text = stringResource(R.string.cs_wifi_scan_progress),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else if (networks.isEmpty()) {
                 Text(
-                    text = "Không tìm thấy mạng WiFi nào. Hãy thử lại.",
+                    text = stringResource(R.string.cs_wifi_none_found),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -582,7 +582,7 @@ fun WifiScanDialog(
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Icon(
                                                 imageVector = Icons.Filled.Lock,
-                                                contentDescription = "Encrypted",
+                                                contentDescription = stringResource(R.string.desc_encrypted),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(14.dp).offset(y = (-1).dp)
                                             )
@@ -611,7 +611,7 @@ fun WifiScanDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text("Đóng")
+                Text(stringResource(R.string.close))
             }
         }
     )

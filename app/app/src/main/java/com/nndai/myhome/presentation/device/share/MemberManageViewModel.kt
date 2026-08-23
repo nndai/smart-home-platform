@@ -1,7 +1,9 @@
 package com.nndai.myhome.presentation.device.share
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nndai.myhome.R
 import com.nndai.myhome.data.model.ActiveInvite
 import com.nndai.myhome.data.model.CreatedInvite
 import com.nndai.myhome.data.model.DeviceMember
@@ -17,8 +19,9 @@ import kotlinx.coroutines.launch
  */
 class MemberManageViewModel(
     private val deviceUuid: String,
-    private val repository: DeviceShareRepository = DeviceShareRepository()
-) : ViewModel() {
+    private val repository: DeviceShareRepository = DeviceShareRepository(),
+    application: Application
+) : AndroidViewModel(application) {
 
     private val _members = MutableStateFlow<List<DeviceMember>>(emptyList())
     val members = _members.asStateFlow()
@@ -50,12 +53,12 @@ class MemberManageViewModel(
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
-            val membersR = repository.listMembers(deviceUuid)
-            val invitesR = repository.listInvites(deviceUuid)
-            membersR.onSuccess { _members.value = it }
+            repository.listMembers(deviceUuid)
+                .onSuccess { _members.value = it }
                 .onFailure { _message.value = it.message }
-            invitesR.onSuccess { _invites.value = it }
-                .onFailure { it.message?.let { msg -> _message.value = msg } }
+            repository.listInvites(deviceUuid)
+                .onSuccess { _invites.value = it }
+                .onFailure { failure -> failure.message?.let { msg -> _message.value = msg } }
             _isLoading.value = false
         }
     }
@@ -78,7 +81,7 @@ class MemberManageViewModel(
             _isBusy.value = true
             repository.revokeInvite(code)
                 .onSuccess {
-                    _message.value = "Đã thu hồi mã chia sẻ"
+                    _message.value = getString(R.string.msg_invite_revoked)
                     refreshInvitesOnly()
                 }
                 .onFailure { _message.value = it.message }
@@ -91,7 +94,7 @@ class MemberManageViewModel(
             _isBusy.value = true
             repository.updateMemberRole(deviceUuid, userId, newRole)
                 .onSuccess {
-                    _message.value = "Đã cập nhật vai trò"
+                    _message.value = getString(R.string.msg_role_updated)
                     refresh()
                 }
                 .onFailure { _message.value = it.message }
@@ -104,7 +107,7 @@ class MemberManageViewModel(
             _isBusy.value = true
             repository.removeMember(deviceUuid, userId)
                 .onSuccess {
-                    _message.value = "Đã xóa thành viên"
+                    _message.value = getString(R.string.msg_member_removed)
                     refresh()
                 }
                 .onFailure { _message.value = it.message }
@@ -115,4 +118,7 @@ class MemberManageViewModel(
     private suspend fun refreshInvitesOnly() {
         repository.listInvites(deviceUuid).onSuccess { _invites.value = it }
     }
+
+    private fun getString(resId: Int): String =
+        getApplication<Application>().getString(resId)
 }

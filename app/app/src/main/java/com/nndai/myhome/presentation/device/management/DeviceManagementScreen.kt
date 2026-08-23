@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.management
+﻿package com.nndai.myhome.presentation.device.management
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -62,6 +62,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.launch
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
@@ -110,7 +113,7 @@ fun DeviceManagementScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = MaterialTheme.shapes.large
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Device")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add_device))
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -131,18 +134,20 @@ fun DeviceManagementScreen(
             ) {
                 Column {
                     Text(
-                        text = "Devices",
+                        text = stringResource(R.string.devices_title),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "${devices.size} device(s) registered",
+                        text = stringResource(R.string.devices_registered_count, devices.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
+                val syncedMsg = stringResource(R.string.msg_devices_synced)
+                val syncFailedMsg = stringResource(R.string.msg_sync_failed)
                 IconButton(
                     onClick = {
                         scope.launch {
@@ -150,10 +155,10 @@ fun DeviceManagementScreen(
                             val r = deviceRepository.fetchDevices()
                             isRefreshing = false
                             if (r.isSuccess) {
-                                snackbarHostState.showSnackbar("Đã đồng bộ danh sách thiết bị")
+                                snackbarHostState.showSnackbar(syncedMsg)
                             } else {
                                 snackbarHostState.showSnackbar(
-                                    r.exceptionOrNull()?.message ?: "Lỗi đồng bộ"
+                                    r.exceptionOrNull()?.message ?: syncFailedMsg
                                 )
                             }
                         }
@@ -169,7 +174,7 @@ fun DeviceManagementScreen(
                     } else {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Làm mới danh sách",
+                            contentDescription = stringResource(R.string.system_refresh),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -239,7 +244,7 @@ fun DeviceManagementScreen(
                         modifier = Modifier.size(56.dp)
                     )
                     Text(
-                        text = "No devices yet",
+                        text = stringResource(R.string.devices_empty_title),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
@@ -258,6 +263,8 @@ fun DeviceManagementScreen(
 
     // ── Rename Dialog ──
     deviceToRename?.let { targetDevice ->
+        val renamedMsg = stringResource(R.string.msg_renamed)
+        val renameFailedMsg = stringResource(R.string.msg_rename_failed)
         RenameDeviceDialog(
             device = targetDevice,
             onDismiss = { deviceToRename = null },
@@ -269,10 +276,10 @@ fun DeviceManagementScreen(
                     val r = deviceRepository.updateDeviceName(devId, newName)
                     isBusy = false
                     if (r.isSuccess) {
-                        snackbarHostState.showSnackbar("Đã đổi tên thiết bị thành công")
+                        snackbarHostState.showSnackbar(renamedMsg)
                     } else {
                         snackbarHostState.showSnackbar(
-                            r.exceptionOrNull()?.message ?: "Lỗi đổi tên"
+                            r.exceptionOrNull()?.message ?: renameFailedMsg
                         )
                     }
                 }
@@ -282,12 +289,16 @@ fun DeviceManagementScreen(
 
     // ── Delete Dialog ──
     deviceToDelete?.let { targetDevice ->
+        val deletedMsg = stringResource(R.string.msg_device_deleted)
+        val deleteFailedMsg = stringResource(R.string.msg_delete_failed)
         ConfirmDialog(
-            title = "Xóa thiết bị",
-            message = "Bạn có chắc chắn muốn xóa thiết bị '${targetDevice.name}' " +
-                    "(${targetDevice.device_id}) khỏi tài khoản?\n\n" +
-                    "Thiết bị sẽ bị hủy liên kết và xóa dữ liệu.",
-            confirmText = "Xóa thiết bị",
+            title = stringResource(R.string.delete_device_title),
+            message = stringResource(
+                R.string.delete_device_message,
+                targetDevice.name,
+                targetDevice.device_id
+            ),
+            confirmText = stringResource(R.string.delete_device_action),
             isDangerous = true,
             requiredInput = "delete",
             onConfirm = {
@@ -298,10 +309,10 @@ fun DeviceManagementScreen(
                     val r = deviceRepository.removeDevice(devId)
                     isBusy = false
                     if (r.isSuccess) {
-                        snackbarHostState.showSnackbar("Đã xóa thiết bị thành công")
+                        snackbarHostState.showSnackbar(deletedMsg)
                     } else {
                         snackbarHostState.showSnackbar(
-                            r.exceptionOrNull()?.message ?: "Lỗi khi xóa thiết bị"
+                            r.exceptionOrNull()?.message ?: deleteFailedMsg
                         )
                     }
                 }
@@ -312,11 +323,16 @@ fun DeviceManagementScreen(
 
     // ── Leave Device Dialog (member rời thiết bị được chia sẻ) ──
     deviceToLeave?.let { targetDevice ->
+        val leftMsg = stringResource(R.string.leave_success)
+        val leaveFailedMsg = stringResource(R.string.leave_failed)
         ConfirmDialog(
-            title = "Rời khỏi thiết bị",
-            message = "Bạn sẽ mất toàn bộ quyền truy cập vào " +
-                    "'${targetDevice.name}' (${targetDevice.device_id}).",
-            confirmText = "Rời thiết bị",
+            title = stringResource(R.string.leave_device_title),
+            message = stringResource(
+                R.string.leave_device_message,
+                targetDevice.name,
+                targetDevice.device_id
+            ),
+            confirmText = stringResource(R.string.leave_device_action),
             isDangerous = true,
             icon = Icons.Filled.LinkOff,
             onConfirm = {
@@ -327,9 +343,9 @@ fun DeviceManagementScreen(
                     isBusy = true
                     val r = deviceRepository.leaveSharedDevice(key, uuid)
                     if (r.isSuccess) {
-                        snackbarHostState.showSnackbar("Đã rời khỏi thiết bị")
+                        snackbarHostState.showSnackbar(leftMsg)
                     } else {
-                        snackbarHostState.showSnackbar(r.exceptionOrNull()?.message ?: "Không thể rời thiết bị")
+                        snackbarHostState.showSnackbar(r.exceptionOrNull()?.message ?: leaveFailedMsg)
                     }
                     isBusy = false
                 }
@@ -357,7 +373,7 @@ fun DeviceManagementScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Đang xử lý...",
+                        text = stringResource(R.string.processing),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -425,24 +441,24 @@ private fun DeviceListItem(
     val statusColor: androidx.compose.ui.graphics.Color
 
     if (isTransferred) {
-        statusText = "Đã đổi chủ"
+            statusText = stringResource(R.string.devices_status_transferred)
         statusColor = OrangeWarning
     } else {
         when (healthState) {
             is DeviceHealthStatus.Online -> {
-                statusText = "Online"
+                statusText = stringResource(R.string.devices_status_online)
                 statusColor = GreenOk
             }
             is DeviceHealthStatus.Handshaking -> {
-                statusText = "Connecting..."
+                statusText = stringResource(R.string.devices_status_connecting)
                 statusColor = OrangeWarning
             }
             is DeviceHealthStatus.Offline -> {
-                statusText = "Offline"
+                statusText = stringResource(R.string.devices_status_offline)
                 statusColor = MaterialTheme.colorScheme.onSurfaceVariant
             }
             else -> {
-                statusText = "Unknown"
+                statusText = stringResource(R.string.devices_status_unknown)
                 statusColor = MaterialTheme.colorScheme.onSurfaceVariant
             }
         }
@@ -563,7 +579,7 @@ private fun DeviceListItem(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Tùy chọn thiết bị",
+                        contentDescription = stringResource(R.string.device_options_desc),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
@@ -581,7 +597,7 @@ private fun DeviceListItem(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Thành viên",
+                                    stringResource(R.string.menu_members),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -603,7 +619,7 @@ private fun DeviceListItem(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Đổi tên",
+                                    stringResource(R.string.menu_rename),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -628,7 +644,7 @@ private fun DeviceListItem(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Xóa thiết bị",
+                                    stringResource(R.string.menu_delete_device),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -652,7 +668,7 @@ private fun DeviceListItem(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "Rời khỏi thiết bị",
+                                    stringResource(R.string.menu_leave_device),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -690,6 +706,7 @@ private fun RenameDeviceDialog(
 ) {
     var newName by remember { mutableStateOf(device.name) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -716,7 +733,7 @@ private fun RenameDeviceDialog(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "Đổi tên thiết bị",
+                    text = stringResource(R.string.rename_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -727,7 +744,7 @@ private fun RenameDeviceDialog(
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Nhập tên mới cho thiết bị này:",
+                    text = stringResource(R.string.rename_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -747,7 +764,7 @@ private fun RenameDeviceDialog(
                         newName = it
                         if (it.isNotBlank()) errorText = null
                     },
-                    label = { Text("Tên thiết bị") },
+                    label = { Text(stringResource(R.string.rename_label)) },
                     singleLine = true,
                     isError = errorText != null,
                     supportingText = errorText?.let {
@@ -770,12 +787,12 @@ private fun RenameDeviceDialog(
                     ),
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text("Hủy")
+                    Text(stringResource(R.string.action_cancel))
                 }
                 Button(
                     onClick = {
                         if (newName.trim().isBlank()) {
-                            errorText = "Tên không được để trống"
+                            errorText = context.getString(R.string.rename_error_empty)
                         } else {
                             onConfirm(newName.trim())
                         }
@@ -786,7 +803,7 @@ private fun RenameDeviceDialog(
                     ),
                     modifier = Modifier.weight(1.4f)
                 ) {
-                    Text("Lưu", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_save), fontWeight = FontWeight.SemiBold)
                 }
             }
         },

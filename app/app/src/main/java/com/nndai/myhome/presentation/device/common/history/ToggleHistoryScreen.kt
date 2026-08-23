@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.common.history
+﻿package com.nndai.myhome.presentation.device.common.history
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -136,13 +136,13 @@ fun ToggleHistoryScreen(
                     }
                     Column {
                         Text(
-                            text = "Lịch sử bật / tắt",
+                            text = stringResource(R.string.toggle_history_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (selectedToggleDate == todayStr) "Hôm nay: $selectedToggleDate" else selectedToggleDate,
+                            text = if (selectedToggleDate == todayStr) stringResource(R.string.toggle_history_today, selectedToggleDate) else selectedToggleDate,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -166,7 +166,7 @@ fun ToggleHistoryScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.DateRange,
-                                contentDescription = "Chọn ngày",
+                                contentDescription = stringResource(R.string.toggle_history_pick_date_desc),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -187,7 +187,7 @@ fun ToggleHistoryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Đồng bộ",
+                            contentDescription = stringResource(R.string.toggle_history_sync_desc),
                             tint = if (isSyncing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .size(20.dp)
@@ -209,19 +209,19 @@ fun ToggleHistoryScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             SummaryItem(
-                label = "Tổng số lần",
+                label = stringResource(R.string.toggle_history_total_label),
                 count = toggleEvents.size.toString(),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f)
             )
             SummaryItem(
-                label = "Bật (ON)",
+                label = stringResource(R.string.toggle_history_on_label),
                 count = onCount.toString(),
                 tint = GreenOk,
                 modifier = Modifier.weight(1f)
             )
             SummaryItem(
-                label = "Tắt (OFF)",
+                label = stringResource(R.string.toggle_history_off_label),
                 count = offCount.toString(),
                 tint = if (offCount > 0) RedError else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
@@ -253,14 +253,14 @@ fun ToggleHistoryScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Không có sự kiện bật / tắt trong ngày này",
+                        text = stringResource(R.string.toggle_history_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Nhấn nút đồng bộ để tải thêm dữ liệu mới nhất từ thiết bị.",
+                        text = stringResource(R.string.toggle_history_sync_hint),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center
@@ -297,7 +297,7 @@ fun ToggleHistoryScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Chọn ngày xem lịch sử",
+                        text = stringResource(R.string.toggle_history_select_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -329,7 +329,7 @@ fun ToggleHistoryScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = if (dateStr == todayStr) "$dateStr (Hôm nay)" else dateStr,
+                                    text = if (dateStr == todayStr) dateStr + stringResource(R.string.toggle_history_today_suffix) else dateStr,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
@@ -349,7 +349,7 @@ fun ToggleHistoryScreen(
             },
             confirmButton = {
                 Button(onClick = { showDatePickerDialog = false }) {
-                    Text("Đóng")
+                    Text(stringResource(R.string.close))
                 }
             }
         )
@@ -441,7 +441,7 @@ private fun ToggleEventItem(
                         color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Text(
-                            text = "Nguồn: ${event.source.label}",
+                            text = stringResource(R.string.toggle_source_prefix, stringResource(event.source.labelRes)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -457,7 +457,7 @@ private fun ToggleEventItem(
                 border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.4f))
             ) {
                 Text(
-                    text = if (isTurnOn) "BẬT (ON)" else "TẮT (OFF)",
+                            text = if (isTurnOn) stringResource(R.string.toggle_history_on_label) else stringResource(R.string.toggle_history_off_label),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = badgeColor,

@@ -104,7 +104,7 @@ fun DeviceDetailScreen(
     val devices by deviceManager.devices.collectAsStateWithLifecycle()
     val device = remember(devices, deviceId) { devices.find { it.device_id == deviceId } }
     val deviceName = device?.name ?: when (profile.lowercase()) {
-        "pump" -> "Máy Bơm (Pump)"
+        "pump" -> stringResource(R.string.pair_profile_pump)
         "remote_switch" -> "Remote Switch"
         else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
     }
@@ -217,12 +217,12 @@ fun DeviceDetailScreen(
                                 dotSize = 6.dp,
                                 iconSize = 11.dp
                             )
-                            Text(
-                                text = when {
-                                    isConnected -> "Đã kết nối qua MQTT"
-                                    isConnecting -> "Đang kết nối..."
-                                    else -> "Mất kết nối"
-                                },
+                        Text(
+                            text = when {
+                                isConnected -> stringResource(R.string.conn_connected)
+                                isConnecting -> stringResource(R.string.conn_connecting)
+                                else -> stringResource(R.string.conn_disconnected)
+                            },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
                                 color = if (isConnected) GreenOk else ( if (isConnecting) OrangeWarning else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -351,7 +351,7 @@ fun DeviceDetailScreen(
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "Chế độ chỉ xem — bạn không có quyền điều khiển và cài đặt thiết bị này",
+                            text = stringResource(R.string.viewer_banner),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -402,7 +402,7 @@ fun DeviceDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Coming soon for $profile",
+                            text = stringResource(R.string.profile_coming_soon, profile),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.profiles.remoteswitch
+﻿package com.nndai.myhome.presentation.device.profiles.remoteswitch
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -54,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
@@ -91,6 +94,7 @@ fun RemoteSwitchSettingsScreen(
     val targetStatus by remoteSwitchViewModel.deviceStatus.collectAsStateWithLifecycle()
     val ownedDevices by remoteSwitchViewModel.ownedCandidateDevices.collectAsStateWithLifecycle()
     val isSettingTarget by remoteSwitchViewModel.isSettingTarget.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     // Form states
     var connMode by remember(config) { mutableIntStateOf(config?.connMode ?: 1) }
@@ -221,9 +225,9 @@ fun RemoteSwitchSettingsScreen(
     // Clear Target Confirmation Dialog
     if (showClearTargetDialog) {
         ConfirmDialog(
-            title = "Xóa liên kết mục tiêu",
-            message = "Bạn có chắc chắn muốn ngắt liên kết công tắc này khỏi thiết bị mục tiêu không?",
-            confirmText = "Xóa liên kết",
+            title = stringResource(R.string.rss_unlink_title),
+            message = stringResource(R.string.rss_unlink_message),
+            confirmText = stringResource(R.string.rss_unlink_action),
             isDangerous = true,
             onConfirm = {
                 showClearTargetDialog = false
@@ -236,9 +240,9 @@ fun RemoteSwitchSettingsScreen(
     // SysLog Switch Confirm Dialog
     showLogSwitchDialog?.let { targetState ->
         ConfirmDialog(
-            title = if (targetState) "Bật SysLog" else "Tắt SysLog",
-            message = if (targetState) "Bật ghi log hệ thống vào tệp flash (có thể ảnh hưởng tuổi thọ flash)?" else "Tắt ghi log hệ thống?",
-            confirmText = "Đồng ý",
+            title = stringResource(if (targetState) R.string.rss_syslog_on_title else R.string.rss_syslog_off_title),
+            message = stringResource(if (targetState) R.string.rss_syslog_on_msg else R.string.rss_syslog_off_msg),
+            confirmText = stringResource(R.string.rss_agree),
             onConfirm = {
                 showLogSwitchDialog = null
                 sysLogFileEnabled = targetState
@@ -251,18 +255,18 @@ fun RemoteSwitchSettingsScreen(
     // SysLog Level Confirm Dialog
     showLogLevelDialog?.let { targetLevel ->
         val levelName = when (targetLevel) {
-            "0" -> "TRACE (Nhiều nhất)"
-            "1" -> "DEBUG (Chi tiết)"
-            "2" -> "INFO (Thông tin)"
-            "3" -> "WARN (Cảnh báo)"
-            "4" -> "ERROR (Lỗi)"
-            "5" -> "FATAL (Nghiêm trọng)"
-            else -> "Mức $targetLevel"
+            "0" -> stringResource(R.string.rss_loglevel_trace)
+            "1" -> stringResource(R.string.rss_loglevel_debug)
+            "2" -> stringResource(R.string.rss_loglevel_info)
+            "3" -> stringResource(R.string.rss_loglevel_warn)
+            "4" -> stringResource(R.string.rss_loglevel_error)
+            "5" -> stringResource(R.string.rss_loglevel_fatal)
+            else -> context.getString(R.string.rss_loglevel_custom, targetLevel)
         }
         ConfirmDialog(
-            title = "Thay đổi Mức độ Log",
-            message = "Bạn có muốn đổi mức độ ghi log thành $levelName không?",
-            confirmText = "Đồng ý",
+            title = context.getString(R.string.rss_loglevel_change_title),
+            message = context.getString(R.string.rss_loglevel_change_msg, levelName),
+            confirmText = stringResource(R.string.rss_agree),
             onConfirm = {
                 showLogLevelDialog = null
                 sysLogFileLevel = targetLevel
@@ -275,9 +279,9 @@ fun RemoteSwitchSettingsScreen(
     // Reboot Confirmation Dialog
     if (showRebootDialog || showRebootPrompt) {
         ConfirmDialog(
-            title = "Khởi động lại thiết bị",
-            message = if (showRebootPrompt) "Cấu hình vừa thay đổi cần khởi động lại để áp dụng. Khởi động lại ngay?" else "Bạn có muốn khởi động lại công tắc không?",
-            confirmText = "Khởi động lại",
+            title = stringResource(R.string.rss_reboot_title),
+            message = stringResource(if (showRebootPrompt) R.string.rss_reboot_pending_msg else R.string.rss_reboot_ask_msg),
+            confirmText = stringResource(R.string.settings_reboot_now),
             onConfirm = {
                 showRebootDialog = false
                 settingsViewModel.reboot()
@@ -304,7 +308,7 @@ fun RemoteSwitchSettingsScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(36.dp))
                     Text(
-                        text = "Đang lưu cấu hình...",
+                        text = stringResource(R.string.cs_saving_config),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -327,7 +331,7 @@ fun RemoteSwitchSettingsScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(36.dp))
                     Text(
-                        text = "Đang khởi động lại...",
+                        text = stringResource(R.string.rss_rebooting),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -338,9 +342,9 @@ fun RemoteSwitchSettingsScreen(
     // Factory Reset Confirmation Dialog
     if (showFactoryResetDialog) {
         ConfirmDialog(
-            title = "Khôi phục cài đặt gốc",
-            message = "Thao tác này sẽ xóa toàn bộ thông tin WiFi, cấu hình mục tiêu và mã hóa trên công tắc. Thiết bị sẽ trở về trạng thái xuất xưởng.",
-            confirmText = "Khôi phục gốc",
+            title = stringResource(R.string.rss_factory_title),
+            message = stringResource(R.string.rss_factory_message),
+            confirmText = stringResource(R.string.cs_factory_reset),
             isDangerous = true,
             requiredInput = "reset",
             onConfirm = {
@@ -376,14 +380,14 @@ fun RemoteSwitchSettingsScreen(
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
-                        text = "Chọn thiết bị mục tiêu để điều khiển",
+                        text = stringResource(R.string.rs_sheet_pick_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Text(
-                    text = "Danh sách chỉ hiển thị các thiết bị thuộc quyền sở hữu của bạn. Khóa điều khiển sẽ được mã hóa đầu cuối (E2E AES-256-GCM) an toàn.",
+                    text = stringResource(R.string.rs_sheet_scope_desc_short),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -408,12 +412,12 @@ fun RemoteSwitchSettingsScreen(
                                 modifier = Modifier.size(32.dp)
                             )
                             Text(
-                                text = "Không tìm thấy thiết bị nào khả dụng",
+                                text = stringResource(R.string.rs_no_devices),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Hãy đảm bảo bạn đã liên kết (pair) máy bơm hoặc công tắc vào tài khoản.",
+                                text = stringResource(R.string.rs_pair_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
@@ -484,7 +488,7 @@ private fun TargetDeviceCard(
                     }
                 }
                 Text(
-                    text = "Cấu hình thiết bị mục tiêu (Target Device)",
+                    text = stringResource(R.string.rss_target_config_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -538,7 +542,7 @@ private fun TargetDeviceCard(
                         }
 
                         Text(
-                            text = "Loại thiết bị: ${if (targetType.equals("pump", ignoreCase = true)) "Máy bơm (Pump)" else "Công tắc (Switch)"}",
+                            text = stringResource(R.string.rss_device_type, if (targetType.equals("pump", true)) stringResource(R.string.rs_profile_pump) else stringResource(R.string.rs_profile_switch)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -559,7 +563,7 @@ private fun TargetDeviceCard(
                     ) {
                         Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Đổi mục tiêu", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.rs_change_target), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Button(
@@ -576,7 +580,7 @@ private fun TargetDeviceCard(
                     ) {
                         Icon(Icons.Outlined.Delete, contentDescription = null, tint = RedError, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Xóa mục tiêu", color = RedError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.rs_clear_target_action), color = RedError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
@@ -592,7 +596,7 @@ private fun TargetDeviceCard(
                     ) {
                         Icon(Icons.Filled.LinkOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         Text(
-                            text = "Chưa có thiết bị mục tiêu nào được liên kết với công tắc này.",
+                            text = stringResource(R.string.rss_no_target_linked),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -609,7 +613,7 @@ private fun TargetDeviceCard(
                 ) {
                     Icon(Icons.Filled.AddLink, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isPairing) "Đang lưu mục tiêu..." else "Chọn thiết bị mục tiêu", fontWeight = FontWeight.Bold)
+                    Text(if (isPairing) stringResource(R.string.rss_picking_target) else stringResource(R.string.rss_pick_target), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -623,6 +627,7 @@ private fun TargetCandidateItem(
     isPairing: Boolean,
     onSelect: () -> Unit
 ) {
+    val context = LocalContext.current
     val profile = device.profile.lowercase()
     val icon: ImageVector
     val iconTint: Color
@@ -632,17 +637,17 @@ private fun TargetCandidateItem(
         "pump" -> {
             icon = Icons.Filled.WaterDrop
             iconTint = CyanBlue
-            profileName = "Máy bơm (Pump)"
+            profileName = context.getString(R.string.rs_profile_pump)
         }
         "fan" -> {
             icon = Icons.Filled.ModeFanOff
             iconTint = GreenOk
-            profileName = "Quạt điện"
+            profileName = context.getString(R.string.rs_profile_fan)
         }
         else -> {
             icon = Icons.Filled.Lightbulb
             iconTint = OrangeWarning
-            profileName = "Công tắc đèn"
+            profileName = context.getString(R.string.rs_profile_switch)
         }
     }
 
@@ -707,7 +712,7 @@ private fun TargetCandidateItem(
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Icon(Icons.Filled.Key, contentDescription = null, tint = GreenOk, modifier = Modifier.size(10.dp))
-                        Text("Khóa OK", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GreenOk)
+                        Text(stringResource(R.string.rs_key_ok), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GreenOk)
                     }
                 }
             }

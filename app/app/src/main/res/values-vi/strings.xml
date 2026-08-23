@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <!-- App Name -->
     <string name="app_name">Nhà Tôi</string>
 
@@ -307,4 +307,347 @@
     <string name="conn_disconnected">Mất kết nối - Chạm để thử lại</string>
     <string name="conn_failed">Kết nối thất bại - Chạm để thử lại</string>
     <string name="conn_idle">Chờ</string>
+
+    <!-- Common Actions -->
+    <string name="action_cancel">Hủy</string>
+    <string name="action_save">Lưu</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_share">Chia sẻ</string>
+    <string name="action_done">Xong</string>
+    <string name="processing">Đang xử lý...</string>
+    <string name="confirm_default">Xác nhận</string>
+    <string name="confirm_type_word">Gõ chữ \'%1$s\' để xác nhận</string>
+
+    <!-- Roles -->
+    <string name="role_owner">Chủ sở hữu</string>
+    <string name="role_admin">Quản lý</string>
+    <string name="role_member">Thành viên</string>
+    <string name="role_viewer">Chỉ xem</string>
+
+    <!-- Device Sharing: Members Management -->
+    <string name="members_title">Thành viên</string>
+    <string name="share_button">Chia sẻ</string>
+    <string name="share_section_members">Thành viên (%1$d)</string>
+    <string name="share_section_invites">Mã đang hoạt động (%1$d)</string>
+    <string name="share_no_active_codes">Không có mã nào đang hoạt động</string>
+    <string name="member_options_desc">Tùy chọn thành viên</string>
+    <string name="member_me_suffix">" (Bạn)"</string>
+    <string name="member_change_role">Đổi vai trò</string>
+    <string name="member_remove">Xóa khỏi thiết bị</string>
+    <string name="member_remove_title">Xóa thành viên</string>
+    <string name="member_remove_message">Xóa \'%1$s\' khỏi thiết bị này? Họ sẽ mất toàn bộ quyền truy cập.</string>
+    <string name="role_change_title">Đổi vai trò</string>
+    <string name="msg_role_updated">Đã cập nhật vai trò</string>
+    <string name="msg_member_removed">Đã xóa thành viên</string>
+    <string name="msg_invite_revoked">Đã thu hồi mã chia sẻ</string>
+
+    <!-- Device Sharing: Invite Codes -->
+    <string name="share_create_title">Tạo mã chia sẻ</string>
+    <string name="share_ready_title">Mã chia sẻ đã sẵn sàng</string>
+    <string name="share_pick_role_hint">Chọn vai trò cho người được chia sẻ:</string>
+    <string name="share_role_desc">• Quản lý: điều khiển + mời người khác\n• Thành viên: điều khiển thiết bị\n• Chỉ xem: chỉ xem trạng thái</string>
+    <string name="share_code_hint">Gửi mã này cho người thân. Mã dùng một lần và có hiệu lực đến khi thu hồi.</string>
+    <string name="share_intent_text">Mã chia sẻ thiết bị \"%1$s\": %2$s\nMở app My Home → Nhập mã chia sẻ để thêm thiết bị.</string>
+    <string name="share_intent_chooser">Chia sẻ mã</string>
+    <string name="invite_single_use">Vai trò: %1$s • dùng một lần</string>
+    <string name="invite_revoke">Thu hồi</string>
+    <string name="revoke_invite_title">Thu hồi mã</string>
+    <string name="revoke_invite_message">Thu hồi mã %1$s? Ai chưa dùng mã này sẽ không thể tham gia nữa.</string>
+
+    <!-- Device Sharing: Redeem -->
+    <string name="redeem_entry">Nhập mã chia sẻ</string>
+    <string name="redeem_title">Nhập mã chia sẻ</string>
+    <string name="redeem_hint">Nhập mã do chủ thiết bị gửi cho bạn:</string>
+    <string name="redeem_label">Mã chia sẻ</string>
+    <string name="redeem_error_length">Mã phải đủ 18 ký tự</string>
+    <string name="redeem_action">Thêm thiết bị</string>
+    <string name="redeem_success_title">Đã thêm thiết bị:</string>
+    <string name="redeem_success_role">Vai trò của bạn: %1$s</string>
+
+    <!-- Device Management: Menu / Dialogs -->
+    <string name="menu_members">Thành viên</string>
+    <string name="menu_rename">Đổi tên</string>
+    <string name="menu_delete_device">Xóa thiết bị</string>
+    <string name="menu_leave_device">Rời khỏi thiết bị</string>
+    <string name="device_options_desc">Tùy chọn thiết bị</string>
+    <string name="rename_title">Đổi tên thiết bị</string>
+    <string name="rename_hint">Nhập tên mới cho thiết bị này:</string>
+    <string name="rename_label">Tên thiết bị</string>
+    <string name="rename_error_empty">Tên không được để trống</string>
+    <string name="delete_device_title">Xóa thiết bị</string>
+    <string name="delete_device_message">Xóa \'%1$s\' (%2$s) khỏi tài khoản?\n\nThiết bị sẽ bị hủy liên kết và xóa dữ liệu.</string>
+    <string name="delete_device_action">Xóa thiết bị</string>
+    <string name="leave_device_title">Rời khỏi thiết bị</string>
+    <string name="leave_device_message">Bạn sẽ mất toàn bộ quyền truy cập vào \'%1$s\' (%2$s).</string>
+    <string name="leave_device_action">Rời thiết bị</string>
+    <string name="viewer_banner">Chế độ chỉ xem — bạn không có quyền điều khiển và cài đặt thiết bị này</string>
+
+    <!-- Device Management: Status Messages -->
+    <string name="msg_devices_synced">Đã đồng bộ danh sách thiết bị</string>
+    <string name="msg_sync_failed">Lỗi đồng bộ</string>
+    <string name="msg_renamed">Đã đổi tên thiết bị thành công</string>
+    <string name="msg_rename_failed">Lỗi đổi tên</string>
+    <string name="msg_device_deleted">Đã xóa thiết bị thành công</string>
+    <string name="msg_delete_failed">Lỗi khi xóa thiết bị</string>
+    <string name="leave_success">Đã rời khỏi thiết bị</string>
+    <string name="leave_failed">Không thể rời thiết bị</string>
+
+    <!-- Role descriptions (share dialog) -->
+    <string name="role_label_admin">Quản lý</string>
+    <string name="role_label_member">Thành viên</string>
+    <string name="role_label_viewer">Chỉ xem</string>
+
+    <!-- Login Screen -->
+    <string name="login_title">Chào mừng trở lại</string>
+    <string name="login_subtitle">Đăng nhập để điều khiển ngôi nhà thông minh của bạn</string>
+    <string name="login_email_action">Đăng nhập bằng Email</string>
+    <string name="login_label_email">Địa chỉ Email</string>
+    <string name="login_label_password">Mật khẩu</string>
+    <string name="login_show_password_desc">Hiện mật khẩu</string>
+    <string name="login_hide_password_desc">Ẩn mật khẩu</string>
+    <string name="login_submit">Đăng nhập</string>
+    <string name="login_or_divider">hoặc đăng nhập với</string>
+    <string name="login_google">Tiếp tục với Google</string>
+
+    <!-- Toggle History Screen -->
+    <string name="toggle_history_title">Lịch sử bật / tắt</string>
+    <string name="toggle_history_today">Hôm nay: %1$s</string>
+    <string name="toggle_history_pick_date_desc">Chọn ngày</string>
+    <string name="toggle_history_sync_desc">Đồng bộ</string>
+    <string name="toggle_history_total_label">Tổng số lần</string>
+    <string name="toggle_history_on_label">Bật (ON)</string>
+    <string name="toggle_history_off_label">Tắt (OFF)</string>
+    <string name="toggle_history_empty">Không có sự kiện bật / tắt trong ngày này</string>
+    <string name="toggle_history_sync_hint">Nhấn nút đồng bộ để tải thêm dữ liệu mới nhất từ thiết bị.</string>
+    <string name="toggle_history_select_title">Chọn ngày xem lịch sử</string>
+    <string name="toggle_history_today_suffix">" (Hôm nay)"</string>
+    <string name="toggle_source_button">Nút bấm cơ</string>
+    <string name="toggle_source_online">App / Web</string>
+    <string name="toggle_source_schedule">Hẹn giờ</string>
+    <string name="toggle_source_unknown">Khác</string>
+    <string name="profile_coming_soon">Sắp ra mắt cho %1$s</string>    <string name="toggle_source_prefix">Nguồn: %1$s</string>
+    <string name="history_month_log_label">Tháng %1$s: %2$s</string>
+
+    <!-- Common Settings Cards (Network / WiFi / System) -->
+    <string name="cs_network_mode">Chế độ kết nối mạng</string>
+    <string name="cs_ap_hotspot">Điểm phát AP</string>
+    <string name="cs_wifi_info">Thông tin WiFi</string>
+    <string name="cs_label_wifi_ssid">Tên mạng WiFi</string>
+    <string name="cs_scanning">Quét...</string>
+    <string name="cs_scan">Quét</string>
+    <string name="cs_label_wifi_password">Mật khẩu WiFi</string>
+    <string name="cs_open_network">Mạng không có mật khẩu (Open Network)</string>
+    <string name="cs_ap_desc">Ở chế độ này, thiết bị sẽ phát sóng WiFi riêng (dạng myhome-&lt;model&gt;-xxxx) để kết nối và điều khiển trực tiếp qua WebSocket nội bộ.</string>
+    <string name="cs_debug_wifi_info">Thông tin WiFi Debug</string>
+    <string name="cs_label_debug_ssid">Tên WiFi Debug (SSID)</string>
+    <string name="cs_label_debug_password">Mật khẩu WiFi Debug</string>
+    <string name="cs_save_network">Lưu cấu hình mạng</string>
+    <string name="cs_saving_config">Đang lưu cấu hình...</string>
+    <string name="cs_syslog_flash">Ghi log hệ thống vào Flash</string>
+    <string name="cs_syslog_file">Lưu file log (/logs/sys/)</string>
+    <string name="cs_syslog_on">Đang bật lưu file log hệ thống</string>
+    <string name="cs_syslog_off">Đang tắt ghi file log</string>
+    <string name="cs_log_level_label">Mức độ chi tiết (Log Level)</string>
+    <string name="cs_system_actions">Thao tác hệ thống</string>
+    <string name="cs_rebooting">Đang khởi động...</string>
+    <string name="cs_reboot">Khởi động lại</string>
+    <string name="cs_factory_reset">Khôi phục gốc</string>
+    <string name="cs_pick_wifi_title">Chọn mạng WiFi</string>
+    <string name="cs_wifi_scan_progress">Đang quét các mạng WiFi xung quanh...</string>
+    <string name="cs_wifi_none_found">Không tìm thấy mạng WiFi nào. Hãy thử lại.</string>
+
+    <!-- Remote Switch Dashboard -->
+    <string name="rs_target_unset">Chưa thiết lập</string>
+    <string name="rs_device_on">THIẾT BỊ ĐANG BẬT</string>
+    <string name="rs_device_off">THIẾT BỊ ĐANG TẮT</string>
+    <string name="rs_tap_toggle_hint">Chạm để bật/tắt thiết bị mục tiêu</string>
+    <string name="rs_clear_link_title">Xóa liên kết mục tiêu?</string>
+    <string name="rs_clear_link_message">Remote Switch sẽ ngắt kết nối với \'%1$s\'. Nút bấm vật lý sẽ không điều khiển thiết bị này nữa cho đến khi bạn liên kết lại.</string>
+    <string name="rs_clear_target_action">Xóa mục tiêu</string>
+    <string name="rs_fault_warning_title">Cảnh báo sự cố từ thiết bị mục tiêu</string>
+    <string name="rs_fault_warning_desc">Thiết bị mục tiêu báo lỗi bảo vệ (Cạn nước / Quá tải). Đã tự động ngắt relay để bảo vệ an toàn.</string>
+    <string name="rs_change_target">Đổi mục tiêu</string>
+    <string name="rs_unlinked_title">Chưa liên kết thiết bị mục tiêu</string>
+    <string name="rs_unlinked_desc">Remote Switch cần được liên kết với một máy bơm hoặc công tắc khác để thực hiện điều khiển bật/tắt an toàn từ xa.</string>
+    <string name="rs_pick_now">Chọn thiết bị mục tiêu ngay</string>
+    <string name="rs_hw_guide_title">Hướng dẫn nút bấm &amp; đèn LED vật lý</string>
+    <string name="rs_hw_toggle_title">Bật / Tắt mục tiêu</string>
+    <string name="rs_hw_toggle_subtitle">Gửi lệnh toggle đến máy bơm/công tắc mục tiêu</string>
+    <string name="rs_hw_status_title">Lấy trạng thái</string>
+    <string name="rs_hw_status_subtitle">Cập nhật tức thì trạng thái mục tiêu qua MQTT</string>
+    <string name="rs_hw_hold_badge">Giữ 5s</string>
+    <string name="rs_hw_menu_title">Menu cấu hình</string>
+    <string name="rs_hw_menu_subtitle">Bước 1: Reset WiFi • Bước 2: Debug Mode • Bước 3: Factory Reset</string>
+    <string name="rs_sheet_pick_title">Chọn thiết bị mục tiêu để điều khiển</string>
+    <string name="rs_sheet_scope_desc">Danh sách chỉ bao gồm các thiết bị thuộc quyền sở hữu của bạn. Khóa điều khiển sẽ được mã hóa đầu cuối E2E (AES-256-GCM) trước khi gửi qua MQTT.</string>
+    <string name="rs_no_devices">Không tìm thấy thiết bị nào khả dụng</string>
+    <string name="rs_pair_hint">Hãy đảm bảo bạn đã liên kết (pair) máy bơm hoặc công tắc vào tài khoản.</string>
+    <string name="rs_key_ok">Khóa OK</string>
+
+    <!-- Remote Switch ViewModel Messages -->
+    <string name="rs_msg_target_on">Đã bật thiết bị mục tiêu</string>
+    <string name="rs_msg_target_off">Đã tắt thiết bị mục tiêu</string>
+    <string name="rs_msg_relay_failed">Không thể cập nhật relay mục tiêu</string>
+    <string name="rs_msg_config_saved">Cập nhật cấu hình thành công</string>
+    <string name="rs_msg_config_failed">Cập nhật cấu hình thất bại</string>
+    <string name="rs_msg_unknown_switch">Lỗi: Không xác định được Remote Switch hiện tại</string>
+    <string name="rs_msg_no_target_key">Không tìm thấy khóa bảo mật của thiết bị mục tiêu (%1$s)</string>
+    <string name="rs_msg_no_local_key">Không tìm thấy khóa bảo mật của Remote Switch trên máy này</string>
+    <string name="rs_msg_encrypt_failed">Lỗi mã hóa khóa mục tiêu E2E</string>
+    <string name="rs_msg_send_failed_prefix">Lỗi gửi cấu hình: %1$s</string>
+    <string name="rs_msg_clear_failed_prefix">Lỗi xóa mục tiêu: %1$s</string>
+    <string name="rs_msg_timeout">Hết thời gian chờ phản hồi từ thiết bị mục tiêu</string>
+    <string name="rs_msg_command_failed">Không thể gửi lệnh điều khiển</string>
+
+    <!-- Remote Switch Settings -->
+    <string name="rss_unlink_title">Xóa liên kết mục tiêu</string>
+    <string name="rss_unlink_message">Bạn có chắc chắn muốn ngắt liên kết công tắc này khỏi thiết bị mục tiêu không?</string>
+    <string name="rss_unlink_action">Xóa liên kết</string>
+    <string name="rss_syslog_on_title">Bật SysLog</string>
+    <string name="rss_syslog_off_title">Tắt SysLog</string>
+    <string name="rss_syslog_on_msg">Bật ghi log hệ thống vào tệp flash (có thể ảnh hưởng tuổi thọ flash)?</string>
+    <string name="rss_syslog_off_msg">Tắt ghi log hệ thống?</string>
+    <string name="rss_agree">Đồng ý</string>
+    <string name="rss_loglevel_trace">TRACE (Nhiều nhất)</string>
+    <string name="rss_loglevel_debug">DEBUG (Chi tiết)</string>
+    <string name="rss_loglevel_info">INFO (Thông tin)</string>
+    <string name="rss_loglevel_warn">WARN (Cảnh báo)</string>
+    <string name="rss_loglevel_error">ERROR (Lỗi)</string>
+    <string name="rss_loglevel_fatal">FATAL (Nghiêm trọng)</string>
+    <string name="rss_loglevel_custom">Mức %1$s</string>
+    <string name="rss_loglevel_change_title">Thay đổi Mức độ Log</string>
+    <string name="rss_loglevel_change_msg">Bạn có muốn đổi mức độ ghi log thành %1$s không?</string>
+    <string name="rss_reboot_title">Khởi động lại thiết bị</string>
+    <string name="rss_reboot_pending_msg">Cấu hình vừa thay đổi cần khởi động lại để áp dụng. Khởi động lại ngay?</string>
+    <string name="rss_reboot_ask_msg">Bạn có muốn khởi động lại công tắc không?</string>
+    <string name="rss_saving_config">Đang lưu cấu hình...</string>
+    <string name="rss_rebooting">Đang khởi động lại...</string>
+    <string name="rss_factory_title">Khôi phục cài đặt gốc</string>
+    <string name="rss_factory_message">Thao tác này sẽ xóa toàn bộ thông tin WiFi, cấu hình mục tiêu và mã hóa trên công tắc. Thiết bị sẽ trở về trạng thái xuất xưởng.</string>
+    <string name="rss_factory_action">Khôi phục gốc</string>
+    <string name="rs_sheet_scope_desc_short">Danh sách chỉ hiển thị các thiết bị thuộc quyền sở hữu của bạn. Khóa điều khiển sẽ được mã hóa đầu cuối (E2E AES-256-GCM) an toàn.</string>
+    <string name="rss_target_config_title">Cấu hình thiết bị mục tiêu (Target Device)</string>
+    <string name="rss_device_type">Loại thiết bị: %1$s</string>
+    <string name="rs_profile_pump">Máy bơm (Pump)</string>
+    <string name="rs_profile_fan">Quạt điện</string>
+    <string name="rs_profile_switch">Công tắc đèn</string>
+    <string name="rss_no_target_linked">Chưa có thiết bị mục tiêu nào được liên kết với công tắc này.</string>
+    <string name="rss_picking_target">Đang lưu mục tiêu...</string>
+    <string name="rss_pick_target">Chọn thiết bị mục tiêu</string>
+
+    <!-- CommonSettingsViewModel Messages -->
+    <string name="cs_msg_saved">Đã lưu cài đặt</string>
+    <string name="cs_msg_save_failed">Lưu thất bại</string>
+    <string name="cs_msg_rebooting_device">Thiết bị đang khởi động lại...</string>
+    <string name="cs_msg_factory_resetting">Đang khôi phục cài đặt gốc...</string>
+    <string name="cs_msg_no_wifi_found">Không tìm thấy mạng WiFi nào</string>
+    <string name="cs_msg_wifi_scan_failed">Quét WiFi thất bại</string>
+    <string name="cs_msg_wifi_scan_timeout">Quá thời gian quét WiFi</string>
+    <string name="cs_msg_save_timeout">Quá thời gian phản hồi lưu cấu hình</string>
+    <string name="cs_msg_reboot_sent">Đã gửi lệnh khởi động lại</string>
+
+    <!-- Pairing Flow Screen -->
+    <string name="pair_scanning_ble">Đang mở trình tìm kiếm thiết bị...</string>
+    <string name="pair_scanning_ble_detail">Chấp nhận pop-up hệ thống Android hiển thị trên màn hình để kết nối</string>
+    <string name="pair_finding_devices">Đang tìm kiếm thiết bị MyHome...</string>
+    <string name="pair_finding_detail">Chấp nhận thông báo/pop-up hệ thống để kết nối thiết bị</string>
+    <string name="pair_connecting_device">Đang kết nối thiết bị MyHome...</string>
+    <string name="pair_connecting_detail">Hãy nhấn \'Kết nối / Allow\' trên pop-up của hệ thống Android</string>
+    <string name="pair_reading_config">Đang kết nối...</string>
+    <string name="pair_reading_config_detail">Đọc cấu hình thiết bị</string>
+    <string name="pair_scan_wifi">Đang quét WiFi lân cận...</string>
+    <string name="pair_scan_wifi_detail">Thiết bị đang quét các mạng xung quanh</string>
+    <string name="pair_wait_wifi">Đang chờ thiết bị quét xong...</string>
+    <string name="pair_wait_wifi_detail">Thiết bị đã tạm ngắt WiFi để quét, kết nối sẽ tự phục hồi trong vài giây</string>
+    <string name="pair_configuring">Đang cấu hình thiết bị...</string>
+    <string name="pair_configuring_detail">Thiết bị sẽ khởi động lại sau khi lưu cấu hình</string>
+    <string name="pair_saving_account">Đang lưu thiết bị vào tài khoản...</string>
+    <string name="pair_saving_detail">Chờ điện thoại kết nối lại WiFi nhà</string>
+    <string name="pair_scan_nearby_title">Quét thiết bị xung quanh</string>
+    <string name="pair_scan_nearby_desc">App sẽ tìm các thiết bị myhome trong mạng WiFi gần bạn</string>
+    <string name="pair_permission_needed">App cần quyền quét WiFi để tìm thiết bị</string>
+    <string name="pair_grant_and_scan">Cấp quyền &amp; quét</string>
+    <string name="pair_scan_wifi_list">Quét danh sách WiFi</string>
+    <string name="pair_system_popup_action">Tìm &amp; Kết nối qua System Popup</string>
+    <string name="pair_devices_found">Thiết bị tìm thấy</string>
+    <string name="pair_devices_count">%1$d thiết bị myhome</string>
+    <string name="pair_scanning_or_empty">Đang quét...</string>
+    <string name="pair_none_in_list">Không tìm thấy thiết bị trong danh sách</string>
+    <string name="pair_channel_blocked_hint">Điện thoại có thể bị khóa kênh Wi-Fi nhà. Hãy bấm nút bên dưới để mở System Popup quét toàn bộ 14 kênh sóng:</string>
+    <string name="pair_popup_action">Tìm &amp; Kết nối bằng System Popup 🚀</string>
+    <string name="pair_pick_home_wifi">Chọn WiFi nhà</string>
+    <string name="pair_networks_found">Thiết bị quét được %1$d mạng — chọn mạng nhà bạn</string>
+    <string name="pair_rescan_desc">Quét lại</string>
+    <string name="pair_no_networks">Thiết bị không quét được mạng nào — hãy thử lại</string>
+    <string name="pair_rescan">Quét lại</string>
+    <string name="pair_label_wifi_password">Mật khẩu WiFi</string>
+    <string name="pair_connecting">Đang kết nối...</string>
+    <string name="pair_connect">Kết nối</string>
+    <string name="pair_offline_saved">Ghép nối xong, chưa lưu vào tài khoản</string>
+    <string name="pair_success">Ghép nối thành công</string>
+    <string name="pair_offline_desc">Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Chưa gửi được thông tin lên tài khoản vì mất mạng — sẽ tự động đồng bộ khi có mạng trở lại.</string>
+    <string name="pair_success_desc">Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Bạn sẽ thấy nó trong danh sách thiết bị.</string>
+    <string name="pair_failed_title">Không thành công</string>
+    <string name="pair_retry">Thử lại</string>
+    <string name="pair_go_back">Quay lại</string>
+    <string name="pair_profile_pump">Máy bơm</string>
+    <string name="pair_profile_switch">Công tắc</string>
+    <string name="pair_profile_fan">Quạt</string>
+    <string name="pair_profile_lamp">Đèn</string>
+
+    <!-- Pump Settings Screen extras -->
+    <string name="ps_syslog_on_msg">Bật ghi log hệ thống vào tệp flash?</string>
+    <string name="ps_syslog_off_msg">Tắt ghi log hệ thống?</string>
+    <string name="ps_factory_message">Thao tác này sẽ xóa toàn bộ cấu hình WiFi, hiệu chuẩn và thiết lập trên thiết bị. Thiết bị sẽ trở về trạng thái ban đầu.</string>
+    <string name="ps_device_mode_section">Chế độ hoạt động thiết bị</string>
+    <string name="ps_pump_mode_protect_desc">Bảo vệ Cạn nước, Quá tải</string>
+    <string name="ps_manual_switch_label">Công tắt thường</string>
+    <string name="ps_pure_toggle_desc">Bật/tắt thuần túy</string>
+    <string name="ps_thresholds_timeouts_section">Ngưỡng bảo vệ &amp; Thời gian ngắt</string>
+    <string name="ps_label_off_threshold_ma">Ngưỡng Tắt (mA)</string>
+    <string name="ps_label_overload_ma">Quá tải (mA)</string>
+    <string name="ps_label_dry_ma">Cạn nước (mA)</string>
+    <string name="ps_label_running_ma">Chạy bình thường (mA)</string>
+    <string name="ps_label_dry_timeout_ms">Timeout Cạn nước (ms)</string>
+    <string name="ps_label_overload_timeout_ms">Timeout Quá tải (ms)</string>
+    <string name="ps_label_display_name_off">Ngưỡng Tắt</string>
+    <string name="ps_label_display_name_overload">Quá tải</string>
+    <string name="ps_label_display_name_dry">Cạn nước</string>
+    <string name="ps_label_display_name_running">Chạy bình thường</string>
+    <string name="ps_label_display_name_dry_timeout">Timeout Cạn nước</string>
+    <string name="ps_label_display_name_overload_timeout">Timeout Quá tải</string>
+    <string name="ps_label_current_a">Dòng điện (A)</string>
+    <string name="ps_label_voltage_v">Điện áp (V)</string>
+    <string name="ps_label_power_w">Công suất (W)</string>
+    <string name="ps_calibrate_action">Hiệu chuẩn</string>
+    <string name="ps_save_config_title">Lưu cấu hình</string>
+
+    <!-- SettingsViewModel Messages -->
+    <string name="svm_msg_saved">Đã lưu cấu hình</string>
+    <string name="svm_msg_save_failed">Lưu thất bại</string>
+    <string name="svm_msg_rebooting">Thiết bị đang khởi động lại...</string>
+    <string name="svm_msg_calib_updated">Đã cập nhật hiệu chuẩn</string>
+    <string name="svm_msg_calib_failed">Hiệu chuẩn thất bại</string>
+    <string name="svm_msg_factory_started">Đã khởi tạo khôi phục gốc, thiết bị đang khởi động lại...</string>
+    <string name="svm_msg_no_wifi">Không tìm thấy mạng Wi-Fi nào</string>
+    <string name="svm_msg_wifi_scan_failed">Quét WiFi thất bại</string>
+    <string name="svm_msg_scan_request_failed">Không thể yêu cầu quét Wi-Fi</string>
+    <string name="svm_msg_wifi_scan_timeout">Quét WiFi quá thời gian (1 phút)</string>
+    <string name="svm_msg_no_changes">Không có thay đổi để lưu</string>
+    <string name="svm_msg_send_config_failed">Gửi cấu hình thất bại</string>
+    <string name="svm_msg_save_timeout">Lưu cấu hình quá thời gian (10 giây)</string>
+    <string name="svm_msg_reboot_cmd_failed">Gửi lệnh khởi động lại thất bại</string>
+    <string name="svm_msg_reboot_sent_timeout">Đã gửi lệnh khởi động lại (quá 10 giây chờ)</string>
+    <string name="svm_msg_factory_cmd_failed">Gửi lệnh khôi phục gốc thất bại</string>
+    <string name="svm_msg_calib_req_timeout">Yêu cầu hiệu chuẩn quá thời gian (10 giây)</string>
+    <string name="svm_msg_calib_send_failed">Gửi lệnh hiệu chuẩn thất bại</string>
+    <string name="svm_msg_reset_calib_timeout">Đặt lại hiệu chuẩn quá thời gian (10 giây)</string>
+    <string name="svm_msg_reset_calib_failed">Gửi lệnh đặt lại hiệu chuẩn thất bại</string>
+
+    <!-- Misc accessibility / labels -->
+    <string name="info_label_value">Giá trị</string>
+    <string name="desc_encrypted">Đã mã hóa</string>
+    <string name="desc_toggle_relay">Bật/tắt relay</string>
+    <string name="desc_selected">Đã chọn</string>
+    <string name="desc_back">Quay lại</string>
 </resources>

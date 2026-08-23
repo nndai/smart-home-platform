@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.nndai.myhome.R
 import com.nndai.myhome.data.model.CreatedInvite
 import com.nndai.myhome.data.model.DeviceRoles
 
@@ -73,8 +75,8 @@ fun ShareInviteDialog(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = if (createdInvite == null) "Tạo mã chia sẻ"
-                    else "Mã chia sẻ đã sẵn sàng",
+                    text = if (createdInvite == null) stringResource(R.string.share_create_title)
+                    else stringResource(R.string.share_ready_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -100,12 +102,18 @@ fun ShareInviteDialog(
                                 type = "text/plain"
                                 putExtra(
                                     android.content.Intent.EXTRA_TEXT,
-                                    "Mã chia sẻ thiết bị \"${createdInvite.device_name}\": ${createdInvite.code}\n" +
-                                            "Mở app My Home → Nhập mã chia sẻ để thêm thiết bị."
+                                    context.getString(
+                                        R.string.share_intent_text,
+                                        createdInvite.device_name,
+                                        createdInvite.code
+                                    )
                                 )
                             }
                             context.startActivity(
-                                android.content.Intent.createChooser(send, "Chia sẻ mã")
+                                android.content.Intent.createChooser(
+                                    send,
+                                    context.getString(R.string.share_intent_chooser)
+                                )
                             )
                         },
                         modifier = Modifier.weight(1f),
@@ -114,7 +122,7 @@ fun ShareInviteDialog(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("Chia sẻ", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.action_share), fontWeight = FontWeight.SemiBold)
                     }
                     OutlinedButton(
                         onClick = {
@@ -127,7 +135,7 @@ fun ShareInviteDialog(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Text("Copy")
+                        Text(stringResource(R.string.action_copy))
                     }
                 }
             }
@@ -145,24 +153,24 @@ private fun RolePickerContent(isCreating: Boolean, onPick: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "Chọn vai trò cho người được chia sẻ:",
+            text = stringResource(R.string.share_pick_role_hint),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(
-                DeviceRoles.ADMIN to "Quản lý",
-                DeviceRoles.MEMBER to "Thành viên",
-                DeviceRoles.VIEWER to "Chỉ xem"
-            ).forEach { (role, label) ->
+                DeviceRoles.ADMIN to R.string.role_label_admin,
+                DeviceRoles.MEMBER to R.string.role_label_member,
+                DeviceRoles.VIEWER to R.string.role_label_viewer
+            ).forEach { (role, labelRes) ->
                 FilterChip(
                     selected = false,
                     onClick = { onPick(role) },
                     enabled = !isCreating,
                     label = {
                         Text(
-                            label,
+                            stringResource(labelRes),
                             fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.labelMedium
                         )
@@ -171,9 +179,7 @@ private fun RolePickerContent(isCreating: Boolean, onPick: (String) -> Unit) {
             }
         }
         Text(
-            text = "• Quản lý: điều khiển + mời người khác\n" +
-                    "• Thành viên: điều khiển thiết bị\n" +
-                    "• Chỉ xem: chỉ xem trạng thái",
+            text = stringResource(R.string.share_role_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
@@ -207,7 +213,7 @@ private fun CreatedCodeContent(createdInvite: CreatedInvite) {
             )
         }
         Text(
-            text = "Gửi mã này cho người thân. Mã dùng một lần và có hiệu lực đến khi thu hồi.",
+            text = stringResource(R.string.share_code_hint),
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.home
+﻿package com.nndai.myhome.presentation.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -46,11 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
@@ -94,7 +96,7 @@ fun HomeDashboardScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "My Home",
+                text = stringResource(R.string.home_title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -119,7 +121,7 @@ fun HomeDashboardScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Nhập mã chia sẻ",
+                            text = stringResource(R.string.redeem_entry),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
@@ -151,7 +153,7 @@ fun HomeDashboardScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Sign in to access your devices",
+                        text = stringResource(R.string.home_sign_in_hint),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = CyanBlue
@@ -200,13 +202,13 @@ fun HomeDashboardScreen(
                     modifier = Modifier.size(56.dp)
                 )
                 Text(
-                    text = "No devices yet",
+                    text = stringResource(R.string.devices_empty_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "Go to Devices tab to add your first device",
+                    text = stringResource(R.string.devices_empty_hint_home),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
@@ -297,28 +299,28 @@ private fun DeviceCard(
     val statusBg: androidx.compose.ui.graphics.Color
 
     if (isTransferred) {
-        statusText = "Đã đổi chủ"
+        statusText = stringResource(R.string.devices_status_transferred)
         statusColor = androidx.compose.ui.graphics.Color(0xFF9C27B0)
         statusBg = androidx.compose.ui.graphics.Color(0xFF9C27B0).copy(alpha = 0.15f)
     } else {
         when (healthState) {
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Online -> {
-                statusText = "Online"
+                statusText = stringResource(R.string.devices_status_online)
                 statusColor = GreenOk
                 statusBg = GreenOk.copy(alpha = 0.15f)
             }
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Handshaking -> {
-                statusText = "Connecting..."
+                statusText = stringResource(R.string.devices_status_connecting)
                 statusColor = OrangeWarning
                 statusBg = OrangeWarning.copy(alpha = 0.15f)
             }
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Offline -> {
-                statusText = "Offline"
+                statusText = stringResource(R.string.devices_status_offline)
                 statusColor = SecondaryText
                 statusBg = SecondaryText.copy(alpha = 0.1f)
             }
             else -> {
-                statusText = "Unknown"
+                statusText = stringResource(R.string.devices_status_unknown)
                 statusColor = SecondaryText
                 statusBg = SecondaryText.copy(alpha = 0.1f)
             }

@@ -28,9 +28,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.nndai.myhome.R
 
 /**
  * Confirmation dialog for destructive / important actions
@@ -43,8 +45,8 @@ import androidx.compose.ui.unit.dp
 fun ConfirmDialog(
     title: String,
     message: String,
-    confirmText: String = "Confirm",
-    dismissText: String = "Cancel",
+    confirmText: String = stringResource(R.string.confirm_default),
+    dismissText: String = stringResource(R.string.action_cancel),
     isDangerous: Boolean = false,
     requiredInput: String? = null,
     icon: ImageVector? = if (isDangerous) Icons.Outlined.DeleteOutline else null,
@@ -52,6 +54,7 @@ fun ConfirmDialog(
     onDismiss: () -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
+    val typeWordLabel = requiredInput?.let { stringResource(R.string.confirm_type_word, it) }
 
     val accent = if (isDangerous) MaterialTheme.colorScheme.error
     else MaterialTheme.colorScheme.primary
@@ -104,7 +107,7 @@ fun ConfirmDialog(
                     CompactTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        label = "Gõ chữ '$requiredInput' để xác nhận",
+                        label = typeWordLabel.orEmpty(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
