@@ -52,6 +52,15 @@ class ControlKeyStore(context: Context) {
         }
     }
 
+    fun remove(deviceId: String) {
+        prefs.edit()
+            .remove("enc_$deviceId")
+            .remove("iv_$deviceId")
+            .remove("seq_$deviceId")
+            .remove(deviceId)
+            .apply()
+    }
+
     fun get(deviceId: String): String? {
         val encryptedBase64 = prefs.getString("enc_$deviceId", null) ?: return null
         val ivBase64 = prefs.getString("iv_$deviceId", null) ?: return null

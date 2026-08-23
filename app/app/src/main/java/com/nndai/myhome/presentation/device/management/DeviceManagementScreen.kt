@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,26 +16,47 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeviceUnknown
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.ModeFanOff
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import io.github.jan.supabase.auth.auth
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,13 +65,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import io.github.jan.supabase.auth.auth
+import kotlinx.coroutines.launch
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.core.theme.SecondaryText
-import com.nndai.myhome.presentation.device.components.DeviceHealthIndicator
 import com.nndai.myhome.data.model.Device
+import com.nndai.myhome.data.remote.DeviceHealthStatus
 import com.nndai.myhome.data.repository.DeviceManagerRepository
+import com.nndai.myhome.presentation.device.components.ConfirmDialog
+import com.nndai.myhome.presentation.device.components.DeviceHealthIndicator
 
 @Composable
 fun DeviceManagementScreen(
@@ -62,7 +89,16 @@ fun DeviceManagementScreen(
     val devices by deviceRepository.devices.collectAsState()
     val lastError by deviceRepository.lastError.collectAsState()
 
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var deviceToRename by remember { mutableStateOf<Device?>(null) }
+    var deviceToDelete by remember { mutableStateOf<Device?>(null) }
+    var isBusy by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { if (isLoggedIn) onAddDeviceClick() else onNavigateToLogin() },
@@ -77,48 +113,90 @@ fun DeviceManagementScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                //.padding(padding)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // Header
-            Text(
-                text = "Devices",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "${devices.size} device(s) registered",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            // ── Header with Refresh ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Devices",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "${devices.size} device(s) registered",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-            // Device list
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            isRefreshing = true
+                            val r = deviceRepository.fetchDevices()
+                            isRefreshing = false
+                            if (r.isSuccess) {
+                                snackbarHostState.showSnackbar("Đã đồng bộ danh sách thiết bị")
+                            } else {
+                                snackbarHostState.showSnackbar(
+                                    r.exceptionOrNull()?.message ?: "Lỗi đồng bộ"
+                                )
+                            }
+                        }
+                    },
+                    enabled = !isRefreshing
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Làm mới danh sách",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // ── Device List ──
             AnimatedVisibility(
                 visible = devices.isNotEmpty(),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(devices) { device ->
+                    items(devices, key = { it.device_id }) { device ->
                         DeviceListItem(
                             device = device,
                             onClick = {
                                 if (isLoggedIn) onNavigateToDevice(device.device_id, device.profile)
                                 else onNavigateToLogin()
-                            }
+                            },
+                            onRenameClick = { deviceToRename = device },
+                            onDeleteClick = { deviceToDelete = device }
                         )
                     }
                 }
             }
 
-            // Error state
-            if (lastError != null) {
+            // ── Error State ──
+            if (lastError != null && devices.isEmpty()) {
                 Spacer(modifier = Modifier.height(48.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -139,6 +217,7 @@ fun DeviceManagementScreen(
                     )
                 }
             } else if (devices.isEmpty()) {
+                // ── Empty State ──
                 Spacer(modifier = Modifier.height(48.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -168,65 +247,159 @@ fun DeviceManagementScreen(
             }
         }
     }
+
+    // ── Rename Dialog ──
+    deviceToRename?.let { targetDevice ->
+        RenameDeviceDialog(
+            device = targetDevice,
+            onDismiss = { deviceToRename = null },
+            onConfirm = { newName ->
+                val devId = targetDevice.device_id
+                deviceToRename = null
+                scope.launch {
+                    isBusy = true
+                    val r = deviceRepository.updateDeviceName(devId, newName)
+                    isBusy = false
+                    if (r.isSuccess) {
+                        snackbarHostState.showSnackbar("Đã đổi tên thiết bị thành công")
+                    } else {
+                        snackbarHostState.showSnackbar(
+                            r.exceptionOrNull()?.message ?: "Lỗi đổi tên"
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    // ── Delete Dialog ──
+    deviceToDelete?.let { targetDevice ->
+        ConfirmDialog(
+            title = "Xóa thiết bị",
+            message = "Bạn có chắc chắn muốn xóa thiết bị '${targetDevice.name}' " +
+                    "(${targetDevice.device_id}) khỏi tài khoản?\n\n" +
+                    "Thiết bị sẽ bị hủy liên kết và xóa dữ liệu.",
+            confirmText = "Xóa thiết bị",
+            isDangerous = true,
+            requiredInput = "delete",
+            onConfirm = {
+                val devId = targetDevice.device_id
+                deviceToDelete = null
+                scope.launch {
+                    isBusy = true
+                    val r = deviceRepository.removeDevice(devId)
+                    isBusy = false
+                    if (r.isSuccess) {
+                        snackbarHostState.showSnackbar("Đã xóa thiết bị thành công")
+                    } else {
+                        snackbarHostState.showSnackbar(
+                            r.exceptionOrNull()?.message ?: "Lỗi khi xóa thiết bị"
+                        )
+                    }
+                }
+            },
+            onDismiss = { deviceToDelete = null }
+        )
+    }
+
+    // ── Busy Overlay ──
+    if (isBusy) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Đang xử lý...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device List Item
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun DeviceListItem(
     device: Device,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onRenameClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
+    // Profile-based icon & accent color
     val icon = when (device.profile.lowercase()) {
         "pump" -> Icons.Filled.WaterDrop
         "fan" -> Icons.Filled.ModeFanOff
-        "lamp", "switch" -> Icons.Filled.Lightbulb
+        "lamp", "switch", "remote_switch" -> Icons.Filled.Lightbulb
         else -> Icons.Filled.DeviceUnknown
     }
-    val iconTint = when (device.profile.lowercase()) {
+    val accentColor = when (device.profile.lowercase()) {
         "pump" -> CyanBlue
         "fan" -> GreenOk
-        "lamp", "switch" -> OrangeWarning
+        "lamp", "switch", "remote_switch" -> OrangeWarning
         else -> SecondaryText
     }
+
+    // Ownership check
     val currentUserId = remember {
         try {
-            com.nndai.myhome.data.remote.SupabaseConfig.client.auth.currentSessionOrNull()?.user?.id
-        } catch (e: Exception) { null }
+            com.nndai.myhome.data.remote.SupabaseConfig.client.auth
+                .currentSessionOrNull()?.user?.id
+        } catch (_: Exception) { null }
     }
     val isTransferred = device.isTransferred(currentUserId)
 
-    val handshakeMgr = remember { com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager() }
-    val healthStateFlow = remember(device.device_id) { handshakeMgr.registerDevice(device.device_id) }
+    // Real-time health state
+    val handshakeMgr = remember {
+        com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager()
+    }
+    val healthStateFlow = remember(device.device_id) {
+        handshakeMgr.registerDevice(device.device_id)
+    }
     val healthState by healthStateFlow.collectAsState()
 
+    var showMenu by remember { mutableStateOf(false) }
+
+    // Resolve status label & color from theme palette
     val statusText: String
     val statusColor: androidx.compose.ui.graphics.Color
-    val statusBg: androidx.compose.ui.graphics.Color
 
     if (isTransferred) {
         statusText = "Đã đổi chủ"
-        statusColor = androidx.compose.ui.graphics.Color(0xFF9C27B0)
-        statusBg = androidx.compose.ui.graphics.Color(0xFF9C27B0).copy(alpha = 0.12f)
+        statusColor = OrangeWarning
     } else {
         when (healthState) {
-            is com.nndai.myhome.data.remote.DeviceHealthStatus.Online -> {
+            is DeviceHealthStatus.Online -> {
                 statusText = "Online"
                 statusColor = GreenOk
-                statusBg = GreenOk.copy(alpha = 0.12f)
             }
-            is com.nndai.myhome.data.remote.DeviceHealthStatus.Handshaking -> {
+            is DeviceHealthStatus.Handshaking -> {
                 statusText = "Connecting..."
                 statusColor = OrangeWarning
-                statusBg = OrangeWarning.copy(alpha = 0.12f)
             }
-            is com.nndai.myhome.data.remote.DeviceHealthStatus.Offline -> {
+            is DeviceHealthStatus.Offline -> {
                 statusText = "Offline"
-                statusColor = SecondaryText
-                statusBg = SecondaryText.copy(alpha = 0.1f)
+                statusColor = MaterialTheme.colorScheme.onSurfaceVariant
             }
             else -> {
                 statusText = "Unknown"
-                statusColor = SecondaryText
-                statusBg = SecondaryText.copy(alpha = 0.1f)
+                statusColor = MaterialTheme.colorScheme.onSurfaceVariant
             }
         }
     }
@@ -238,40 +411,42 @@ private fun DeviceListItem(
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon container
+            // ── Profile Icon ──
             Surface(
                 shape = MaterialTheme.shapes.small,
-                color = iconTint.copy(alpha = 0.12f),
+                color = accentColor.copy(alpha = 0.12f),
                 modifier = Modifier.size(44.dp)
             ) {
-                androidx.compose.foundation.layout.Box(
+                Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = iconTint,
+                        tint = accentColor,
                         modifier = Modifier.size(22.dp)
                     )
                 }
             }
 
-            // Device info
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // ── Device Info ──
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = device.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -285,13 +460,15 @@ private fun DeviceListItem(
                 )
             }
 
-            // Real-Time Status badge
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // ── Status Badge ──
             Surface(
                 shape = MaterialTheme.shapes.extraSmall,
-                color = statusBg,
+                color = statusColor.copy(alpha = 0.12f)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -309,6 +486,195 @@ private fun DeviceListItem(
                     )
                 }
             }
+
+            // ── More Options ──
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Tùy chọn thiết bị",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 4.dp
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Đổi tên",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        onClick = {
+                            showMenu = false
+                            onRenameClick()
+                        }
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Xóa thiết bị",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        onClick = {
+                            showMenu = false
+                            onDeleteClick()
+                        }
+                    )
+                }
+            }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rename Device Dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun RenameDeviceDialog(
+    device: Device,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var newName by remember { mutableStateOf(device.name) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            shape = CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Đổi tên thiết bị",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Nhập tên mới cho thiết bị này:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = device.device_id,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = {
+                        newName = it
+                        if (it.isNotBlank()) errorText = null
+                    },
+                    label = { Text("Tên thiết bị") },
+                    singleLine = true,
+                    isError = errorText != null,
+                    supportingText = errorText?.let {
+                        { Text(it, color = MaterialTheme.colorScheme.error) }
+                    },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Full-width actions: Cancel left, Save right
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text("Hủy")
+                }
+                Button(
+                    onClick = {
+                        if (newName.trim().isBlank()) {
+                            errorText = "Tên không được để trống"
+                        } else {
+                            onConfirm(newName.trim())
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier.weight(1.4f)
+                ) {
+                    Text("Lưu", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        },
+        dismissButton = null,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.large
+    )
 }

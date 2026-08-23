@@ -222,6 +222,41 @@ class DeviceManagerRepository(private val context: Context) {
     }
 
     /**
+     * Cập nhật tên thiết bị trong Supabase DB và cập nhật local cache.
+     */
+    suspend fun updateDeviceName(deviceId: String, newName: String): Result<Unit> {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(IllegalArgumentException("Tên thiết bị không được để trống"))
+        }
+        return try {
+            supabaseDb.from("devices").update(
+                {
+                    set("name", trimmed)
+                }
+            ) {
+                filter {
+                    eq("device_id", deviceId)
+                }
+            }
+
+            // Cập nhật StateFlow và local cache
+            _devices.value = _devices.value.map {
+                if (it.device_id == deviceId) it.copy(name = trimmed) else it
+            }
+            localCache.saveCachedDevices(_devices.value)
+            _lastError.value = null
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "updateDeviceName() failed for $deviceId: ${e.message}")
+            _lastError.value = "Không thể đổi tên thiết bị: ${e.message}"
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Xóa liên kết thiết bị cho user hiện tại.
      * DB function remove_device:
      *   - Xóa dòng device_members của user.
@@ -235,6 +270,15 @@ class DeviceManagerRepository(private val context: Context) {
             }
             supabaseDb.rpc("remove_device", params)
             pendingStore.remove(deviceId)
+
+            // Dọn dẹp key trong ControlKeyStore
+            val keyStore = com.nndai.myhome.data.pairing.ControlKeyStore(context)
+            keyStore.remove(deviceId)
+
+            // Dọn dẹp trong HandshakeManager
+            val handshakeMgr = com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager()
+            handshakeMgr.unregisterDevice(deviceId)
+
             fetchDevicesInternal()
             _lastError.value = null
             Result.success(Unit)
