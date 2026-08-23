@@ -360,13 +360,13 @@ uint32_t taskWdtFeed_cb() {
         }
     }
     compat::wdtFeed();
-    chip::scanPumpDoneEvent();
     return WDT_FEED_INTERVAL_MS;
 }
 
 // ── Driver Task ──
 uint32_t driverTask_cb() {
     driver->loop(millis());
+    chip::scanPumpDoneEvent();
     return 20;
 }
 
