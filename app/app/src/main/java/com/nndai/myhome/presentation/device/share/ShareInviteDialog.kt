@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
@@ -124,6 +125,7 @@ fun ShareInviteDialog(
                     ) {
                         Text(stringResource(R.string.action_share), fontWeight = FontWeight.SemiBold)
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = {
                             clipboard.setText(AnnotatedString(createdInvite.code))
@@ -158,7 +160,11 @@ private fun RolePickerContent(isCreating: Boolean, onPick: (String) -> Unit) {
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             listOf(
                 DeviceRoles.ADMIN to R.string.role_label_admin,
                 DeviceRoles.MEMBER to R.string.role_label_member,

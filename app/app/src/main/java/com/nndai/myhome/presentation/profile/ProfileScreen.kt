@@ -53,6 +53,9 @@ import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.RedError
 import com.nndai.myhome.core.theme.SecondaryText
 import com.nndai.myhome.core.utils.LocaleHelper
+import io.github.jan.supabase.auth.auth
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import com.nndai.myhome.data.repository.AuthRepository
 import kotlinx.coroutines.launch
 
@@ -68,6 +71,24 @@ fun ProfileScreen(
 
     val currentLangCode = remember { LocaleHelper.getLanguageCode(context) }
     val currentLangName = if (currentLangCode == "vi") stringResource(R.string.lang_vi) else stringResource(R.string.lang_en)
+
+    // ── Account identity from Supabase Auth ──
+    val account = remember(isLoggedIn) {
+        if (!isLoggedIn) null
+        else try {
+            com.nndai.myhome.data.remote.SupabaseConfig.client.auth.currentSessionOrNull()?.user
+        } catch (_: Exception) { null }
+    }
+    val userEmail = account?.email
+    val userName = remember(account) {
+        val meta = account?.userMetadata ?: return@remember null
+        listOf("full_name", "name", "given_name")
+            .firstNotNullOfOrNull { key ->
+                (meta[key] as? JsonPrimitive)?.contentOrNull
+            }?.takeIf { it.isNotBlank() }
+    }
+    val avatarLetter = (userName?.firstOrNull() ?: userEmail?.firstOrNull())
+        ?.uppercaseChar()?.toString()
 
     Column(
         modifier = Modifier
@@ -105,26 +126,41 @@ fun ProfileScreen(
                     modifier = Modifier.size(80.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = Icons.Filled.Person,
-                            contentDescription = null,
-                            tint = if (isLoggedIn) CyanBlue else SecondaryText,
-                            modifier = Modifier.size(40.dp)
-                        )
+                        if (isLoggedIn && avatarLetter != null) {
+                            Text(
+                                text = avatarLetter,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CyanBlue
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = if (isLoggedIn) CyanBlue else SecondaryText,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
                     }
                 }
 
                 if (isLoggedIn) {
+                    // Tên hiển thị (Google metadata) hoặc email
                     Text(
-                        text = stringResource(R.string.profile_signed_in),
+                        text = userName ?: userEmail ?: stringResource(R.string.profile_signed_in),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
+                    // Email luôn hiện khi có
                     Text(
-                        text = stringResource(R.string.profile_devices_synced),
+                        text = userEmail ?: stringResource(R.string.profile_devices_synced),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
 
                     // Sign out button

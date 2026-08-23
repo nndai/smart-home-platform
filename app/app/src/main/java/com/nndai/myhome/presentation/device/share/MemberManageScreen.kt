@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -105,6 +107,8 @@ fun MemberManageScreen(
     var memberToRemove by remember { mutableStateOf<DeviceMember?>(null) }
     var inviteToRevoke by remember { mutableStateOf<ActiveInvite?>(null) }
     var memberForRoleChange by remember { mutableStateOf<DeviceMember?>(null) }
+    // Mã đang được mở lại (tap vào row) để share/copy
+    var selectedInvite by remember { mutableStateOf<ActiveInvite?>(null) }
 
     // Vai trò của chính mình (từ members list — server trả đủ mọi member)
     val myUserId = remember {
@@ -210,6 +214,7 @@ fun MemberManageScreen(
                     items(invites, key = { it.code }) { invite ->
                         InviteRow(
                             invite = invite,
+                            onOpenCode = { selectedInvite = invite },
                             onRevoke = { inviteToRevoke = invite }
                         )
                     }
@@ -221,15 +226,20 @@ fun MemberManageScreen(
     }
 
     // ── Create invite dialog (role picker → code display) ──
-    if (showCreateInvite) {
+    // createdInvite: vừa tạo mới; selectedInvite: mở lại mã từ danh sách
+    val activeShareDialogInvite = createdInvite ?: selectedInvite?.let {
+        com.nndai.myhome.data.model.CreatedInvite(code = it.code, device_name = deviceName)
+    }
+    if (showCreateInvite || selectedInvite != null) {
         ShareInviteDialog(
-            createdInvite = createdInvite,
+            createdInvite = activeShareDialogInvite,
             isCreating = isBusy,
             onCreate = { role ->
                 viewModel.createInvite(role)
             },
             onDismiss = {
                 showCreateInvite = false
+                selectedInvite = null
                 viewModel.dismissCreatedInvite()
             }
         )
@@ -420,7 +430,7 @@ private fun MemberRow(
 }
 
 @Composable
-private fun InviteRow(invite: ActiveInvite, onRevoke: () -> Unit) {
+private fun InviteRow(invite: ActiveInvite, onOpenCode: () -> Unit, onRevoke: () -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -442,12 +452,18 @@ private fun InviteRow(invite: ActiveInvite, onRevoke: () -> Unit) {
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.size(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable(onClick = onOpenCode)
+                    .padding(vertical = 2.dp)
+            ) {
                 Text(
                     text = invite.code,
                     style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace),
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = stringResource(R.string.invite_single_use, roleLabel(invite.role)),
@@ -455,12 +471,24 @@ private fun InviteRow(invite: ActiveInvite, onRevoke: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            IconButton(
+                onClick = onOpenCode,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Share,
+                    contentDescription = stringResource(R.string.action_share),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             OutlinedButton(
                 onClick = onRevoke,
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.error
                 ),
-                shape = MaterialTheme.shapes.small
+                shape = MaterialTheme.shapes.small,
+                contentPadding = PaddingValues(horizontal = 10.dp)
             ) {
                 Text(stringResource(R.string.invite_revoke), style = MaterialTheme.typography.labelMedium)
             }
@@ -515,7 +543,11 @@ private fun RoleChangeDialog(
             }
         },
         text = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 listOf(
                     DeviceRoles.ADMIN to R.string.role_label_admin,
                     DeviceRoles.MEMBER to R.string.role_label_member,

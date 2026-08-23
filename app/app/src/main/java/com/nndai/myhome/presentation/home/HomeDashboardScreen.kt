@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeviceUnknown
-import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.ModeFanOff
 import androidx.compose.material.icons.filled.Sensors
@@ -39,13 +38,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import io.github.jan.supabase.auth.auth
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,16 +69,6 @@ fun HomeDashboardScreen(
 ) {
     val devices by deviceRepository.devices.collectAsState()
 
-    // Nhập mã chia sẻ (redeem invite)
-    var showRedeemDialog by remember { mutableStateOf(false) }
-    val shareRepo = remember { com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceShareRepository() }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var isRedeeming by remember { mutableStateOf(false) }
-    var redeemedDevice by remember {
-        mutableStateOf<com.nndai.myhome.data.model.RedeemedDevice?>(null)
-    }
-    var redeemError by remember { mutableStateOf<String?>(null) }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -89,47 +77,13 @@ fun HomeDashboardScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Header + redeem entry
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.home_title),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            if (isLoggedIn) {
-                Surface(
-                    modifier = Modifier.clip(MaterialTheme.shapes.small).clickable {
-                        showRedeemDialog = true
-                    },
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.GroupAdd,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.redeem_entry),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
+        // Header
+        Text(
+            text = stringResource(R.string.home_title),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
 
         // Guest banner
         if (!isLoggedIn) {
@@ -218,38 +172,6 @@ fun HomeDashboardScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
     }
-
-    // ── Redeem invite dialog ──
-    if (showRedeemDialog) {
-        com.nndai.myhome.presentation.device.share.RedeemInviteDialog(
-            isBusy = isRedeeming,
-            successDevice = redeemedDevice,
-            serverError = redeemError,
-            onDismiss = {
-                showRedeemDialog = false
-                redeemedDevice = null
-                redeemError = null
-            },
-            onSuccessShown = {
-                showRedeemDialog = false
-                redeemedDevice = null
-                // Làm mới danh sách thiết bị sau khi tham gia thành công
-                scope.launch { deviceRepository.fetchDevices() }
-            },
-            onRedeem = { code ->
-                scope.launch {
-                    isRedeeming = true
-                    shareRepo.redeemInvite(code)
-                        .onSuccess {
-                            redeemedDevice = it
-                            deviceRepository.fetchDevices()
-                        }
-                        .onFailure { redeemError = it.message }
-                    isRedeeming = false
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -281,6 +203,13 @@ private fun DeviceCard(
             icon = Icons.Filled.DeviceUnknown
             iconTint = SecondaryText
         }
+    }
+
+    // Custom brand icons (multicolor vectors) — rendered without tint
+    val customIconRes = when (device.profile.lowercase()) {
+        "pump" -> R.drawable.ic_pump_device
+        "remote_switch" -> R.drawable.ic_remote_switch_device
+        else -> null
     }
 
     val currentUserId = remember {
@@ -356,12 +285,21 @@ private fun DeviceCard(
                     modifier = Modifier.size(40.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = iconTint,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        if (customIconRes != null) {
+                            Icon(
+                                painter = painterResource(customIconRes),
+                                contentDescription = null,
+                                tint = androidx.compose.ui.graphics.Color.Unspecified,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                 }
                 // Dynamic Real-Time Online/Offline status badge

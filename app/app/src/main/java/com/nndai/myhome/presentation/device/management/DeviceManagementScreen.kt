@@ -22,15 +22,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeviceUnknown
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.ModeFanOff
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.outlined.Devices
@@ -40,7 +44,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,7 +65,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -104,18 +109,18 @@ fun DeviceManagementScreen(
     var isBusy by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
+    // ── Redeem invite (nhập mã chia sẻ) ──
+    val shareRepo =
+        remember { com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceShareRepository() }
+    var showRedeemDialog by remember { mutableStateOf(false) }
+    var isRedeeming by remember { mutableStateOf(false) }
+    var redeemedDevice by remember {
+        mutableStateOf<com.nndai.myhome.data.model.RedeemedDevice?>(null)
+    }
+    var redeemError by remember { mutableStateOf<String?>(null) }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { if (isLoggedIn) onAddDeviceClick() else onNavigateToLogin() },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = MaterialTheme.shapes.large
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add_device))
-            }
-        },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
@@ -124,62 +129,180 @@ fun DeviceManagementScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // ── Header with Refresh ──
+            // ── App Header: title + actions ──
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.devices_title),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = stringResource(R.string.devices_registered_count, devices.size),
+                        text = if (isLoggedIn)
+                            stringResource(R.string.devices_registered_count, devices.size)
+                        else stringResource(R.string.home_sign_in_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                val syncedMsg = stringResource(R.string.msg_devices_synced)
-                val syncFailedMsg = stringResource(R.string.msg_sync_failed)
-                IconButton(
-                    onClick = {
-                        scope.launch {
-                            isRefreshing = true
-                            val r = deviceRepository.fetchDevices()
-                            isRefreshing = false
-                            if (r.isSuccess) {
-                                snackbarHostState.showSnackbar(syncedMsg)
-                            } else {
-                                snackbarHostState.showSnackbar(
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Refresh — bare icon
+                    val syncedMsg = stringResource(R.string.msg_devices_synced)
+                    val syncFailedMsg = stringResource(R.string.msg_sync_failed)
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                isRefreshing = true
+                                val r = deviceRepository.fetchDevices()
+                                isRefreshing = false
+                                if (r.isSuccess) snackbarHostState.showSnackbar(syncedMsg)
+                                else snackbarHostState.showSnackbar(
                                     r.exceptionOrNull()?.message ?: syncFailedMsg
                                 )
                             }
+                        },
+                        enabled = !isRefreshing && isLoggedIn,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.system_refresh),
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.size(26.dp)
+                            )
                         }
-                    },
-                    enabled = !isRefreshing
-                ) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    }
+
+                    if (isLoggedIn) {
+                        // Nhập mã chia sẻ — bare icon
+                        IconButton(
+                            onClick = { showRedeemDialog = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GroupAdd,
+                                contentDescription = stringResource(R.string.redeem_entry),
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+
+                        // Add device — large bare icon
+                        IconButton(
+                            onClick = onAddDeviceClick,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.add_device),
+                                modifier = Modifier.size(30.dp),
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
                     } else {
+                        // Guest — sign-in pill
+                        Button(
+                            onClick = onNavigateToLogin,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = MaterialTheme.shapes.small,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Login,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                stringResource(R.string.profile_sign_in),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── Guest banner ──
+            androidx.compose.animation.AnimatedVisibility(visible = !isLoggedIn) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable(onClick = onNavigateToLogin),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.profile_guest),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.home_sign_in_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.system_refresh),
-                            tint = MaterialTheme.colorScheme.primary
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // ── Device List ──
             AnimatedVisibility(
@@ -381,6 +504,37 @@ fun DeviceManagementScreen(
             }
         }
     }
+
+    // ── Redeem Invite Dialog ──
+    if (showRedeemDialog) {
+        com.nndai.myhome.presentation.device.share.RedeemInviteDialog(
+            isBusy = isRedeeming,
+            successDevice = redeemedDevice,
+            serverError = redeemError,
+            onDismiss = {
+                showRedeemDialog = false
+                redeemedDevice = null
+                redeemError = null
+            },
+            onSuccessShown = {
+                showRedeemDialog = false
+                redeemedDevice = null
+                scope.launch { deviceRepository.fetchDevices() }
+            },
+            onRedeem = { code ->
+                scope.launch {
+                    isRedeeming = true
+                    shareRepo.redeemInvite(code)
+                        .onSuccess { result ->
+                            redeemedDevice = result
+                            deviceRepository.fetchDevices()
+                        }
+                        .onFailure { redeemError = it.message }
+                    isRedeeming = false
+                }
+            }
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -408,6 +562,12 @@ private fun DeviceListItem(
         "fan" -> GreenOk
         "lamp", "switch", "remote_switch" -> OrangeWarning
         else -> SecondaryText
+    }
+    // Custom brand icons (multicolor vectors) — rendered without tint
+    val customIconRes = when (device.profile.lowercase()) {
+        "pump" -> R.drawable.ic_pump_device
+        "remote_switch" -> R.drawable.ic_remote_switch_device
+        else -> null
     }
 
     // Quyền của chính mình trên thiết bị này (từ RPC get_my_devices).
@@ -487,12 +647,21 @@ private fun DeviceListItem(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    if (customIconRes != null) {
+                        Icon(
+                            painter = painterResource(customIconRes),
+                            contentDescription = null,
+                            tint = Color.Unspecified,   // giữ nguyên màu vector gốc
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
 

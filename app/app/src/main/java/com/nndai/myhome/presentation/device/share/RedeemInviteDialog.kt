@@ -155,6 +155,7 @@ fun RedeemInviteDialog(
                     ) {
                         Text(stringResource(R.string.action_cancel))
                     }
+                    Spacer(modifier = Modifier.size(8.dp))
                     Button(
                         onClick = {
                             when {
