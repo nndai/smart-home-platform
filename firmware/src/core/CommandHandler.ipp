@@ -840,13 +840,20 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
     (void)payload;
 
     if (_scanPending) {
-        resp["status"] = "error";
-        resp["message"] = "Scan already in progress";
-        _sendResponse(source, resp);
-        return;
+        // Watchdog: a scan that never completes must not block retries forever.
+        if (millis() - _scanStartMs >= kScanTimeoutMs) {
+            LT_IM(CMD, "Scan watchdog: previous scan timed out, allowing restart");
+            _scanPending = false;
+        } else {
+            resp["status"] = "error";
+            resp["message"] = "Scan already in progress";
+            _sendResponse(source, resp);
+            return;
+        }
     }
 
     _scanPending = true;
+    _scanStartMs = millis();
     _scanSource = source;
 
     LT_IM(CMD, "Starting async WiFi scan...");
@@ -866,6 +873,15 @@ void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const JsonDoc
     (void)payload;
 
     if (_scanPending) {
+        // Watchdog: report failure and release the slot so the app can retry.
+        if (millis() - _scanStartMs >= kScanTimeoutMs) {
+            LT_IM(CMD, "Scan watchdog: timeout while waiting for scan results");
+            _scanPending = false;
+            resp["status"] = "error";
+            resp["message"] = "Scan failed";
+            _sendResponse(source, resp);
+            return;
+        }
         resp["status"] = "error";
         resp["message"] = "Scan still in progress";
         _sendResponse(source, resp);

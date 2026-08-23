@@ -33,4 +33,11 @@ void logCaptureInit() {
     // LibreTiny: --wrap=putchar_p đã hoạt động từ link time, không cần gì.
 }
 
+#else
+
+// Other MCUs (ESP32...): no serial-capture hook yet — serial output goes
+// straight to UART, log capture stays a no-op.
+void logCaptureInit() {
+}
+
 #endif

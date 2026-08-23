@@ -64,6 +64,7 @@ private:
 
     // ── WiFi scan state ──
     bool _scanPending = false;
+    unsigned long _scanStartMs = 0;
     String _scanSource;
     JsonDocument _scanResultDoc;
     bool _scanResultReady = false;
@@ -83,6 +84,11 @@ private:
     // cửa sổ ts (|now-ts| <= 60s) — đánh đổi flash wear vs an toàn, đã chấp nhận.
     static constexpr uint32_t ENVELOPE_TS_WINDOW_S = 60;    // |now - ts| <= 60s
     static constexpr uint8_t MAX_SEQ_ENTRIES = 6;           // app + vài remote switch
+
+    // WiFi scan watchdog: async scan normally completes in a few seconds;
+    // if it hangs, release _scanPending after this so clients can retry
+    // without rebooting. Plain millis() math → Arduino-standard API only.
+    static constexpr unsigned long kScanTimeoutMs = 20000;
     struct SeqEntry {
         char src[24];
         uint32_t seq;
