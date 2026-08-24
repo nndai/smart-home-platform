@@ -78,9 +78,14 @@ class ControlKeyStore(context: Context) {
         editor.apply()
     }
 
-    /** Device ids that currently have a stored control key. */
+    /** Device ids that currently have a stored control key.
+     *  IMPORTANT: derive ONLY from "enc_" entries — including "iv_" would
+     *  yield phantom ids like "iv_dev-xxx", and pruning those deletes the
+     *  real IV file (remove() strips prefixes per id), breaking decryption. */
     fun storedIds(): Set<String> =
-        secretKeys().map { it.removePrefix("enc_") }.toSet()
+        prefs.all.keys.filter { it.startsWith("enc_") }
+            .map { it.removePrefix("enc_") }
+            .toSet()
 
     private fun secretKeys(): List<String> =
         prefs.all.keys.filter { it.startsWith("enc_") || it.startsWith("iv_") }

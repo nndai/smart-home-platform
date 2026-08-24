@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -392,7 +392,7 @@ private fun MemberRow(
                 Box {
                     IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
                     Icon(
-                        Icons.Filled.PersonRemove,
+                        Icons.Filled.ManageAccounts,
                         contentDescription = stringResource(R.string.member_options_desc),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
@@ -401,6 +401,14 @@ private fun MemberRow(
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.member_change_role)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.ManageAccounts,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             onClick = {
                                 showMenu = false
                                 onChangeRole()
@@ -471,17 +479,17 @@ private fun InviteRow(invite: ActiveInvite, onOpenCode: () -> Unit, onRevoke: ()
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(
-                onClick = onOpenCode,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Outlined.Share,
-                    contentDescription = stringResource(R.string.action_share),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+//            IconButton(
+//                onClick = onOpenCode,
+//                modifier = Modifier.size(32.dp)
+//            ) {
+//                Icon(
+//                    Icons.Outlined.Share,
+//                    contentDescription = stringResource(R.string.action_share),
+//                    tint = MaterialTheme.colorScheme.primary,
+//                    modifier = Modifier.size(18.dp)
+//                )
+//            }
             OutlinedButton(
                 onClick = onRevoke,
                 colors = ButtonDefaults.outlinedButtonColors(
@@ -580,6 +588,7 @@ private fun RoleChangeDialog(
                 ) {
                     Text(stringResource(R.string.action_cancel))
                 }
+                Spacer(modifier = Modifier.size(16.dp))
                 Button(
                     onClick = { onConfirm(selected) },
                     enabled = !isBusy && selected != member.role,

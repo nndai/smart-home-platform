@@ -958,6 +958,7 @@ private fun RenameDeviceDialog(
                 ) {
                     Text(stringResource(R.string.action_cancel))
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(
                     onClick = {
                         if (newName.trim().isBlank()) {

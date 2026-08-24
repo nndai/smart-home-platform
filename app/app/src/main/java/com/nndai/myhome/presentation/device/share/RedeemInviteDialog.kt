@@ -88,7 +88,10 @@ fun RedeemInviteDialog(
         },
         text = {
             if (successDevice == null) {
-                Column {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         text = stringResource(R.string.redeem_hint),
                         style = MaterialTheme.typography.bodyMedium,
