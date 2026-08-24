@@ -19,6 +19,7 @@ data class PumpStatus(
     val pumpMode: Boolean = true,
     val pumpState: PumpState = PumpState.OFF,
     val timestamp: Long = 0L,
+    val onDuration: Long = 0L,
     val targetId: String = "",
     val targetType: String = "",
     val targetPaired: Boolean = false,

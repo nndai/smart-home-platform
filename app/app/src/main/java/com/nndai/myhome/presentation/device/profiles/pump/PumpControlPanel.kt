@@ -80,6 +80,12 @@ import com.nndai.myhome.core.utils.formatRssi
 import com.nndai.myhome.core.utils.formatTemperature
 import com.nndai.myhome.core.utils.formatUptime
 import com.nndai.myhome.core.utils.formatVoltage
+import com.nndai.myhome.core.utils.formatDurationHms
+import android.os.SystemClock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.compose.runtime.mutableLongStateOf
+import kotlin.math.abs
 
 private val PurpleDryRun = Color(0xFF9C27B0)
 
@@ -125,6 +131,50 @@ fun DashboardScreenContent(
 ) {
     var dismissedFaultState by remember { mutableStateOf<PumpState?>(null) }
     var activeFaultDialogState by remember { mutableStateOf<PumpState?>(null) }
+
+    // Smooth local ticker for relay ON duration
+    var liveOnDuration by remember { mutableLongStateOf(0L) }
+    var baseServerDuration by remember { mutableLongStateOf(0L) }
+    var syncRealtime by remember { mutableLongStateOf(0L) }
+
+    // Synchronize base duration from server status only when needed (first init or diff > 2s)
+    LaunchedEffect(status?.relay, status?.onDuration) {
+        val isRelayOn = status?.relay == true
+        val serverDuration = status?.onDuration ?: 0L
+        if (!isRelayOn) {
+            liveOnDuration = 0L
+            baseServerDuration = 0L
+            syncRealtime = 0L
+        } else {
+            val currentCalculated = if (syncRealtime > 0L) {
+                baseServerDuration + (SystemClock.elapsedRealtime() - syncRealtime) / 1000
+            } else {
+                0L
+            }
+            val diff = abs(serverDuration - currentCalculated)
+            // Initial sync or difference > 2s: re-sync base timestamp
+            if (syncRealtime == 0L || diff > 2L) {
+                baseServerDuration = serverDuration
+                syncRealtime = SystemClock.elapsedRealtime()
+                liveOnDuration = serverDuration
+            }
+        }
+    }
+
+    // Continuous local ticker without stutters
+    LaunchedEffect(status?.relay) {
+        if (status?.relay == true) {
+            while (isActive) {
+                if (syncRealtime > 0L) {
+                    val elapsedSec = (SystemClock.elapsedRealtime() - syncRealtime) / 1000
+                    liveOnDuration = baseServerDuration + elapsedSec
+                }
+                delay(200L)
+            }
+        } else {
+            liveOnDuration = 0L
+        }
+    }
 
     // Refresh status when screen becomes visible/resumed
 //    LaunchedEffect(Unit) {
@@ -387,14 +437,10 @@ fun DashboardScreenContent(
                         modifier = Modifier.weight(1f)
                     )
                     StatusCard(
-                        icon = Icons.Filled.SignalCellularAlt,
-                        value = s.rssi.formatRssi(),
-                        label = stringResource(R.string.metric_rssi),
-                        iconTint = when {
-                            s.rssi > -50 -> CyanBlue
-                            s.rssi > -70 -> OrangeWarning
-                            else -> RedError
-                        },
+                        icon = Icons.Filled.Timer,
+                        value = liveOnDuration.formatDurationHms(),
+                        label = stringResource(R.string.metric_on_duration),
+                        iconTint = if (s.relay) GreenOk else SecondaryText,
                         modifier = Modifier.weight(1f)
                     )
                 }

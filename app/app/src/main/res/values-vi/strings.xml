@@ -87,6 +87,7 @@
     <string name="metric_energy">Điện năng</string>
     <string name="metric_temperature">Nhiệt độ</string>
     <string name="metric_rssi">RSSI</string>
+    <string name="metric_on_duration">Thời gian bật</string>
 
     <!-- Dashboard - Control Section -->
     <string name="pump_control">ĐIỀU KHIỂN BƠM</string>

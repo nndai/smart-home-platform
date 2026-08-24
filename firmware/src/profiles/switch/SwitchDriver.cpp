@@ -44,6 +44,7 @@ bool SwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonD
 
 void SwitchDriver::getStatus(JsonDocument& resp) {
     resp["relay"] = _switch.getState();
+    resp["onDuration"] = _switch.getState() ? (uint32_t)(_switch.getOnDuration() / 1000) : 0;
 }
 
 void SwitchDriver::getConfig(JsonDocument& resp) {

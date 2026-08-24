@@ -87,6 +87,7 @@
     <string name="metric_energy">Energy</string>
     <string name="metric_temperature">Temperature</string>
     <string name="metric_rssi">RSSI</string>
+    <string name="metric_on_duration">ON Duration</string>
 
     <!-- Dashboard - Control Section -->
     <string name="pump_control">PUMP CONTROL</string>

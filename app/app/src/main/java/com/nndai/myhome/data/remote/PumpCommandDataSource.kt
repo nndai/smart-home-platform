@@ -255,6 +255,7 @@ class PumpCommandDataSource(
                 str = json.optString("pumpStateStr", json.optString("pumpState"))
             ),
             timestamp = json.optLong("timestamp", 0L),
+            onDuration = json.optLong("onDuration", 0L),
             targetId = json.optString("targetId", ""),
             targetType = json.optString("targetType", ""),
             targetPaired = json.optBoolean("targetPaired", false),

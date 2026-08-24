@@ -118,6 +118,7 @@ void PumpDriver::getStatus(JsonDocument& resp) {
     BL0937SensorData blData = _current.readAll();
 
     resp["relay"] = _pump.isOn();
+    resp["onDuration"] = _pump.isOn() ? (uint32_t)(_pump.getOnDuration() / 1000) : 0;
     resp["current"] = blData.current;
     resp["power"] = blData.power;
     resp["voltage"] = blData.voltage;
@@ -236,6 +237,7 @@ bool PumpDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
 void PumpDriver::getSysInfo(JsonDocument& resp) {
     JsonObject p = resp["pump"].to<JsonObject>();
     p["relay"] = _pump.isOn();
+    p["onDuration"] = _pump.isOn() ? (uint32_t)(_pump.getOnDuration() / 1000) : 0;
     p["voltage"] = _current.getVoltage();
     p["current"] = _current.getCurrent();
     p["power"] = _current.getActivePower();

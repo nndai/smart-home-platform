@@ -56,3 +56,12 @@ fun Long.formatBytes(): String {
 
 /** Format RSSI → dBm string. */
 fun Int.formatRssi(): String = "$this dBm"
+
+/** Format duration in seconds to "HHh MMm SSs" (e.g. "05h 35m 23s", "00h 00m 00s"). */
+fun Long.formatDurationHms(): String {
+    if (this <= 0L) return "00h 00m 00s"
+    val hours = this / 3600
+    val minutes = (this % 3600) / 60
+    val seconds = this % 60
+    return "%02dh %02dm %02ds".format(hours, minutes, seconds)
+}
