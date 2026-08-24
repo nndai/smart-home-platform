@@ -562,7 +562,7 @@
     <string name="pair_configuring">Đang cấu hình thiết bị...</string>
     <string name="pair_configuring_detail">Thiết bị sẽ khởi động lại sau khi lưu cấu hình</string>
     <string name="pair_saving_account">Đang lưu thiết bị vào tài khoản...</string>
-    <string name="pair_saving_detail">Chờ điện thoại kết nối lại WiFi nhà</string>
+    <string name="pair_saving_detail">Chờ điện thoại kết nối lại WiFi</string>
     <string name="pair_scan_nearby_title">Quét thiết bị xung quanh</string>
     <string name="pair_scan_nearby_desc">App sẽ tìm các thiết bị myhome trong mạng WiFi gần bạn</string>
     <string name="pair_permission_needed">App cần quyền quét WiFi để tìm thiết bị</string>
@@ -575,7 +575,7 @@
     <string name="pair_none_in_list">Không tìm thấy thiết bị trong danh sách</string>
     <string name="pair_channel_blocked_hint">Điện thoại có thể bị khóa kênh Wi-Fi nhà. Hãy bấm nút bên dưới để mở System Popup quét toàn bộ 14 kênh sóng:</string>
     <string name="pair_popup_action">Tìm &amp; Kết nối bằng System Popup 🚀</string>
-    <string name="pair_pick_home_wifi">Chọn WiFi nhà</string>
+    <string name="pair_pick_home_wifi">Chọn WiFi</string>
     <string name="pair_networks_found">Thiết bị quét được %1$d mạng — chọn mạng nhà bạn</string>
     <string name="pair_rescan_desc">Quét lại</string>
     <string name="pair_no_networks">Thiết bị không quét được mạng nào — hãy thử lại</string>
@@ -585,8 +585,8 @@
     <string name="pair_connect">Kết nối</string>
     <string name="pair_offline_saved">Ghép nối xong, chưa lưu vào tài khoản</string>
     <string name="pair_success">Ghép nối thành công</string>
-    <string name="pair_offline_desc">Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Chưa gửi được thông tin lên tài khoản vì mất mạng — sẽ tự động đồng bộ khi có mạng trở lại.</string>
-    <string name="pair_success_desc">Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Bạn sẽ thấy nó trong danh sách thiết bị.</string>
+    <string name="pair_offline_desc">Thiết bị đang khởi động lại và kết nối WiFi của bạn. Chưa gửi được thông tin lên tài khoản vì mất mạng — sẽ tự động đồng bộ khi có mạng trở lại.</string>
+    <string name="pair_success_desc">Thiết bị đang khởi động lại và kết nối WiFi của bạn. Bạn sẽ thấy nó trong danh sách thiết bị.</string>
     <string name="pair_failed_title">Không thành công</string>
     <string name="pair_retry">Thử lại</string>
     <string name="pair_go_back">Quay lại</string>
@@ -650,4 +650,13 @@
     <string name="desc_toggle_relay">Bật/tắt relay</string>
     <string name="desc_selected">Đã chọn</string>
     <string name="desc_back">Quay lại</string>
+
+    <!-- Pairing: manual WiFi entry -->
+    <string name="pair_manual_title">Nhập thông tin wifi</string>
+    <string name="pair_ssid_label">Tên WiFi</string>
+    <string name="pair_pick_from_scan">Hoặc chọn từ mạng đã quét:</string>
+    <string name="pair_ssid_required_hint">Nhập tên WiFi để bật nút Kết nối</string>
+    <string name="pair_open_network_note">Mạng không mật khẩu</string>
+    <string name="pair_pass_required_hint">Nhập mật khẩu (8-64 ký tự)</string>
+    <string name="ps_ssid_required">Nhập tên WiFi</string>
 </resources>

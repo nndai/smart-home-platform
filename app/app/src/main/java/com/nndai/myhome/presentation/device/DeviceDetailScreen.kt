@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device
+﻿package com.nndai.myhome.presentation.device
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -377,7 +377,7 @@ fun DeviceDetailScreen(
                                 readOnly = isViewer
                             )
                             "hist" -> EnergyHistoryScreen()
-                            "log" -> LogScreen()
+                            "log" -> LogScreen(bottomPadding = paddingValues.calculateBottomPadding())
                             "settings" -> SettingsScreen(snackbarHostState = snackbarHostState)
                             "sysinfo" -> DeviceInfoScreen()
                         }
@@ -395,7 +395,7 @@ fun DeviceDetailScreen(
                                 readOnly = isViewer
                             )
                             "hist" -> ToggleHistoryScreen()
-                            "log" -> LogScreen()
+                            "log" -> LogScreen(bottomPadding = paddingValues.calculateBottomPadding())
                             "settings" -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
                             "sysinfo" -> DeviceInfoScreen()
                         }

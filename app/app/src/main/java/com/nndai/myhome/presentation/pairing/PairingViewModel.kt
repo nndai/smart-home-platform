@@ -14,6 +14,7 @@ class PairingViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<PairingState> = repository.state
     val scanDevices = repository.scanDevices
     val scanInProgress = repository.scanInProgress
+    val wifiScanInProgress = repository.wifiScanInProgress
 
     fun startScan() = repository.startScan()
 

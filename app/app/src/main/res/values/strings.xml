@@ -620,6 +620,7 @@
     <string name="ps_label_voltage_v">Voltage (V)</string>
     <string name="ps_label_power_w">Power (W)</string>
     <string name="ps_calibrate_action">Calibrate</string>
+    <string name="ps_ssid_required">Enter a WiFi name</string>
     <string name="ps_save_config_title">Save configuration</string>
 
     <!-- SettingsViewModel Messages -->
@@ -650,5 +651,13 @@
     <string name="desc_toggle_relay">Toggle relay</string>
     <string name="desc_selected">Selected</string>
     <string name="desc_back">Back</string>
+
+    <!-- Pairing: manual WiFi entry -->
+    <string name="pair_manual_title">Manual entry</string>
+    <string name="pair_ssid_label">WiFi name</string>
+    <string name="pair_pick_from_scan">Or pick from scanned networks:</string>
+    <string name="pair_ssid_required_hint">Enter a WiFi name to enable Connect</string>
+    <string name="pair_open_network_note">Open network — no password needed</string>
+    <string name="pair_pass_required_hint">Enter the password (8-64 characters)</string>
 </resources>
 

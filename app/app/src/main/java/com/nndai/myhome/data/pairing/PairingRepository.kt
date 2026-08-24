@@ -94,6 +94,10 @@ class PairingRepository(
     val scanDevices: StateFlow<List<PairingDevice>> = scanner.devices
     val scanInProgress: StateFlow<Boolean> = scanner.scanning
 
+    /** True while a device-side WiFi scan round-trip is running (≤30s). */
+    private val _wifiScanInProgress = MutableStateFlow(false)
+    val wifiScanInProgress: StateFlow<Boolean> = _wifiScanInProgress.asStateFlow()
+
     private val _state = MutableStateFlow<PairingState>(PairingState.Idle)
     val state: StateFlow<PairingState> = _state.asStateFlow()
 
@@ -284,15 +288,14 @@ class PairingRepository(
         }
         Log.d(TAG, "scanWifiOnDevice(): device=${current.deviceId}")
         setState(PairingState.ScanningWifi(current.deviceId, current.profile))
+        _wifiScanInProgress.value = true
         scope.launch {
             val networks = scanWifiSync(current)
-            if (networks == null) {
-                Log.e(TAG, "scanWifiOnDevice(): scan failed")
-                setState(PairingState.Failed("Quét WiFi thất bại — hãy thử lại"))
-            } else {
-                Log.d(TAG, "scanWifiOnDevice(): got ${networks.size} networks")
-                setState(PairingState.WifiList(current.deviceId, current.profile, networks))
-            }
+            _wifiScanInProgress.value = false
+            // Quét fail/hết giờ → vẫn vào WifiList (danh sách rỗng):
+            // form nhập SSID/pass thủ công luôn khả dụng, không chết flow.
+            Log.d(TAG, "scanWifiOnDevice(): got ${networks?.size ?: -1} networks")
+            setState(PairingState.WifiList(current.deviceId, current.profile, networks.orEmpty()))
         }
     }
 
@@ -361,7 +364,8 @@ class PairingRepository(
         ws?.close()
         ws = null
         val ssid = current.apSsid
-        val deadline = System.currentTimeMillis() + 90_000
+        // Scan timeout: 30s (AP reconnect + WebSocket + poll results)
+        val deadline = System.currentTimeMillis() + 30_000
         var gateway = lastGateway
         var apRequests = 0
         var lastWsTry = 0L
