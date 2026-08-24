@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <!-- App Name -->
     <string name="app_name">My Home</string>
 
@@ -274,7 +274,7 @@
     <string name="settings_disable_log_msg">Tắt ghi các sự kiện hệ thống vào file?</string>
     <string name="settings_reboot_required">Cần khởi động lại</string>
     <string name="settings_reboot_required_msg">Lưu cấu hình thành công. Thiết bị cần khởi động lại để áp dụng cài đặt mới. Khởi động lại ngay?</string>
-    <string name="settings_reboot_now">Khởi động lại ngay</string>
+    <string name="settings_reboot_now">Khởi động lại</string>
     <string name="settings_later">Để sau</string>
     <string name="settings_reboot_device">Khởi động lại thiết bị</string>
     <string name="settings_reboot_device_msg">Thiết bị sẽ khởi động lại. Kết nối sẽ bị mất tạm thời.</string>
@@ -287,7 +287,7 @@
     <string name="settings_send_calibration">Gửi Hiệu Chỉnh</string>
     <string name="settings_reset_calibration_title">Khôi phục Hiệu chỉnh Mặc định</string>
     <string name="settings_reset_calibration_msg">Xác nhận khôi phục các hệ số cCal, vCal, pCal về mặc định phần cứng ban đầu?</string>
-    <string name="settings_reset_to_default">Khôi phục Mặc định</string>
+    <string name="settings_reset_to_default">Khôi phục</string>
 
     <!-- Language Selector -->
     <string name="language">Ngôn ngữ</string>
@@ -455,6 +455,9 @@
     <string name="cs_pick_wifi_title">Chọn mạng WiFi</string>
     <string name="cs_wifi_scan_progress">Đang quét các mạng WiFi xung quanh...</string>
     <string name="cs_wifi_none_found">Không tìm thấy mạng WiFi nào. Hãy thử lại.</string>
+    <string name="cs_confirm_network_title">Lưu cấu hình mạng?</string>
+    <string name="cs_confirm_network_msg">Các thay đổi sẽ được áp dụng:\n%1$s\nThiết bị có thể cần khởi động lại.</string>
+    <string name="cs_msg_no_changes">Không có thay đổi nào</string>
 
     <!-- Remote Switch Dashboard -->
     <string name="rs_target_unset">Chưa thiết lập</string>
@@ -659,4 +662,5 @@
     <string name="pair_open_network_note">Mạng không mật khẩu</string>
     <string name="pair_pass_required_hint">Nhập mật khẩu (8-64 ký tự)</string>
     <string name="ps_ssid_required">Nhập tên WiFi</string>
+    <string name="settings_wifi_ssid_empty">Tên WiFi không được để trống</string>
 </resources>

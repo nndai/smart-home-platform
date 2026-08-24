@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <!-- App Name -->
     <string name="app_name">My Home</string>
 
@@ -455,6 +455,9 @@
     <string name="cs_pick_wifi_title">Choose a WiFi network</string>
     <string name="cs_wifi_scan_progress">Scanning nearby WiFi networks...</string>
     <string name="cs_wifi_none_found">No WiFi networks found. Try again.</string>
+    <string name="cs_confirm_network_title">Save network settings?</string>
+    <string name="cs_confirm_network_msg">The following changes will be applied:\n%1$s\nThe device may need to reboot.</string>
+    <string name="cs_msg_no_changes">No changes to save</string>
 
     <!-- Remote Switch Dashboard -->
     <string name="rs_target_unset">Not set</string>
@@ -621,6 +624,7 @@
     <string name="ps_label_power_w">Power (W)</string>
     <string name="ps_calibrate_action">Calibrate</string>
     <string name="ps_ssid_required">Enter a WiFi name</string>
+    <string name="settings_wifi_ssid_empty">WiFi name cannot be empty</string>
     <string name="ps_save_config_title">Save configuration</string>
 
     <!-- SettingsViewModel Messages -->

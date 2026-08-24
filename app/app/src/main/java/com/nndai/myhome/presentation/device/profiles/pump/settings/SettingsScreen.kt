@@ -1,4 +1,4 @@
-﻿package com.nndai.myhome.presentation.device.profiles.pump.settings
+package com.nndai.myhome.presentation.device.profiles.pump.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -62,6 +62,7 @@ import com.nndai.myhome.presentation.device.common.settings.NetworkConnectionMod
 import com.nndai.myhome.presentation.device.common.settings.SysLogSettingsCard
 import com.nndai.myhome.presentation.device.common.settings.WifiScanDialog
 import com.nndai.myhome.presentation.device.components.CompactTextField
+import com.nndai.myhome.data.remote.WifiNetwork
 import com.nndai.myhome.presentation.device.components.ConfirmDialog
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -103,10 +104,27 @@ fun SettingsScreen(
     var connMode by remember(config) { mutableIntStateOf(config?.connMode ?: 1) }
     var wifiSSID by remember(config) { mutableStateOf(config?.wifiSSID ?: "") }
     var wifiPass by remember(config) { mutableStateOf(config?.wifiPass ?: "") }
-    var isWifiOpen by remember { mutableStateOf(false) }
+
+    // Track initial values to detect what actually changed
+    val initialConnMode by remember(config) { mutableIntStateOf(config?.connMode ?: 1) }
+    val initialWifiSSID by remember(config) { mutableStateOf(config?.wifiSSID ?: "") }
+    val initialWifiPass by remember(config) { mutableStateOf(config?.wifiPass ?: "") }
+    // True when user explicitly edited the password (typed something different from the masked value)
+    var wifiPassEdited by remember(config) { mutableStateOf(false) }
+
+    // Keep last scanned networks to derive open/encrypted status
+    var lastScannedNetworks by remember { mutableStateOf<List<WifiNetwork>>(emptyList()) }
+
+    // Derive isWifiOpen from current SSID vs scanned list (only true if matched scanned network is open)
+    val matchedNetwork = lastScannedNetworks.firstOrNull { it.ssid == wifiSSID.trim() }
+    val isWifiOpen = matchedNetwork != null && !matchedNetwork.isEncrypt
 
     var debugSSID by remember(config) { mutableStateOf(config?.debugSSID ?: "") }
     var debugPass by remember(config) { mutableStateOf(config?.debugPass ?: "") }
+
+    val initialDebugSSID by remember(config) { mutableStateOf(config?.debugSSID ?: "") }
+    val initialDebugPass by remember(config) { mutableStateOf(config?.debugPass ?: "") }
+    var debugPassEdited by remember(config) { mutableStateOf(false) }
 
     var sysLogFileEnabled by remember(config) { mutableStateOf(config?.sysLogFileEnabled ?: false) }
     var sysLogFileLevel by remember(config) { mutableStateOf(config?.sysLogFileLevel?.toString() ?: "0") }
@@ -136,6 +154,8 @@ fun SettingsScreen(
     var showRelayModeDialog by remember { mutableStateOf<Int?>(null) }
     var showLogSwitchDialog by remember { mutableStateOf<Boolean?>(null) }
     var showLogLevelDialog by remember { mutableStateOf<String?>(null) }
+    // Pending network config changes awaiting user confirmation
+    var pendingNetworkUpdates by remember { mutableStateOf<Map<String, Any>?>(null) }
 
     val focusManager = LocalFocusManager.current
 
@@ -258,27 +278,85 @@ fun SettingsScreen(
             wifiSSID = wifiSSID,
             onWifiSSIDChange = { wifiSSID = it },
             wifiPass = wifiPass,
-            onWifiPassChange = { wifiPass = it },
+            onWifiPassChange = {
+                wifiPass = it
+                // Mark password as edited only if the new value differs from initial
+                wifiPassEdited = (it != initialWifiPass)
+            },
             isWifiOpen = isWifiOpen,
-            onWifiOpenChange = { isWifiOpen = it },
+            onWifiOpenChange = { /* derived, no-op */ },
             debugSSID = debugSSID,
             onDebugSSIDChange = { debugSSID = it },
             debugPass = debugPass,
-            onDebugPassChange = { debugPass = it },
+            onDebugPassChange = {
+                debugPass = it
+                debugPassEdited = (it != initialDebugPass)
+            },
             isScanningWifi = isScanningWifi,
             onScanWifiClick = { viewModel.scanWifi() },
             onSaveNetworkClick = {
-                val updates = mutableMapOf<String, Any>(
-                    "connMode" to connMode
-                )
-                if (connMode == 1) {
-                    updates["wifiSSID"] = wifiSSID
-                    updates["wifiPass"] = wifiPass
-                } else if (connMode == 2) {
-                    updates["debugSSID"] = debugSSID
-                    updates["debugPass"] = debugPass
+                val updates = mutableMapOf<String, Any>()
+                // Always include connMode if it changed
+                if (connMode != initialConnMode) {
+                    updates["connMode"] = connMode
                 }
-                viewModel.saveConfig(updates)
+                if (connMode == 1) {
+                    val matched = lastScannedNetworks.firstOrNull { it.ssid == wifiSSID.trim() }
+                    if (matched != null) {
+                        // Mạng có trong danh sách quét
+                        if (matched.isEncrypt) {
+                            // Mạng bắt buộc mật khẩu: nếu sửa pass thì phải đủ 8-64 ký tự
+                            if (wifiPassEdited && wifiPass.length !in 8..64) {
+                                viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                                return@NetworkConnectionModeCard
+                            }
+                        }
+                    } else {
+                        // Mạng nhập tay (không có trong danh sách quét):
+                        // Không nhập pass -> OK (mạng open). Nếu đã nhập pass -> phải đủ 8-64 ký tự
+                        if (wifiPassEdited && wifiPass.isNotEmpty() && wifiPass.length !in 8..64) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                            return@NetworkConnectionModeCard
+                        }
+                    }
+
+                    // Validate SSID when changed
+                    if (wifiSSID != initialWifiSSID) {
+                        if (wifiSSID.trim().isEmpty()) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_ssid_empty))
+                            return@NetworkConnectionModeCard
+                        }
+                        updates["wifiSSID"] = wifiSSID.trim()
+                    }
+                    // Only include password if user explicitly edited it
+                    if (wifiPassEdited) {
+                        if (matched != null && !matched.isEncrypt) {
+                            updates["wifiPass"] = ""
+                        } else {
+                            updates["wifiPass"] = wifiPass
+                        }
+                    }
+                } else if (connMode == 2) {
+                    if (debugSSID != initialDebugSSID) {
+                        if (debugSSID.trim().isEmpty()) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_ssid_empty))
+                            return@NetworkConnectionModeCard
+                        }
+                        updates["debugSSID"] = debugSSID.trim()
+                    }
+                    if (debugPassEdited && debugPass.isNotEmpty() && debugPass.length !in 8..64) {
+                        viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                        return@NetworkConnectionModeCard
+                    }
+                    if (debugPassEdited) {
+                        updates["debugPass"] = debugPass
+                    }
+                }
+                if (updates.isEmpty()) {
+                    viewModel.showMessage(context.getString(R.string.cs_msg_no_changes))
+                } else {
+                    pendingNetworkUpdates = updates
+                }
             },
             isSaving = isSaving
         )
@@ -314,13 +392,47 @@ fun SettingsScreen(
         networks = wifiNetworks,
         onSelectNetwork = { network ->
             wifiSSID = network.ssid
-            isWifiOpen = !network.isEncrypt
-            if (isWifiOpen) {
-                wifiPass = ""
-            }
+            // Selecting from scan always clears password and marks it as edited
+            wifiPass = ""
+            wifiPassEdited = true
+            // Persist scanned networks for open/encrypted validation
+            lastScannedNetworks = wifiNetworks
         },
-        onDismiss = { viewModel.dismissWifiScanDialog() }
+        onDismiss = {
+            // Persist networks even when dismissing dialog
+            if (wifiNetworks.isNotEmpty()) lastScannedNetworks = wifiNetworks
+            viewModel.dismissWifiScanDialog()
+        }
     )
+
+    // Network Save Confirm Dialog
+    pendingNetworkUpdates?.let { updates ->
+        val summary = updates.entries.joinToString("\n") { (key, value) ->
+            when (key) {
+                "connMode" -> "• ${context.getString(R.string.cs_network_mode)}: ${when (value) {
+                    0 -> context.getString(R.string.cs_ap_hotspot)
+                    1 -> context.getString(R.string.settings_wifi_mqtt)
+                    2 -> context.getString(R.string.settings_wifi_debug)
+                    else -> value.toString()
+                }}"
+                "wifiSSID" -> "• ${context.getString(R.string.cs_label_wifi_ssid)}: $value"
+                "wifiPass" -> "• ${context.getString(R.string.cs_label_wifi_password)}: $value"
+                "debugSSID" -> "• ${context.getString(R.string.cs_label_debug_ssid)}: $value"
+                "debugPass" -> "• ${context.getString(R.string.cs_label_debug_password)}: $value"
+                else -> "• $key: $value"
+            }
+        }
+        ConfirmDialog(
+            title = stringResource(R.string.cs_confirm_network_title),
+            message = stringResource(R.string.cs_confirm_network_msg, summary),
+            confirmText = stringResource(R.string.action_save),
+            onConfirm = {
+                viewModel.saveConfig(updates)
+                pendingNetworkUpdates = null
+            },
+            onDismiss = { pendingNetworkUpdates = null }
+        )
+    }
 
     // Single Field Confirm Dialog
     pendingSingleField?.let { pending ->
