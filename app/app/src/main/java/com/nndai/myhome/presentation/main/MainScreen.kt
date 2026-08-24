@@ -86,7 +86,7 @@ fun MainScreen(
             NavigationBar(
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .height(64.dp),
+                    .height(60.dp),
                 windowInsets = WindowInsets(0),
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface

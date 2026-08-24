@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.common.log
+﻿package com.nndai.myhome.presentation.device.common.log
 
 import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
@@ -58,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -263,7 +264,8 @@ private fun LiveLogsContent(
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = isEnabled,
-                    onCheckedChange = onEnableChanged
+                    onCheckedChange = onEnableChanged,
+                    modifier = Modifier.scale(0.8f)
                 )
             }
         }

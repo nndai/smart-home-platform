@@ -561,6 +561,7 @@ private fun PumpModeCard(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
+                        .height(72.dp)
                         .clip(MaterialTheme.shapes.small)
                         .clickable { onPumpModeChange(true) },
                     shape = MaterialTheme.shapes.medium,
@@ -596,6 +597,7 @@ private fun PumpModeCard(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
+                        .height(72.dp)
                         .clip(MaterialTheme.shapes.small)
                         .clickable { onPumpModeChange(false) },
                     shape = MaterialTheme.shapes.medium,
