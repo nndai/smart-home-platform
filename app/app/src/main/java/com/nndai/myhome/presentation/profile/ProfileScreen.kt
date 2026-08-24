@@ -87,8 +87,7 @@ fun ProfileScreen(
                 (meta[key] as? JsonPrimitive)?.contentOrNull
             }?.takeIf { it.isNotBlank() }
     }
-    val avatarLetter = (userName?.firstOrNull() ?: userEmail?.firstOrNull())
-        ?.uppercaseChar()?.toString()
+    val avatarInitials = com.nndai.myhome.core.utils.Initials.of(userName, userEmail)
 
     Column(
         modifier = Modifier
@@ -126,10 +125,10 @@ fun ProfileScreen(
                     modifier = Modifier.size(80.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        if (isLoggedIn && avatarLetter != null) {
+                        if (isLoggedIn && avatarInitials != null) {
                             Text(
-                                text = avatarLetter,
-                                style = MaterialTheme.typography.headlineMedium,
+                                text = avatarInitials,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = CyanBlue
                             )

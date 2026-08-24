@@ -362,8 +362,7 @@ private fun MemberRow(
                     .background(roleColor(member.role).copy(alpha = 0.14f), CircleShape)
             ) {
                 Text(
-                    text = (member.email?.firstOrNull()?.uppercaseChar()?.toString())
-                        ?: "?",
+                    text = com.nndai.myhome.core.utils.Initials.fromEmail(member.email) ?: "?",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = roleColor(member.role)
