@@ -32,7 +32,7 @@
     <string name="profile_version">Phiên bản %s</string>
 
     <!-- Home & Device Management Screen -->
-    <string name="home_title">Nhà Tôi</string>
+    <string name="home_title">My Home</string>
     <string name="home_sign_in_hint">Đăng nhập để quản lý thiết bị của bạn</string>
     <string name="devices_title">Thiết bị</string>
     <string name="devices_registered_count">%d thiết bị đã đăng ký</string>

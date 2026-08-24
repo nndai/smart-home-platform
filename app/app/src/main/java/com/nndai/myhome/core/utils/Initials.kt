@@ -25,7 +25,8 @@ object Initials {
         val words = localPart.split(".", "_", "-").filter { it.isNotBlank() }
         return when {
             words.isEmpty() -> null
-            words.size == 1 -> words[0].take(1).uppercase()
+            words.size == 1 && words[0].length == 1 -> words[0].take(1).uppercase()
+            words.size == 1 -> words[0].take(2).uppercase()
             else -> (words.first().take(1) + words.last().take(1)).uppercase()
         }
     }

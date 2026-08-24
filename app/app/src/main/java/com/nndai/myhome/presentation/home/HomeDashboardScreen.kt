@@ -115,6 +115,7 @@ fun HomeDashboardScreen(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Devices grid
         AnimatedVisibility(
