@@ -3,9 +3,9 @@
 #include <Arduino.h>
 
 // Default calibration values
-#define EMS_VOLTAGE_CAL   0.121708
-#define EMS_CURRENT_CAL   0.012219731
-#define EMS_POWER_CAL     1.375000049
+#define EMS_VOLTAGE_CAL   0.128902049
+#define EMS_CURRENT_CAL   0.011826715
+#define EMS_POWER_CAL     1.410437275
 
 struct BL0937SensorData {
     float current;       // A
