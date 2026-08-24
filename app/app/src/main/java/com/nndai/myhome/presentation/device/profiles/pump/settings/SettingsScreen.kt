@@ -257,9 +257,9 @@ fun SettingsScreen(
             realWatts = realWatts, onRealWattsChange = { realWatts = it },
             onCalibrateClick = {
                 val calibData = mutableMapOf<String, Any>()
-                realAmps.toFloatOrNull()?.let { calibData["real_i"] = it }
-                realVolts.toFloatOrNull()?.let { calibData["real_v"] = it }
-                realWatts.toFloatOrNull()?.let { calibData["real_p"] = it }
+                realAmps.toFloatOrNull()?.let { calibData["current"] = it }
+                realVolts.toFloatOrNull()?.let { calibData["voltage"] = it }
+                realWatts.toFloatOrNull()?.let { calibData["power"] = it }
                 if (calibData.isNotEmpty()) {
                     viewModel.calibrate(calibData)
                     realAmps = ""

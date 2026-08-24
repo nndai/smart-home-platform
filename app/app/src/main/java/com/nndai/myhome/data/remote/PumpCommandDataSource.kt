@@ -85,9 +85,7 @@ class PumpCommandDataSource(
     }
 
     suspend fun setDeviceMode(pumpMode: Boolean) {
-        sendCommand("setDeviceMode", JSONObject().apply {
-            put("pumpMode", pumpMode)
-        })
+        setConfig(mapOf("pumpMode" to pumpMode))
     }
 
     suspend fun getInfo(stream: Boolean = false) {
@@ -288,8 +286,8 @@ class PumpCommandDataSource(
             threshNoWater = json.optInt("threshNoWater", 2000),
             threshRunning = json.optInt("threshRunning", 5000),
             threshOverload = json.optInt("threshOverload", 20000),
-            dryTimeout = json.optInt("dryTimeout", 10000),
-            overloadTimeout = json.optInt("overloadTimeout", 3000),
+            dryTimeout = json.optInt("dryTimeout", 7000),
+            overloadTimeout = json.optInt("overloadTimeout", 1000),
             relayStartMode = json.optInt("relayStartMode", 0),
             cCal = json.optDouble("cCal", 1.0),
             vCal = json.optDouble("vCal", 1.0),
