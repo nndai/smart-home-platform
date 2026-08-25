@@ -82,7 +82,7 @@ bool PumpDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDoc
         setRelay(on);
         resp["status"] = "ok";
         resp["state"] = on ? "on" : "off";
-        LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
+        //LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;
     }
