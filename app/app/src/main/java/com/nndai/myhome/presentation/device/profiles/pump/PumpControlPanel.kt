@@ -85,6 +85,7 @@ import android.os.SystemClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.abs
 
 private val PurpleDryRun = Color(0xFF9C27B0)
@@ -384,7 +385,10 @@ fun DashboardScreenContent(
                                 Text(
                                     text = stringResource(stateTitleRes),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }

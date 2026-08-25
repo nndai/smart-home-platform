@@ -1,4 +1,4 @@
-﻿package com.nndai.myhome.presentation.device.management
+package com.nndai.myhome.presentation.device.management
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -689,9 +690,44 @@ private fun DeviceListItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-                // ── Role badge (thiết bị được chia sẻ với mình) ──
+            // ── Badges Column (Status + Role with equal dynamic width and centered content) ──
+            Column(
+                modifier = Modifier.width(IntrinsicSize.Max),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                // ── Status Badge ──
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = statusColor.copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        DeviceHealthIndicator(
+                            healthState = healthState,
+                            isTransferred = isTransferred,
+                            dotSize = 6.dp,
+                            iconSize = 10.dp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = statusColor
+                        )
+                    }
+                }
+
+                // ── Role badge (thiết bị được chia sẻ với mình: Thành viên, Quản lý) ──
                 if (!device.role.isNullOrBlank() &&
                     device.role.uppercase() != "OWNER" &&
                     !device.isTransferred(currentUserId)
@@ -701,44 +737,29 @@ private fun DeviceListItem(
                         else -> CyanBlue
                     }
                     Surface(
+                        modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.extraSmall,
                         color = roleColor.copy(alpha = 0.12f)
                     ) {
-                        Text(
-                            text = com.nndai.myhome.data.model.DeviceRoles.label(device.role),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.Medium,
-                            color = roleColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = com.nndai.myhome.data.model.DeviceRoles.label(device.role),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Medium,
+                                color = roleColor,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
-
-            // ── Status Badge ──
-            Surface(
-                shape = MaterialTheme.shapes.extraSmall,
-                color = statusColor.copy(alpha = 0.12f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    DeviceHealthIndicator(
-                        healthState = healthState,
-                        isTransferred = isTransferred,
-                        dotSize = 6.dp,
-                        iconSize = 10.dp
-                    )
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        fontWeight = FontWeight.Medium,
-                        color = statusColor
-                    )
                 }
             }
+
+            Spacer(modifier = Modifier.width(4.dp))
 
             // ── More Options ──
             Box {

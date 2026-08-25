@@ -163,7 +163,7 @@
     <string name="log_clear_logs">Clear logs</string>
     <string name="log_listening">Listening...</string>
     <string name="log_off">Off</string>
-    <string name="log_raw_json_hint">Enter raw JSON (e.g. {"cmd":"getStatus"})</string>
+    <string name="log_raw_json_hint">Enter raw JSON</string>
     <string name="log_send">Send</string>
     <string name="log_mode_live">Live</string>
     <string name="log_mode_file">File Log (/logs/sys/)</string>
@@ -605,7 +605,7 @@
     <string name="ps_factory_message">This will erase ALL WiFi config, calibration and settings on the device. It returns to its original state.</string>
     <string name="ps_device_mode_section">Device Operating Mode</string>
     <string name="ps_pump_mode_protect_desc">Dry-run &amp; overcurrent protection</string>
-    <string name="ps_manual_switch_label">Plain switch</string>
+    <string name="ps_manual_switch_label">PLAIN SWITCH</string>
     <string name="ps_pure_toggle_desc">Pure on/off toggling</string>
     <string name="ps_thresholds_timeouts_section">Protection Thresholds &amp; Timeouts</string>
     <string name="ps_label_off_threshold_ma">Off Threshold (mA)</string>

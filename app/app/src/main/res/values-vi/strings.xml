@@ -87,7 +87,7 @@
     <string name="metric_energy">Điện năng</string>
     <string name="metric_temperature">Nhiệt độ</string>
     <string name="metric_rssi">RSSI</string>
-    <string name="metric_on_duration">Thời gian bật</string>
+    <string name="metric_on_duration">Thời gian đã bật</string>
 
     <!-- Dashboard - Control Section -->
     <string name="pump_control">ĐIỀU KHIỂN BƠM</string>
@@ -163,7 +163,7 @@
     <string name="log_clear_logs">Xóa log</string>
     <string name="log_listening">Đang nghe...</string>
     <string name="log_off">Tắt</string>
-    <string name="log_raw_json_hint">Nhập raw JSON (ví dụ: {"cmd":"getStatus"})</string>
+    <string name="log_raw_json_hint">Nhập raw JSON</string>
     <string name="log_send">Gửi</string>
     <string name="log_mode_live">Trực tiếp</string>
     <string name="log_mode_file">File nhật ký (/logs/sys/)</string>
@@ -605,7 +605,7 @@
     <string name="ps_factory_message">Thao tác này sẽ xóa toàn bộ cấu hình WiFi, hiệu chuẩn và thiết lập trên thiết bị. Thiết bị sẽ trở về trạng thái ban đầu.</string>
     <string name="ps_device_mode_section">Chế độ hoạt động thiết bị</string>
     <string name="ps_pump_mode_protect_desc">Bảo vệ Cạn nước, Quá tải</string>
-    <string name="ps_manual_switch_label">Công tắt thường</string>
+    <string name="ps_manual_switch_label">CÔNG TẮT THƯỜNG</string>
     <string name="ps_pure_toggle_desc">Bật/tắt thuần túy</string>
     <string name="ps_thresholds_timeouts_section">Ngưỡng bảo vệ &amp; Thời gian ngắt</string>
     <string name="ps_label_off_threshold_ma">Ngưỡng Tắt (mA)</string>

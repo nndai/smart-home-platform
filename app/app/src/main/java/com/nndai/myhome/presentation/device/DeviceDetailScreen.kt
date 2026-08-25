@@ -316,7 +316,10 @@ fun DeviceDetailScreen(
                             label = {
                                 Text(
                                     text = stringResource(tabItem.titleRes),
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
