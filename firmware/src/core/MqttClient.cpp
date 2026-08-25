@@ -143,7 +143,7 @@ bool MqttClient::loop() {
 }
 
 bool MqttClient::isConnected() {
-    return _mqtt && _mqtt->connected();
+    return _mqtt && (_mqtt->state() == MQTT_CONNECTED);
 }
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
