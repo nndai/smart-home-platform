@@ -30,19 +30,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nndai.myhome.R
-import com.nndai.myhome.core.theme.DimText
-import com.nndai.myhome.core.theme.ElevatedSurface
+import com.nndai.myhome.core.theme.CyanBlue
+import com.nndai.myhome.core.theme.DeepNavy
 import com.nndai.myhome.core.theme.GreenOk
 
 /**
- * Toggle button lớn hình tròn cho ON/OFF pump với viền nổi bật (BorderStroke)
- * và vòng quay nạp (CircularProgressIndicator / Spin) khi đang gửi lệnh chờ phản hồi.
+ * Large circular power toggle for the pump.
+ * Both states are deliberately loud so users instantly recognize it as THE
+ * button: solid brand-colored disc (blue = OFF, green = ON), thick double
+ * border + outer halo ring + colored glow shadow.
  */
 @Composable
 fun PumpControlButton(
@@ -53,21 +54,28 @@ fun PumpControlButton(
     modifier: Modifier = Modifier
 ) {
     val activeColor = GreenOk
-    val inactiveBgColor = MaterialTheme.colorScheme.surfaceVariant
-    val inactiveBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+    val idleColor = DeepNavy          // OFF: đậm, không phải xanh dương
+    val offBorderColor = CyanBlue     // viền sáng để vẫn nổi bật trên nền tối
 
     val bgColor by animateColorAsState(
-        targetValue = if (isOn) activeColor else inactiveBgColor,
+        targetValue = if (isOn) activeColor else idleColor,
         animationSpec = tween(350),
         label = "pumpBg"
     )
+    // Viền: ON = xanh lá, OFF = cyan sáng nổi trên nền tối
     val borderColor by animateColorAsState(
-        targetValue = if (isOn) activeColor.copy(alpha = 0.5f) else inactiveBorderColor,
+        targetValue = if (isOn) activeColor else offBorderColor,
         animationSpec = tween(350),
         label = "pumpBorder"
     )
+    // Chữ nhãn luôn dùng màu accent dễ đọc (không dùng màu nền đậm)
+    val labelColor by animateColorAsState(
+        targetValue = if (isOn) activeColor else offBorderColor,
+        animationSpec = tween(350),
+        label = "pumpLabel"
+    )
     val iconColor by animateColorAsState(
-        targetValue = if (isOn) Color.White else DimText,
+        targetValue = Color.White,
         animationSpec = tween(350),
         label = "pumpIcon"
     )
@@ -80,59 +88,77 @@ fun PumpControlButton(
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // ── Outer halo ring ──
         Box(
-            modifier = Modifier
-                .size(144.dp)
-                .scale(buttonScale)
-                .shadow(
-                    elevation = if (isOn) 24.dp else 8.dp,
-                    shape = CircleShape,
-                    ambientColor = if (isOn) activeColor else Color.Black,
-                    spotColor = if (isOn) activeColor else Color.Black.copy(alpha = 0.2f)
-                )
-                .clip(CircleShape)
-                .background(bgColor)
-                .background(Color.White.copy(alpha = 0.2f),
-
-                )
-                .border(
-                    border = BorderStroke(2.dp, borderColor),
-                    shape = CircleShape
-                )
-                .clickable(
-                    enabled = enabled && !isLoading,
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onClick
-                ),
+            modifier = Modifier.size(156.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(40.dp),
-                    color = iconColor,
-                    strokeWidth = 5.dp
+            Box(
+                modifier = Modifier
+                    .size(156.dp)
+                    .clip(CircleShape)
+                    .background(bgColor.copy(alpha = 0.12f))
+            )
+
+            // ── Main disc: colored glow shadow + double border ──
+            Box(
+                modifier = Modifier
+                    .size(144.dp)
+                    .scale(buttonScale)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = CircleShape,
+                        ambientColor = bgColor,
+                        spotColor = bgColor
+                    )
+                    .clip(CircleShape)
+                    .background(bgColor)
+                    .border(BorderStroke(3.dp, borderColor), CircleShape)
+                    .border(BorderStroke(8.dp, borderColor.copy(alpha = 0.25f)), CircleShape)
+                    .clickable(
+                        enabled = enabled && !isLoading,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // Top-light sheen for a raised, glossy look
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f))
                 )
-            } else {
-                Icon(
-                    imageVector = if (isOn) Icons.Filled.Power else Icons.Filled.PowerOff,
-                    contentDescription = if (isOn) stringResource(R.string.pump_btn_turn_off_desc) else stringResource(R.string.pump_btn_turn_on_desc),
-                    tint = iconColor,
-                    modifier = Modifier.size(60.dp)
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(44.dp),
+                        color = Color.White,
+                        strokeWidth = 5.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (isOn) Icons.Filled.Power else Icons.Filled.PowerOff,
+                        contentDescription = if (isOn) stringResource(R.string.pump_btn_turn_off_desc)
+                        else stringResource(R.string.pump_btn_turn_on_desc),
+                        tint = Color.White,
+                        modifier = Modifier.size(64.dp)
+                    )
+                }
             }
         }
+
         Text(
             text = when {
                 isLoading -> stringResource(R.string.pump_btn_processing)
                 isOn -> stringResource(R.string.pump_btn_turn_off_relay)
                 else -> stringResource(R.string.pump_btn_turn_on_relay)
             },
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            color = if (isOn) activeColor else DimText
+            color = labelColor
         )
     }
 }

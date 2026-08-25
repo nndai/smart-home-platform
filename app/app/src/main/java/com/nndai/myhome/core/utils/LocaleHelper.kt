@@ -10,9 +10,12 @@ object LocaleHelper {
     private const val PREFS_NAME = "locale_prefs"
     private const val KEY_LANG = "language_code"
 
+    /** Mặc định tiếng Việt cho tới khi user đổi trong Profile. */
+    private const val DEFAULT_LANG = "vi"
+
     fun getLanguageCode(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_LANG, "en") ?: "en"
+            .getString(KEY_LANG, DEFAULT_LANG) ?: DEFAULT_LANG
     }
 
     fun setLanguageCode(context: Context, langCode: String) {
