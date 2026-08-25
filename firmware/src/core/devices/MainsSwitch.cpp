@@ -24,10 +24,10 @@ void MainsSwitch::begin(int relayPin, int triacGatePin,
     // Auto-select the mode from the elements that are actually wired.
     if (_relayPin >= 0 && _triacPin >= 0) {
         _mode = Mode::HYBRID;
-    } else if (_relayPin >= 0) {
-        _mode = Mode::RELAY;
-    } else {
+    } else if (_triacPin >= 0) {
         _mode = Mode::TRIAC;
+    } else {
+        _mode = Mode::RELAY;
     }
 
     _on = false;

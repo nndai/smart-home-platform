@@ -98,30 +98,8 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
     }
 
     // Nhiều controller (app, remote switch...) ký cùng controlKey nhưng giữ seq
-    // riêng → tìm/ tạo floor riêng cho từng sender ("" = legacy sender thiếu src).
+    // riêng → floor riêng cho từng sender ("" = legacy sender thiếu src).
     const char* src = cmd["src"] | "";
-    SeqEntry* entry = nullptr;
-    for (uint8_t i = 0; i < _seqCount; i++) {
-        if (strcmp(_seqTable[i].src, src) == 0) {
-            entry = &_seqTable[i];
-            break;
-        }
-    }
-    if (!entry) {
-        if (_seqCount >= MAX_SEQ_ENTRIES) {
-            LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
-            return false;
-        }
-        entry = &_seqTable[_seqCount++];
-        strlcpy(entry->src, src, sizeof(entry->src));
-        entry->seq = 0;
-    }
-
-    // Replay: seq phải lớn hơn seq cuối đã duyệt của SENDER này.
-    if (seq <= entry->seq) {
-        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src);
-        return false;
-    }
 
     // Lệch giờ: chỉ kiểm tra khi đã đồng bộ NTP (now != 0).
     if (_log->isTimeSynced()) {
@@ -152,6 +130,38 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
     }
     if (strcmp(expectedHex, hmacHex) != 0) {
         LT_EM(CMD, "Envelope: hmac mismatch (cmd=%s)", cmd["cmd"].as<const char*>());
+        return false;
+    }
+
+    // ── HMAC hợp lệ mới được phép thay đổi bảng seq ──
+    // Nếu cấp slot trước verify, kẻ spam (có credential MQTT shared nhưng
+    // không có controlKey) có thể lấp đầy MAX_SEQ_ENTRIES bằng src giả →
+    // DoS khóa cả sender chính chủ tới khi reboot.
+
+    SeqEntry* entry = nullptr;
+    for (uint8_t i = 0; i < _seqCount; i++) {
+        if (strcmp(_seqTable[i].src, src) == 0) {
+            entry = &_seqTable[i];
+            break;
+        }
+    }
+    if (!entry) {
+        if (_seqCount >= MAX_SEQ_ENTRIES) {
+            LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
+            return false;
+        }
+        if (strlen(src) >= sizeof(entry->src)) {
+            LT_EM(CMD, "Envelope: src too long");
+            return false;
+        }
+        entry = &_seqTable[_seqCount++];
+        strlcpy(entry->src, src, sizeof(entry->src));
+        entry->seq = 0;
+    }
+
+    // Replay: seq phải lớn hơn seq cuối đã duyệt của SENDER này.
+    if (seq <= entry->seq) {
+        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src);
         return false;
     }
 
