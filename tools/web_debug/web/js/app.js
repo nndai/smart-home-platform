@@ -11,6 +11,7 @@ const app = {
   debugInfo: null,
   dashboard: null,
   _currentTab: 'dashboard',
+  _buildTargets: [],
 
   init() {
     this._logger = new Logger();
@@ -26,6 +27,9 @@ const app = {
       if (!connected) {
         this._onConnectionChange(false); // If bridge dies
       } else {
+        // Tự động quét build targets ngay khi bridge kết nối
+        this.scanBuildTargets();
+
         // Python Bridge connected. Auto-connect to MCU!
         if (this._autoConnectToDevice && !this._bridgeConnected) {
           this._doConnectToDevice();
@@ -56,7 +60,6 @@ const app = {
     const mqttTopicPub = localStorage.getItem('rp_mqtt_topic_pub');
     const mqttTopicSub = localStorage.getItem('rp_mqtt_topic_sub');
     const mqttTopicOta = localStorage.getItem('rp_mqtt_topic_ota');
-    const fwPath = localStorage.getItem('rp_fw_path');
 
     if (protocol) {
       const radio = document.querySelector(`input[name="protocol"][value="${protocol}"]`);
@@ -70,10 +73,9 @@ const app = {
     if (mqttTopicPub) Utils.$('mqtt-topic-pub').value = mqttTopicPub;
     if (mqttTopicSub) Utils.$('mqtt-topic-sub').value = mqttTopicSub;
     if (mqttTopicOta && Utils.$('mqtt-topic-ota')) Utils.$('mqtt-topic-ota').value = mqttTopicOta;
-    if (fwPath) Utils.$('fw-path').value = fwPath;
 
     // Attach listeners to save on change
-    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota', 'fw-path'];
+    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota'];
     inputs.forEach(id => {
       const el = Utils.$(id);
       if (el) {
@@ -93,7 +95,6 @@ const app = {
     localStorage.setItem('rp_mqtt_topic_pub', Utils.$('mqtt-topic-pub').value);
     localStorage.setItem('rp_mqtt_topic_sub', Utils.$('mqtt-topic-sub').value);
     if (Utils.$('mqtt-topic-ota')) localStorage.setItem('rp_mqtt_topic_ota', Utils.$('mqtt-topic-ota').value);
-    localStorage.setItem('rp_fw_path', Utils.$('fw-path').value);
   },
 
   updateSettingsUI() {
@@ -254,6 +255,7 @@ const app = {
 
         if (cmd === 'bridgeConnected') {
           this._onConnectionChange(true);
+          this.scanBuildTargets();
           const protocol = document.querySelector('input[name="protocol"]:checked').value;
           if (protocol === 'mqtt') {
             this._sendRaw(JSON.stringify({cmd: 'setLogMqtt', payload: {enabled: true}}));
@@ -262,6 +264,11 @@ const app = {
         }
         if (cmd === 'bridgeDisconnected') {
           this._onConnectionChange(false);
+          return;
+        }
+
+        if (cmd === 'bridgeBuildTargets') {
+          this.handleBuildTargets(data);
           return;
         }
 
@@ -416,6 +423,109 @@ const app = {
     this._logger.clear();
   },
 
+  // ── Firmware Build Targets ──
+
+  scanBuildTargets() {
+    if (this._wsManager && this._wsManager.connected) {
+      const scanBtn = Utils.$('btn-scan-fw');
+      if (scanBtn) {
+        const icon = scanBtn.querySelector('i');
+        if (icon) icon.classList.add('animate-spin');
+        setTimeout(() => { if (icon) icon.classList.remove('animate-spin'); }, 600);
+      }
+      this._sendRaw(JSON.stringify({ cmd: 'bridgeScanBuildTargets' }));
+    }
+  },
+
+  handleBuildTargets(data) {
+    this._buildTargets = data.targets || [];
+    const select = Utils.$('fw-target-select');
+    const badge = Utils.$('fw-build-dir-badge');
+    if (badge && data.buildDir) {
+      badge.textContent = data.buildDir;
+    }
+
+    if (!select) return;
+
+    select.innerHTML = '';
+    if (this._buildTargets.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No build targets found (build project first)';
+      opt.disabled = true;
+      opt.selected = true;
+      select.appendChild(opt);
+      this.updateFirmwareInfoCard(null);
+      return;
+    }
+
+    const savedTarget = localStorage.getItem('rp_fw_target');
+    let selectedIdx = 0;
+
+    this._buildTargets.forEach((target, idx) => {
+      const opt = document.createElement('option');
+      opt.value = target.name;
+      const sizeStr = target.exists ? Utils.formatBytes(target.size) : 'not found';
+      opt.textContent = `${target.name} [${target.file} • ${sizeStr}]`;
+      select.appendChild(opt);
+
+      if (savedTarget && target.name === savedTarget) {
+        selectedIdx = idx;
+      }
+    });
+
+    select.selectedIndex = selectedIdx;
+    this.onTargetSelected(this._buildTargets[selectedIdx].name);
+    if (window.lucide) lucide.createIcons();
+  },
+
+  onTargetSelected(targetName) {
+    if (!targetName) return;
+    localStorage.setItem('rp_fw_target', targetName);
+    const target = (this._buildTargets || []).find(t => t.name === targetName);
+    this.updateFirmwareInfoCard(target);
+  },
+
+  updateFirmwareInfoCard(target) {
+    const nameEl = Utils.$('fw-info-filename');
+    const statusEl = Utils.$('fw-info-status');
+    const sizeEl = Utils.$('fw-info-size');
+    const mtimeEl = Utils.$('fw-info-mtime');
+    const pathEl = Utils.$('fw-info-path');
+
+    if (!target) {
+      if (nameEl) nameEl.textContent = 'firmware.bin';
+      if (statusEl) {
+        statusEl.textContent = 'Not Found';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
+      }
+      if (sizeEl) sizeEl.textContent = '-';
+      if (mtimeEl) mtimeEl.textContent = '-';
+      if (pathEl) pathEl.textContent = 'No build target selected';
+      return;
+    }
+
+    if (nameEl) nameEl.textContent = target.file || 'firmware.bin';
+    if (statusEl) {
+      if (target.exists) {
+        statusEl.textContent = 'Ready';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+      } else {
+        statusEl.textContent = 'Missing .bin';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20';
+      }
+    }
+    if (sizeEl) sizeEl.textContent = target.exists ? Utils.formatBytes(target.size) : '0 B';
+    if (mtimeEl) mtimeEl.textContent = target.exists ? target.mtimeStr : 'Not built yet';
+    if (pathEl) pathEl.textContent = target.relPath || target.path || '';
+  },
+
+  getSelectedBuildTarget() {
+    const select = Utils.$('fw-target-select');
+    if (!select || !select.value) return null;
+    return (this._buildTargets || []).find(t => t.name === select.value) || null;
+  },
+
   // ── Upload ──
 
   startUpload() {
@@ -424,11 +534,13 @@ const app = {
       return;
     }
 
-    const fwPath = Utils.$('fw-path').value.trim();
-    if (fwPath) {
-      this._uploader.startLocalUpload(fwPath);
+    const target = this.getSelectedBuildTarget();
+    if (target && target.exists && target.path) {
+      this._uploader.startLocalUpload(target.path);
+    } else if (target && !target.exists) {
+      Utils.toast('error', `Firmware file not found in ${target.name}. Please compile with PlatformIO first.`);
     } else {
-      // Create file input to pick firmware
+      // Fallback: create file input to pick firmware manually
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.uf2,.bin,.hex';

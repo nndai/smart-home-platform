@@ -351,18 +351,97 @@ class BridgeManager:
             except:
                 pass
 
+def get_build_targets():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(base_dir, "..", ".."))
+    
+    candidates = [
+        os.path.join(project_root, "firmware", ".pio", "build"),
+        os.path.join(project_root, ".pio", "build")
+    ]
+    
+    build_dir = None
+    for cand in candidates:
+        if os.path.isdir(cand):
+            build_dir = cand
+            break
+            
+    if not build_dir:
+        build_dir = candidates[0]
+
+    targets = []
+    if os.path.isdir(build_dir):
+        for entry in sorted(os.listdir(build_dir)):
+            sub_path = os.path.join(build_dir, entry)
+            if os.path.isdir(sub_path) and not entry.startswith('.'):
+                bin_path = os.path.join(sub_path, "firmware.bin")
+                uf2_path = os.path.join(sub_path, "firmware.uf2")
+                
+                fw_file = None
+                fw_path = None
+                
+                if os.path.exists(bin_path):
+                    fw_file = "firmware.bin"
+                    fw_path = bin_path
+                elif os.path.exists(uf2_path):
+                    fw_file = "firmware.uf2"
+                    fw_path = uf2_path
+                
+                if fw_path and os.path.exists(fw_path):
+                    st = os.stat(fw_path)
+                    size = st.st_size
+                    mtime = st.st_mtime
+                    mtime_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+                    targets.append({
+                        "name": entry,
+                        "file": fw_file,
+                        "path": fw_path.replace("\\", "/"),
+                        "relPath": os.path.relpath(fw_path, project_root).replace("\\", "/"),
+                        "size": size,
+                        "mtime": mtime,
+                        "mtimeStr": mtime_str,
+                        "exists": True
+                    })
+                else:
+                    targets.append({
+                        "name": entry,
+                        "file": "firmware.bin",
+                        "path": bin_path.replace("\\", "/"),
+                        "relPath": os.path.relpath(bin_path, project_root).replace("\\", "/"),
+                        "size": 0,
+                        "mtime": 0,
+                        "mtimeStr": "N/A",
+                        "exists": False
+                    })
+                    
+    rel_build_dir = os.path.relpath(build_dir, project_root).replace("\\", "/") if os.path.exists(build_dir) else "firmware/.pio/build"
+    return {
+        "cmd": "bridgeBuildTargets",
+        "buildDir": rel_build_dir,
+        "targets": targets
+    }
+
 bridge = BridgeManager()
 
 async def handle_web_client(ws_client, path=None):
     web_clients.add(ws_client)
     print("[WEB] Trình duyệt Web vừa kết nối tới Bridge")
     try:
+        # Tự động gửi danh sách build targets khi client vừa kết nối
+        try:
+            await ws_client.send(json.dumps(get_build_targets()))
+        except Exception:
+            pass
+
         async for message in ws_client:
             # 1. Xử lý lệnh điều khiển Bridge từ Web UI (dạng JSON string)
             if isinstance(message, str):
                 try:
                     data = json.loads(message)
-                    if data.get("cmd") == "bridgeConnect":
+                    if data.get("cmd") == "bridgeScanBuildTargets":
+                        await ws_client.send(json.dumps(get_build_targets()))
+                        continue
+                    elif data.get("cmd") == "bridgeConnect":
                         await ws_client.send(json.dumps({"cmd": "log", "msg": f"[DEVICE] Đang kết nối tới {data['url']}..."}))
                         bridge.connect(data["url"])
                         continue

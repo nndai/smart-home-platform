@@ -410,18 +410,51 @@
           </div>
         </div>
 
-        <!-- System Settings -->
+        <!-- Firmware Target Settings -->
         <div class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4 flex flex-col gap-3 mb-4">
-          <h3 class="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
-            <i data-lucide="cpu" class="w-4 h-4 text-accent"></i> System
-          </h3>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs text-gray-500">Firmware Path (.uf2 / .bin)</label>
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <i data-lucide="cpu" class="w-4 h-4 text-accent"></i> Firmware Target (.pio/build)
+            </h3>
+            <button id="btn-scan-fw" onclick="app.scanBuildTargets()"
+                    class="px-2.5 py-1 text-xs font-medium rounded-lg bg-surface-800 border border-white/10 text-gray-300 hover:text-white hover:border-accent/40 hover:bg-accent/10 transition-all flex items-center gap-1.5 active:scale-95"
+                    title="Scan .pio/build folder for build targets">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span>Rescan</span>
+            </button>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-gray-500 flex items-center justify-between">
+              <span>Select Build Target</span>
+              <span id="fw-build-dir-badge" class="font-mono text-[11px] text-gray-400"></span>
+            </label>
+            
             <div class="relative">
-              <i data-lucide="file-code" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"></i>
-              <input id="fw-path" type="text" value="D:/projects/RemotePumpLN882H/.pio/build/generic-ln882h/firmware.uf2"
-                     placeholder="D:/path/to/firmware.uf2"
-                     class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+              <i data-lucide="folder-code" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+              <select id="fw-target-select" onchange="app.onTargetSelected(this.value)"
+                      class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm font-mono text-gray-200 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all appearance-none cursor-pointer">
+                <option value="" disabled selected>Scanning targets...</option>
+              </select>
+              <i data-lucide="chevron-down" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+            </div>
+
+            <!-- Selected Firmware Card / Details -->
+            <div id="fw-info-card" class="bg-surface-800/80 border border-white/5 rounded-lg p-3 flex flex-col gap-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-300 font-medium flex items-center gap-1.5">
+                  <i data-lucide="file-check" class="w-3.5 h-3.5 text-accent"></i>
+                  <span id="fw-info-filename">firmware.bin</span>
+                </span>
+                <span id="fw-info-status" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Ready</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-gray-400 font-mono text-[11px]">
+                <div>Size: <span id="fw-info-size" class="text-gray-200">-</span></div>
+                <div>Built: <span id="fw-info-mtime" class="text-gray-200">-</span></div>
+              </div>
+              <div class="text-[11px] font-mono text-gray-500 break-all bg-surface-900/60 p-1.5 rounded border border-white/5" id="fw-info-path">
+                No firmware selected
+              </div>
             </div>
           </div>
         </div>
@@ -481,14 +514,14 @@
   <div id="toast-container" class="fixed top-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"></div>
 
   <!-- JS Modules -->
-  <script src="js/utils.js?v=5"></script>
-  <script src="js/websocket.js?v=5"></script>
-  <script src="js/logger.js?v=5"></script>
-  <script src="js/file-browser.js?v=5"></script>
-  <script src="js/debug-info.js?v=5"></script>
-  <script src="js/uploader.js?v=5"></script>
-  <script src="js/dashboard.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/utils.js?v=6"></script>
+  <script src="js/websocket.js?v=6"></script>
+  <script src="js/logger.js?v=6"></script>
+  <script src="js/file-browser.js?v=6"></script>
+  <script src="js/debug-info.js?v=6"></script>
+  <script src="js/uploader.js?v=6"></script>
+  <script src="js/dashboard.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
   <script>
     lucide.createIcons();
   </script>
