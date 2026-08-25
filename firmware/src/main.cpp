@@ -285,7 +285,7 @@ uint32_t taskWifiConnect_cb() {
         break;
     }
 
-    WiFi.setSleep(true);
+    compat::wifiConfigureSleep();
     return TASK_DELETE;
 }
 

@@ -12,6 +12,8 @@ public:
     using MessageCallback = std::function<void(const String& topic, const String& payload)>;
 
     MqttClient();
+    ~MqttClient();
+
     bool begin(const char* server, uint16_t port,
                const char* user, const char* pass,
                const char* clientId, const char* topic);
@@ -30,12 +32,12 @@ public:
 
 private:
     std::vector<String> _extraTopics;
-    WiFiClient _wifiClient;
-    WiFiClientSecure _wifiClientTls;
+    WiFiClient* _wifiClient = nullptr;
+    WiFiClientSecure* _wifiClientTls = nullptr;
     bool _useTls = false;
-    PubSubClient _mqtt;
+    PubSubClient* _mqtt = nullptr;
     String _server;
-    uint16_t _port;
+    uint16_t _port = 0;
     String _user;
     String _pass;
     String _clientId;
@@ -43,5 +45,6 @@ private:
     MessageCallback _callback;
     unsigned long _lastReconnect = 0;
 
+    void _cleanup();
     static void _onMessage(char* topic, uint8_t* payload, unsigned int len);
 };

@@ -6,28 +6,65 @@
 static MqttClient* s_instance = nullptr;
 
 MqttClient::MqttClient()
-    : _mqtt(_wifiClient)
+    : _wifiClient(nullptr)
+    , _wifiClientTls(nullptr)
+    , _useTls(false)
+    , _mqtt(nullptr)
     , _port(DEFAULT_MQTT_PORT)
     , _lastReconnect(0)
 {
-    _mqtt.setBufferSize(MQTT_BUFFER_SIZE);
-    compat::setTlsBufferSize(_wifiClientTls, MQTT_BUFFER_SIZE);
-    _mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
-    _mqtt.setCallback(_onMessage);
     s_instance = this;
+}
+
+MqttClient::~MqttClient() {
+    _cleanup();
+}
+
+void MqttClient::_cleanup() {
+    if (_mqtt) {
+        delete _mqtt;
+        _mqtt = nullptr;
+    }
+    if (_wifiClientTls) {
+        delete _wifiClientTls;
+        _wifiClientTls = nullptr;
+    }
+    if (_wifiClient) {
+        delete _wifiClient;
+        _wifiClient = nullptr;
+    }
 }
 
 bool MqttClient::begin(const char* server, uint16_t port,
                        const char* user, const char* pass,
                        const char* clientId, const char* topic) {
-    _server = server;
+    _server = server ? server : "";
     _port = port;
     _user = user ? user : "";
     _pass = pass ? pass : "";
     _clientId = clientId ? clientId : "unknown_client";
     _topic = topic ? topic : "pump";
     _useTls = (port != DEFAULT_MQTT_PORT);
-    _mqtt.setServer(server, port);
+
+    // Free previous instances if re-initializing
+    _cleanup();
+
+    // Allocate network client based on TLS setting
+    if (_useTls) {
+        _wifiClientTls = new WiFiClientSecure();
+        compat::setTlsBufferSize(*_wifiClientTls, MQTT_BUFFER_SIZE);
+        _wifiClientTls->setInsecure();
+        _mqtt = new PubSubClient(*_wifiClientTls);
+    } else {
+        _wifiClient = new WiFiClient();
+        _mqtt = new PubSubClient(*_wifiClient);
+    }
+
+    _mqtt->setServer(server, port);
+    _mqtt->setBufferSize(MQTT_BUFFER_SIZE);
+    _mqtt->setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
+    _mqtt->setCallback(_onMessage);
+
     return true;
 }
 
@@ -37,71 +74,72 @@ void MqttClient::setCallback(MessageCallback cb) {
 
 bool MqttClient::connect() {
     if (isConnected()) return true;
+    if (!_mqtt) return false;
 
     _lastReconnect = millis();
 
     if (!_useTls) {
-        _mqtt.setClient(_wifiClient);
-        bool ok = _mqtt.connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
+        if (_wifiClient) {
+            _mqtt->setClient(*_wifiClient);
+        }
+        bool ok = _mqtt->connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
         if (ok) {
-            _mqtt.subscribe((_topic + "/cmd").c_str());
-            _mqtt.subscribe((_topic + "/otachunk").c_str());
+            _mqtt->subscribe((_topic + "/cmd").c_str());
+            _mqtt->subscribe((_topic + "/otachunk").c_str());
             resubscribeExtra();
         }
         return ok;
     }
 
-    // Free SSL context, then close TCP and clear _connected
-    compat::tlsReset(_wifiClientTls);
-    _wifiClientTls.setInsecure();
-    _mqtt.setClient(_wifiClientTls);
+    if (_wifiClientTls) {
+        // Free SSL context, then close TCP and clear _connected
+        compat::tlsReset(*_wifiClientTls);
+        _wifiClientTls->setInsecure();
+        _mqtt->setClient(*_wifiClientTls);
+    }
 
-    bool ok = _mqtt.connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
+    bool ok = _mqtt->connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
     if (ok) {
-        _mqtt.subscribe((_topic + "/cmd").c_str());
-        _mqtt.subscribe((_topic + "/otachunk").c_str());
+        _mqtt->subscribe((_topic + "/cmd").c_str());
+        _mqtt->subscribe((_topic + "/otachunk").c_str());
         resubscribeExtra();
     }
     return ok;
 }
 
 void MqttClient::disconnect() {
-    _mqtt.disconnect();
+    if (_mqtt) {
+        _mqtt->disconnect();
+    }
 }
 
 bool MqttClient::publish(const String& topic, const String& payload, bool retained) {
-    if (!isConnected()) {
+    if (!isConnected() || !_mqtt) {
         return false;
     }
-    return _mqtt.publish(topic.c_str(), payload.c_str(), retained);
+    return _mqtt->publish(topic.c_str(), payload.c_str(), retained);
 }
 
 bool MqttClient::subscribe(const String& topic) {
-    if (!isConnected()) {
+    if (!isConnected() || !_mqtt) {
         return false;
     }
-    return _mqtt.subscribe(topic.c_str());
+    return _mqtt->subscribe(topic.c_str());
 }
 
 bool MqttClient::loop() {
+    if (!_mqtt) return false;
+
     if (!isConnected()) {
         if (millis() - _lastReconnect > MQTT_RECONNECT_INTERVAL_MS) return connect();
         return false;
     }
 
-    if (_useTls) {
-        int avail = _wifiClientTls.available();
-        if (avail < 0) {
-            compat::tlsReset(_wifiClientTls);
-            return false;
-        }
-    }
-
-    return _mqtt.loop();
+    return _mqtt->loop();
 }
 
 bool MqttClient::isConnected() {
-    return _mqtt.state() == MQTT_CONNECTED;
+    return _mqtt && (_mqtt->state() == MQTT_CONNECTED);
 }
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
@@ -122,14 +160,15 @@ void MqttClient::subscribeExtra(const String& topic) {
     if (_extraTopics.size() < 16) {
         _extraTopics.push_back(topic);
     }
-    if (isConnected()) {
-        _mqtt.subscribe(topic.c_str());
+    if (isConnected() && _mqtt) {
+        _mqtt->subscribe(topic.c_str());
     }
 }
 
 void MqttClient::resubscribeExtra() {
+    if (!_mqtt) return;
     for (const auto& t : _extraTopics) {
-        _mqtt.subscribe(t.c_str());
+        _mqtt->subscribe(t.c_str());
     }
 }
 
