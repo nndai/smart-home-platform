@@ -19,5 +19,19 @@ inline void setTlsBufferSize(WiFiClientSecure& client, size_t size) {
 #endif
 }
 
+inline bool tlsCheckHealth(WiFiClientSecure* client) {
+#if defined(LT_ARD_HAS_SERIAL)
+    if (client) {
+        int avail = client->available();
+        if (avail < 0) {
+            tlsReset(*client);
+            return false;
+        }
+    }
+#else
+    (void)client;
+#endif
+    return true;
+}
 
 }

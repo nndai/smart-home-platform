@@ -135,11 +135,15 @@ bool MqttClient::loop() {
         return false;
     }
 
+    if (_useTls && !compat::tlsCheckHealth(_wifiClientTls)) {
+        return false;
+    }
+
     return _mqtt->loop();
 }
 
 bool MqttClient::isConnected() {
-    return _mqtt && (_mqtt->state() == MQTT_CONNECTED);
+    return _mqtt && _mqtt->connected();
 }
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {

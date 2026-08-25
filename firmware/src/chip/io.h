@@ -20,4 +20,8 @@ uint32_t systemChipId();          // LT: ESP.getChipId(); ESP32: từ eFuse MAC
 String systemResetReason();       // LT: ESP.getResetReason(); ESP32: esp_reset_reason_str()
 size_t heapMinFree();             // LT: lt_heap_get_min_free(); ESP32: heap_caps minimum
 size_t heapMaxAlloc();            // LT: lt_heap_get_max_alloc(); ESP32: heap_caps largest free block
+
+// Flash
+uint32_t getFlashChipSpeed();
+uint8_t getFlashChipMode();
 }

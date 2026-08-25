@@ -39,6 +39,9 @@ class PumpRepository(
     private val _statusLatencyMs = MutableStateFlow<Long?>(null)
     val statusLatencyMs: StateFlow<Long?> = _statusLatencyMs.asStateFlow()
 
+    private val _isStatusStale = MutableStateFlow(false)
+    val isStatusStale: StateFlow<Boolean> = _isStatusStale.asStateFlow()
+
     private val _deviceConfig = MutableStateFlow<DeviceConfig?>(null)
     val deviceConfig: StateFlow<DeviceConfig?> = _deviceConfig.asStateFlow()
 
@@ -99,6 +102,7 @@ class PumpRepository(
                             _statusLatencyMs.value = now - lastStatusReceivedTime
                         }
                         lastStatusReceivedTime = now
+                        _isStatusStale.value = false
                         _pumpStatus.value = event.status
                     }
                     is PumpCommandEvent.ConfigUpdate -> _deviceConfig.value = event.config
@@ -122,6 +126,21 @@ class PumpRepository(
             }
         }
 
+        // Ticker kiểm tra độ trễ nhận getStatus (mỗi 1s):
+        // Nếu quá 3s (>3000ms) không nhận được getStatus thì cập nhật ms tăng dần và bật cờ isStatusStale
+        scope.launch {
+            while (isActive) {
+                delay(1000L)
+                if (channel.state.value is ConnectionState.Connected && lastStatusReceivedTime > 0L) {
+                    val elapsed = System.currentTimeMillis() - lastStatusReceivedTime
+                    if (elapsed > 3000L) {
+                        _statusLatencyMs.value = elapsed
+                        _isStatusStale.value = true
+                    }
+                }
+            }
+        }
+
         // When transport reconnects, renew active stream subscriptions if any
         scope.launch {
             connectionState.collectLatest { state ->
@@ -136,6 +155,7 @@ class PumpRepository(
                 } else {
                     lastStatusReceivedTime = 0L
                     _statusLatencyMs.value = null
+                    _isStatusStale.value = false
                 }
             }
         }
@@ -342,6 +362,7 @@ class PumpRepository(
         stopAllStreams()
         lastStatusReceivedTime = 0L
         _statusLatencyMs.value = null
+        _isStatusStale.value = false
         _pumpStatus.value = null
         _deviceConfig.value = null
         _deviceInfo.value = null

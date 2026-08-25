@@ -793,6 +793,8 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
         s["flashSize"] = ESP.getFlashChipSize();
         s["fsTotal"] = (unsigned long)compat::fsTotalBytes();
         s["fsUsed"] = (unsigned long)compat::fsUsedBytes();
+        s["flashMode"] = chip::getFlashChipMode();
+        s["flashSpeed"] = chip::getFlashChipSpeed();
     }
 
     if (has("pump")) {

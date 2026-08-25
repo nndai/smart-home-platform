@@ -1,4 +1,4 @@
-﻿package com.nndai.myhome.presentation.device
+package com.nndai.myhome.presentation.device
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -100,6 +100,7 @@ fun DeviceDetailScreen(
     val connectionState by repository.connectionState.collectAsStateWithLifecycle()
     val pumpStatus by repository.pumpStatus.collectAsStateWithLifecycle()
     val statusLatencyMs by repository.statusLatencyMs.collectAsStateWithLifecycle()
+    val isStatusStale by repository.isStatusStale.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val deviceManager = remember { deviceRepository ?: DeviceManagerRepository(context.applicationContext) }
@@ -242,7 +243,8 @@ fun DeviceDetailScreen(
                 },
                 actions = {
                     // RSSI Signal (dBm) [Top] + Latency (ms) [Bottom] Right-Aligned Stacked Pill
-                    val pillColor = if (isConnected) CyanBlue else RedError
+                    val isStale = isConnected && isStatusStale
+                    val pillColor = if (isConnected && !isStale) CyanBlue else RedError
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = pillColor.copy(alpha = 0.12f),
@@ -263,7 +265,7 @@ fun DeviceDetailScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.Wifi,
                                         contentDescription = null,
-                                        tint = CyanBlue,
+                                        tint = if (isStale) RedError else CyanBlue,
                                         modifier = Modifier.size(11.dp)
                                     )
                                     Text(
@@ -271,7 +273,7 @@ fun DeviceDetailScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = CyanBlue
+                                        color = if (isStale) RedError else CyanBlue
                                     )
                                 }
                             }
@@ -282,7 +284,7 @@ fun DeviceDetailScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (!isConnected) RedError else CyanBlue
+                                color = if (!isConnected || isStale) RedError else CyanBlue
                             )
                         }
                     }

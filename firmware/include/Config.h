@@ -56,7 +56,7 @@
 // ── MQTT ──
 #define DEFAULT_MQTT_PORT          1883
 #define DEFAULT_MQTT_TOPIC         "pump"
-#define MQTT_SOCKET_TIMEOUT_SEC    7
+#define MQTT_SOCKET_TIMEOUT_SEC    5
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
 
 #if defined(ARDUINO_ARCH_ESP8266)
