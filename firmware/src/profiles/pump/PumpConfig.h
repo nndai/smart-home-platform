@@ -4,11 +4,11 @@
 
 // ── Config riêng của profile PUMP ──
 struct PumpConfig : public DeviceConfig {
-    // ── Pump protection thresholds (mA) ──
-    uint16_t threshOff = DEFAULT_THRESH_OFF;
-    uint16_t threshNoWater = DEFAULT_THRESH_NO_WATER;
-    uint16_t threshRunning = DEFAULT_THRESH_RUNNING;
-    uint16_t threshOverload = DEFAULT_THRESH_OVERLOAD;
+    // ── Pump protection thresholds (W for power check, mA for overload) ──
+    uint16_t threshOff = DEFAULT_THRESH_OFF;            // W
+    uint16_t threshNoWater = DEFAULT_THRESH_NO_WATER;   // W
+    uint16_t threshRunning = DEFAULT_THRESH_RUNNING;    // W
+    uint16_t threshOverload = DEFAULT_THRESH_OVERLOAD;  // mA
 
     // ── Pump protection timeouts (ms) ──
     uint16_t dryTimeout = DEFAULT_NO_WATER_TIMEOUT;

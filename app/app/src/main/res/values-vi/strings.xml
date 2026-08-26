@@ -209,7 +209,7 @@
     <string name="settings_label_dry_run">Khô nước</string>
     <string name="settings_label_running">Đang chạy</string>
     <string name="settings_label_overload">Quá tải</string>
-    <string name="settings_protection_thresholds">Ngưỡng bảo vệ (mA)</string>
+    <string name="settings_protection_thresholds">Ngưỡng bảo vệ (W / mA)</string>
     <string name="settings_timeouts">Thời gian chờ (ms)</string>
     <string name="settings_relay_startup_mode">Chế độ khởi động Relay</string>
     <string name="settings_relay_off">OFF</string>
@@ -226,9 +226,9 @@
     <string name="settings_label_power">Công suất</string>
     <string name="settings_label_dry_run_timeout">Thời gian chờ khô</string>
     <string name="settings_label_overload_timeout">Thời gian chờ quá tải</string>
-    <string name="settings_display_off_threshold">Ngưỡng Tắt (mA)</string>
-    <string name="settings_display_dry_threshold">Ngưỡng Khô nước (mA)</string>
-    <string name="settings_display_running_threshold">Ngưỡng Đang chạy (mA)</string>
+    <string name="settings_display_off_threshold">Ngưỡng Tắt (W)</string>
+    <string name="settings_display_dry_threshold">Ngưỡng Khô nước (W)</string>
+    <string name="settings_display_running_threshold">Ngưỡng Đang chạy (W)</string>
     <string name="settings_display_overload_threshold">Ngưỡng Quá tải (mA)</string>
     <string name="settings_display_dry_timeout">Thời gian chờ Khô (ms)</string>
     <string name="settings_display_overload_timeout">Thời gian chờ Quá tải (ms)</string>
@@ -253,7 +253,7 @@
     <string name="settings_wifi_pass_length">Mật khẩu Wi-Fi phải từ 8 đến 64 ký tự</string>
     <string name="settings_ap_pass_length">Mật khẩu AP phải từ 8 đến 64 ký tự</string>
     <string name="settings_debug_pass_length">Mật khẩu Debug phải từ 8 đến 64 ký tự</string>
-    <string name="settings_threshold_order">Ngưỡng dòng phải theo thứ tự: Off &lt; Dry Run &lt; Running &lt; Overload</string>
+    <string name="settings_threshold_order">Ngưỡng công suất phải theo thứ tự: Tắt &lt; Cạn nước &lt; Đang chạy</string>
     <string name="settings_timeout_positive">Thời gian Timeout phải lớn hơn 0</string>
     <string name="settings_enter_real_values">Vui lòng nhập ít nhất một giá trị thực tế</string>
     <string name="settings_confirm_save_title">Xác nhận lưu %s</string>
@@ -608,10 +608,10 @@
     <string name="ps_manual_switch_label">CÔNG TẮT THƯỜNG</string>
     <string name="ps_pure_toggle_desc">Bật/tắt thuần túy</string>
     <string name="ps_thresholds_timeouts_section">Ngưỡng bảo vệ &amp; Thời gian ngắt</string>
-    <string name="ps_label_off_threshold_ma">Ngưỡng Tắt (mA)</string>
+    <string name="ps_label_off_threshold_w">Ngưỡng Tắt (W)</string>
     <string name="ps_label_overload_ma">Quá tải (mA)</string>
-    <string name="ps_label_dry_ma">Cạn nước (mA)</string>
-    <string name="ps_label_running_ma">Chạy bình thường (mA)</string>
+    <string name="ps_label_dry_w">Cạn nước (W)</string>
+    <string name="ps_label_running_w">Chạy bình thường (W)</string>
     <string name="ps_label_dry_timeout_ms">Timeout Cạn nước (ms)</string>
     <string name="ps_label_overload_timeout_ms">Timeout Quá tải (ms)</string>
     <string name="ps_label_display_name_off">Ngưỡng Tắt</string>

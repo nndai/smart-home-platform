@@ -209,7 +209,7 @@
     <string name="settings_label_dry_run">Dry Run</string>
     <string name="settings_label_running">Running</string>
     <string name="settings_label_overload">Overload</string>
-    <string name="settings_protection_thresholds">Protection Thresholds (mA)</string>
+    <string name="settings_protection_thresholds">Protection Thresholds (W / mA)</string>
     <string name="settings_timeouts">Timeouts (ms)</string>
     <string name="settings_relay_startup_mode">Relay Startup Mode</string>
     <string name="settings_relay_off">OFF</string>
@@ -226,9 +226,9 @@
     <string name="settings_label_power">Power</string>
     <string name="settings_label_dry_run_timeout">Dry Run Timeout</string>
     <string name="settings_label_overload_timeout">Overload Timeout</string>
-    <string name="settings_display_off_threshold">Off Threshold (mA)</string>
-    <string name="settings_display_dry_threshold">Dry Run Threshold (mA)</string>
-    <string name="settings_display_running_threshold">Running Threshold (mA)</string>
+    <string name="settings_display_off_threshold">Off Threshold (W)</string>
+    <string name="settings_display_dry_threshold">Dry Run Threshold (W)</string>
+    <string name="settings_display_running_threshold">Running Threshold (W)</string>
     <string name="settings_display_overload_threshold">Overload Threshold (mA)</string>
     <string name="settings_display_dry_timeout">Dry Run Timeout (ms)</string>
     <string name="settings_display_overload_timeout">Overload Timeout (ms)</string>
@@ -253,7 +253,7 @@
     <string name="settings_wifi_pass_length">WiFi password must be 8-64 characters</string>
     <string name="settings_ap_pass_length">AP password must be 8-64 characters</string>
     <string name="settings_debug_pass_length">Debug password must be 8-64 characters</string>
-    <string name="settings_threshold_order">Thresholds must follow: Off &lt; Dry Run &lt; Running &lt; Overload</string>
+    <string name="settings_threshold_order">Power thresholds must follow: Off &lt; Dry Run &lt; Running</string>
     <string name="settings_timeout_positive">Timeout must be greater than 0</string>
     <string name="settings_enter_real_values">Please enter at least one real value</string>
     <string name="settings_confirm_save_title">Confirm Save %s</string>
@@ -608,10 +608,10 @@
     <string name="ps_manual_switch_label">PLAIN SWITCH</string>
     <string name="ps_pure_toggle_desc">Pure on/off toggling</string>
     <string name="ps_thresholds_timeouts_section">Protection Thresholds &amp; Timeouts</string>
-    <string name="ps_label_off_threshold_ma">Off Threshold (mA)</string>
+    <string name="ps_label_off_threshold_w">Off Threshold (W)</string>
     <string name="ps_label_overload_ma">Overload (mA)</string>
-    <string name="ps_label_dry_ma">Dry Run (mA)</string>
-    <string name="ps_label_running_ma">Normal Running (mA)</string>
+    <string name="ps_label_dry_w">Dry Run (W)</string>
+    <string name="ps_label_running_w">Normal Running (W)</string>
     <string name="ps_label_dry_timeout_ms">Dry Run Timeout (ms)</string>
     <string name="ps_label_overload_timeout_ms">Overload Timeout (ms)</string>
     <string name="ps_label_display_name_off">Off Threshold</string>

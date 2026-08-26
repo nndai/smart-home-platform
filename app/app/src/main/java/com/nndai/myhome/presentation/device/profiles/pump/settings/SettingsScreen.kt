@@ -134,9 +134,9 @@ fun SettingsScreen(
 
     // Form states - Pump Specific
     var pumpMode by remember(config) { mutableStateOf(config?.pumpMode ?: true) }
-    var threshOff by remember(config) { mutableStateOf(config?.threshOff?.toString() ?: "100") }
-    var threshDry by remember(config) { mutableStateOf(config?.threshNoWater?.toString() ?: "2000") }
-    var threshRunning by remember(config) { mutableStateOf(config?.threshRunning?.toString() ?: "5000") }
+    var threshOff by remember(config) { mutableStateOf(config?.threshOff?.toString() ?: "10") }
+    var threshDry by remember(config) { mutableStateOf(config?.threshNoWater?.toString() ?: "300") }
+    var threshRunning by remember(config) { mutableStateOf(config?.threshRunning?.toString() ?: "750") }
     var threshOverload by remember(config) { mutableStateOf(config?.threshOverload?.toString() ?: "20000") }
     var dryTimeout by remember(config) { mutableStateOf(config?.dryTimeout?.toString() ?: "7000") }
     var overloadTimeout by remember(config) { mutableStateOf(config?.overloadTimeout?.toString() ?: "1000") }
@@ -203,9 +203,9 @@ fun SettingsScreen(
             onFieldFocusLost = { key, displayName, newValStr ->
                 val newInt = newValStr.toIntOrNull()
                 val oldInt = when(key) {
-                    "threshOff" -> config?.threshOff ?: 100
-                    "threshNoWater" -> config?.threshNoWater ?: 2000
-                    "threshRunning" -> config?.threshRunning ?: 5000
+                    "threshOff" -> config?.threshOff ?: 1
+                    "threshNoWater" -> config?.threshNoWater ?: 300
+                    "threshRunning" -> config?.threshRunning ?: 750
                     "threshOverload" -> config?.threshOverload ?: 20000
                     "dryTimeout" -> config?.dryTimeout ?: 7000
                     "overloadTimeout" -> config?.overloadTimeout ?: 1000
@@ -214,9 +214,9 @@ fun SettingsScreen(
 
                 val revertAction: () -> Unit = {
                     when(key) {
-                        "threshOff" -> threshOff = (config?.threshOff ?: 100).toString()
-                        "threshNoWater" -> threshDry = (config?.threshNoWater ?: 2000).toString()
-                        "threshRunning" -> threshRunning = (config?.threshRunning ?: 5000).toString()
+                        "threshOff" -> threshOff = (config?.threshOff ?: 1).toString()
+                        "threshNoWater" -> threshDry = (config?.threshNoWater ?: 400).toString()
+                        "threshRunning" -> threshRunning = (config?.threshRunning ?: 1000).toString()
                         "threshOverload" -> threshOverload = (config?.threshOverload ?: 20000).toString()
                         "dryTimeout" -> dryTimeout = (config?.dryTimeout ?: 7000).toString()
                         "overloadTimeout" -> overloadTimeout = (config?.overloadTimeout ?: 1000).toString()
@@ -226,15 +226,23 @@ fun SettingsScreen(
                 if (newInt != null && newInt != oldInt) {
                     var isValid = true
                     if (key.startsWith("thresh")) {
-                        val offVal = if (key == "threshOff") newInt else threshOff.toIntOrNull() ?: (config?.threshOff ?: 100)
-                        val dryVal = if (key == "threshNoWater") newInt else threshDry.toIntOrNull() ?: (config?.threshNoWater ?: 2000)
-                        val runningVal = if (key == "threshRunning") newInt else threshRunning.toIntOrNull() ?: (config?.threshRunning ?: 5000)
+                        val offVal = if (key == "threshOff") newInt else threshOff.toIntOrNull() ?: (config?.threshOff ?: 10)
+                        val dryVal = if (key == "threshNoWater") newInt else threshDry.toIntOrNull() ?: (config?.threshNoWater ?: 300)
+                        val runningVal = if (key == "threshRunning") newInt else threshRunning.toIntOrNull() ?: (config?.threshRunning ?: 750)
                         val overloadVal = if (key == "threshOverload") newInt else threshOverload.toIntOrNull() ?: (config?.threshOverload ?: 20000)
 
-                        if (!(offVal < dryVal && dryVal < runningVal && runningVal < overloadVal)) {
-                            isValid = false
-                            viewModel.showMessage(context.getString(R.string.settings_threshold_order))
-                            revertAction()
+                        if (key == "threshOverload") {
+                            if (overloadVal <= 0) {
+                                isValid = false
+                                viewModel.showMessage(context.getString(R.string.settings_timeout_positive))
+                                revertAction()
+                            }
+                        } else {
+                            if (!(offVal < dryVal && dryVal < runningVal)) {
+                                isValid = false
+                                viewModel.showMessage(context.getString(R.string.settings_threshold_order))
+                                revertAction()
+                            }
                         }
                     } else if (key.endsWith("Timeout")) {
                         if (newInt <= 0) {
@@ -809,11 +817,11 @@ private fun PumpProtectionCard(
                 )
             }
 
-            // Current Thresholds
+            // Protection Thresholds (Power in W, Overload in mA)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CompactTextField(
                     value = threshOff, onValueChange = onThreshOffChange,
-                    label = stringResource(R.string.ps_label_off_threshold_ma), isNumber = true, modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.ps_label_off_threshold_w), isNumber = true, modifier = Modifier.weight(1f),
                     onFocusLost = { onFieldFocusLost("threshOff", displayNameOffThreshold, threshOff) }
                 )
                 CompactTextField(
@@ -827,12 +835,12 @@ private fun PumpProtectionCard(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactTextField(
                         value = threshDry, onValueChange = onThreshDryChange,
-                        label = stringResource(R.string.ps_label_dry_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.ps_label_dry_w), isNumber = true, modifier = Modifier.weight(1f),
                         onFocusLost = { onFieldFocusLost("threshNoWater", displayNameDryRun, threshDry) }
                     )
                     CompactTextField(
                         value = threshRunning, onValueChange = onThreshRunningChange,
-                        label = stringResource(R.string.ps_label_running_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        label = stringResource(R.string.ps_label_running_w), isNumber = true, modifier = Modifier.weight(1f),
                         onFocusLost = { onFieldFocusLost("threshRunning", displayNameRunning, threshRunning) }
                     )
                 }

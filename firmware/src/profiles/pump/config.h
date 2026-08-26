@@ -41,11 +41,11 @@
 // ── BL0937 Defaults ──
 #define CURRENT_MIN_INTERVAL_MS   500     // interval tối thiểu giữa 2 lần tính dòng điện
 
-// ── Default Current Thresholds (mA) ──
-#define DEFAULT_THRESH_OFF          100     // <100mA  = not running
-#define DEFAULT_THRESH_NO_WATER     2000    // <2000mA = no water (dry run)
-#define DEFAULT_THRESH_RUNNING      5000    // <5000mA = normal running
-#define DEFAULT_THRESH_OVERLOAD     20000   // >20000mA = overload/short
+// ── Default Protection Thresholds (W for power check, mA for overload) ──
+#define DEFAULT_THRESH_OFF          1       // < 1W       = not running / idle
+#define DEFAULT_THRESH_NO_WATER     400     // < 400W     = no water (dry run)
+#define DEFAULT_THRESH_RUNNING      1000    // < 1000W    = normal running (>= 1000W is high power)
+#define DEFAULT_THRESH_OVERLOAD     20000   // >= 20000mA = overload/short (mA)
 
 // ── Default Timeouts (ms) ──
 #define DEFAULT_NO_WATER_TIMEOUT    7000   // 7s dry run => auto off
@@ -53,7 +53,7 @@
 
 // ── Default Pump Mode ──
 #define DEFAULT_PUMP_MODE          true
-#define PUMP_CRITICAL_PERCENT      140     // dòng >= 140% ngưỡng running -> critical
+#define PUMP_CRITICAL_PERCENT      140     // cong suat >= 140% nguong running -> critical
 
 // ── NTC Thermistor (10k + 10k series) ──
 #define NTC_SERIES_RESISTOR     4870.0f

@@ -68,7 +68,8 @@ void PumpDriver::loop(uint32_t nowMs) {
         _energyTick();
     }
     float current = _current.getCurrent();
-    _pump.update(current);
+    float power = _current.getActivePower();
+    _pump.update(current, power);
 }
 
 bool PumpDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
