@@ -86,9 +86,6 @@
 // ── Log Sizes ──
 #if defined(ARDUINO_ARCH_ESP8266) || defined(ARDUINO_ARCH_ESP32)
 // ESP chips: Nhiều flash hơn -> x4 giới hạn log
-#ifndef SYSLOG_QUEUE_SIZE
-#define SYSLOG_QUEUE_SIZE (128 * 4)
-#endif
 #ifndef SYSLOG_MAX_FILE_SIZE
 #define SYSLOG_MAX_FILE_SIZE (40 * 1024)
 #endif
@@ -106,9 +103,7 @@
 #endif
 #else
 // LN882H (LibreTiny): Giữ nguyên giới hạn nhỏ do LittleFS bé
-#ifndef SYSLOG_QUEUE_SIZE
-#define SYSLOG_QUEUE_SIZE 128
-#endif
+
 #ifndef SYSLOG_MAX_FILE_SIZE
 #define SYSLOG_MAX_FILE_SIZE (10 * 1024)
 #endif
@@ -123,6 +118,16 @@
 #endif
 #ifndef POWERLOG_MAX_FOLDER
 #define POWERLOG_MAX_FOLDER (200 * 1024)
+#endif
+#endif
+
+#if defined(ARDUINO_ARCH_ESP8266)
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 20
+#endif
+#else
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 64
 #endif
 #endif
 
