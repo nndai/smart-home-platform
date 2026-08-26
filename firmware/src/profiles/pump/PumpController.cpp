@@ -48,8 +48,8 @@ void PumpController::update(float currentAmps, float powerWatts) {
     PumpState newState = _state;
 
     if (!_pumpMode) {
-        // Switch mode: OFF / RUNNING_OK / OVERLOAD
-        if (powerWatts < _threshOff) {
+        // Switch mode: OFF when relay is off, RUNNING_OK when relay is on, only check _threshOverload (mA)
+        if (!isOn()) {
             newState = PumpState::OFF;
             _overloadStart = 0;
         } else if (currentMa >= _threshOverload) {
@@ -64,7 +64,7 @@ void PumpController::update(float currentAmps, float powerWatts) {
         }
     } else {
         // Pump mode: OFF / HIGH_CURRENT / DRY_RUN / CRITICAL_CURRENT / OVERLOAD
-        if (powerWatts < _threshOff) {
+        if (!isOn() || powerWatts < _threshOff) {
             newState = PumpState::OFF;
             _dryStart = 0;
             _criticalStart = 0;
