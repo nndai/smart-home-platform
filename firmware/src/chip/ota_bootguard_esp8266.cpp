@@ -50,6 +50,9 @@
 
 #include <Config.h>
 
+#undef os_printf
+#define os_printf(fmt, ...) os_printf_plus(PSTR(fmt), ##__VA_ARGS__)
+
 #ifndef OTA_BTN_PIN
 #error "OTA_BTN_PIN must be defined"
 #endif

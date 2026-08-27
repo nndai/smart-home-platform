@@ -9,7 +9,7 @@ int LogBase::_listFiles(const char* dir, String* files, int maxCount) {
     size_t size;
     bool isDir;
     while (it.next(name, size, isDir) && count < maxCount) {
-        if (name.endsWith(".log") && name.length() == 14) {
+        if (name.endsWith(F(".log")) && name.length() == 14) {
             files[count++] = name;
         }
     }
@@ -106,7 +106,7 @@ String LogBase::_oldestFile(const char* dir) {
     bool isDir;
     while (it.next(name, size, isDir)) {
         int dd, mm, yy;
-        if (name.endsWith(".log") && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
+        if (name.endsWith(F(".log")) && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
             if (_dateCmp(dd, mm, yy, bestD, bestM, bestY) < 0) {
                 bestD = dd; bestM = mm; bestY = yy;
                 found = name;
@@ -126,7 +126,7 @@ String LogBase::_latestFile(const char* dir) {
     bool isDir;
     while (it.next(name, size, isDir)) {
         int dd, mm, yy;
-        if (name.endsWith(".log") && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
+        if (name.endsWith(F(".log")) && name.length() == 14 && _parseDate(name, dd, mm, yy)) {
             if (_dateCmp(dd, mm, yy, bestD, bestM, bestY) > 0) {
                 bestD = dd; bestM = mm; bestY = yy;
                 found = name;
@@ -150,10 +150,10 @@ void LogBase::_migrateNosync(const char* dir, unsigned long epoch, size_t maxFil
     struct tm ti;
     gmtime_r(&raw, &ti);
     char buf[12];
-    snprintf(buf, sizeof(buf), "%02d-%02d-%04d",
+    snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d"),
              ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
-    String dest = String(dir) + buf + ".log";
-    String src = String(dir) + "nosync.log";
+    String dest = String(dir) + buf + F(".log");
+    String src = String(dir) + F("nosync.log");
 
     if (!LITTLEFS.exists(src)) return;
 

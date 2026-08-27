@@ -107,15 +107,15 @@ void setup() {
 
     logManager.setLogCallback([](const String& line) {
         JsonDocument logJson;
-        logJson["cmd"] = "log";
-        logJson["msg"] = line;
+        logJson[F("cmd")] = F("log");
+        logJson[F("msg")] = line;
         String json;
         serializeJson(logJson, json);
         if (g_connMode == ConnMode::DEBUG_WS || g_connMode == ConnMode::AP_WS) {
             wsServer.broadcast(json);
         }
         if (logManager.isMqttLogEnabled()) {
-            mqttClient.publish(mqttBaseTopic() + "/log", json);
+            mqttClient.publish(mqttBaseTopic() + F("/log"), json);
         }
         });
 
@@ -132,7 +132,7 @@ void setup() {
         },
         [](const String& json) {
             if (g_connMode == ConnMode::STA_MQTT) {
-                mqttClient.publish(mqttBaseTopic() + "/up", json);
+                mqttClient.publish(mqttBaseTopic() + F("/up"), json);
             }
             else {
                 wsServer.broadcast(json);
@@ -202,7 +202,7 @@ void loop() {
 
 void setupWiFiSTA(ProfileConfig& cfg) {
     WiFi.mode(WIFI_STA);
-    WiFi.setHostname("iphone");
+    WiFi.setHostname(identity.deviceId());
     if (cfg.connMode == ConnMode::STA_MQTT) {
         WiFi.config(IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0),
             IPAddress(0, 0, 0, 0));
@@ -246,7 +246,7 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
-    String clientId = String("device-") + identity.deviceId();
+    String clientId = String(F("device-")) + identity.deviceId();
     if (cfg.mqttUser[0] == '\0') {
         LT_EM(NET, "MQTT: no credential (device not paired) — MQTT disabled");
         return;
@@ -394,15 +394,15 @@ uint32_t taskStreamSender_cb() {
 
 // ── MQTT topic chuẩn: devices/{deviceId}/cmd|up|log ──
 static String mqttBaseTopic() {
-    return String("devices/") + identity.deviceId();
+    return String(F("devices/")) + identity.deviceId();
 }
 
 // ── Callbacks ──
 static void onMqttMessage(const String& topic, const String& payload) {
     // Topic của chính mình (devices/{id}/cmd|otachunk|down) → lệnh cho
     // CommandHandler
-    if (topic.startsWith(mqttBaseTopic() + "/")) {
-        commandHandler.handleCommand("mqtt", payload);
+    if (topic.startsWith(mqttBaseTopic() + F("/"))) {
+        commandHandler.handleCommand(F("mqtt"), payload);
         return;
     }
 
@@ -420,7 +420,7 @@ static void onMqttMessage(const String& topic, const String& payload) {
 static void onWsMessage(const String& clientId, const String& message) {
     (void)clientId;
     // LT_IM(WS, "Received message: %s", message.c_str());
-    commandHandler.handleCommand("ws", message);
+    commandHandler.handleCommand(F("ws"), message);
 }
 
 static void onWsBinary(const String& clientId, const uint8_t* data,
@@ -434,10 +434,10 @@ static void onWsBinary(const String& clientId, const uint8_t* data,
 
 static void sendResponse(const String& target, const String& json) {
 
-    if (target == "mqtt") {
-        mqttClient.publish(mqttBaseTopic() + "/up", json);
+    if (target == F("mqtt")) {
+        mqttClient.publish(mqttBaseTopic() + F("/up"), json);
     }
-    if (target == "ws") {
+    if (target == F("ws")) {
         wsServer.broadcast(json);
     }
 }

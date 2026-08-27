@@ -9,17 +9,6 @@
 // ── MCU khác: mirror cùng giao diện LT_I/LT_E/LT_IM/LT_EM ──
 #else
 
-// ESP8266: ets_printf (ROM) — xuất trực tiếp, KHÔNG buffer (os_printf của SDK
-// buffer 256B, flush không đáng tin → dính dòng/cắt chữ). Hoạt động từ lúc
-// boot rất sớm, ISR-safe. Lưu ý: không hỗ trợ %f.
-// MCU khác (ESP32...): Serial.printf.
-#if defined(ARDUINO_ARCH_ESP8266)
-#include <ets_sys.h>
-#define LT_PRINTF(...) ets_printf(__VA_ARGS__)
-#else
-#define LT_PRINTF(...) Serial.printf(__VA_ARGS__)
-#endif
-
 // Level constants (giá trị mirror lt_config.h của LibreTiny)
 #define LT_LEVEL_TRACE 0
 #define LT_LEVEL_DEBUG 1
@@ -54,6 +43,39 @@
 #define LT_DEBUG_WS 1
 #endif
 
+// ESP8266: os_printf_plus with PSTR puts format strings directly into Flash (IROM),
+// saving ~4KB-5KB of static DRAM.
+// MCU khác (ESP32...): Serial.printf.
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <osapi.h>
+
+#define LT_I(fmt, ...)                               \
+	do {                                            \
+		os_printf_plus(PSTR("[I] " fmt "\n"), ##__VA_ARGS__); \
+	} while (0)
+
+#define LT_E(fmt, ...)                               \
+	do {                                            \
+		os_printf_plus(PSTR("[E] " fmt "\n"), ##__VA_ARGS__); \
+	} while (0)
+
+#define LT_IM(module, fmt, ...)                      \
+	do {                                            \
+		if (LT_DEBUG_##module) {                    \
+			os_printf_plus(PSTR("[I][" #module "] " fmt "\n"), ##__VA_ARGS__); \
+		}                                           \
+	} while (0)
+
+#define LT_EM(module, fmt, ...)                      \
+	do {                                            \
+		if (LT_DEBUG_##module) {                    \
+			os_printf_plus(PSTR("[E][" #module "] " fmt "\n"), ##__VA_ARGS__); \
+		}                                           \
+	} while (0)
+
+#else
+#define LT_PRINTF(...) Serial.printf(__VA_ARGS__)
+
 #define LT_I(...)                                   \
 	do {                                            \
 		LT_PRINTF("[I] ");                          \
@@ -85,5 +107,7 @@
 			LT_PRINTF("\n");                        \
 		}                                           \
 	} while (0)
+
+#endif
 
 #endif

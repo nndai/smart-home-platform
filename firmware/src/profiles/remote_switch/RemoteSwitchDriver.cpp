@@ -200,11 +200,11 @@ void RemoteSwitchDriver::updateVisualFromStatus(uint32_t nowMs) {
 }
 
 bool RemoteSwitchDriver::isTargetRunningOk() const {
-    if (strcmp(_cfg->targetType, "switch") == 0) {
+    if (strcmp_P(_cfg->targetType, PSTR("switch")) == 0) {
         return _targetOn;
     }
     // pump: chỉ coi là OK khi relay on + state RUNNING OK
-    return _targetOn && strcmp(_targetPumpStateStr, "RUNNING OK") == 0;
+    return _targetOn && strcmp_P(_targetPumpStateStr, PSTR("RUNNING OK")) == 0;
 }
 
 bool RemoteSwitchDriver::buildEnvelope(const char* cmd, const JsonDocument& payload, JsonDocument& envelope) {
@@ -230,12 +230,12 @@ bool RemoteSwitchDriver::buildEnvelope(const char* cmd, const JsonDocument& payl
         return false;
     }
 
-    envelope["cmd"] = cmd;
-    envelope["seq"] = seq;
-    envelope["ts"] = ts;
-    if (src[0] != '\0') envelope["src"] = src;
-    envelope["hmac"] = hmacHex;
-    envelope["payload"] = payload;
+    envelope[F("cmd")] = cmd;
+    envelope[F("seq")] = seq;
+    envelope[F("ts")] = ts;
+    if (src[0] != '\0') envelope[F("src")] = src;
+    envelope[F("hmac")] = hmacHex;
+    envelope[F("payload")] = payload;
 
     return true;
 }
@@ -244,14 +244,14 @@ bool RemoteSwitchDriver::buildEnvelope(const char* cmd, const JsonDocument& payl
 void RemoteSwitchDriver::subscribeTargetTopic() {
     if (!_services.mqttSubscribe) return;
     if (_cfg->targetId[0] == '\0') return;
-    _services.mqttSubscribe(String("devices/") + _cfg->targetId + "/up");
+    _services.mqttSubscribe(String(F("devices/")) + _cfg->targetId + F("/up"));
 }
 
 void RemoteSwitchDriver::sendRelayCommand(bool on) {
     if (_cfg->targetId[0] == '\0') return;
 
     JsonDocument payload;
-    payload["state"] = on;
+    payload[F("state")] = on;
 
     JsonDocument envelope;
     if (!buildEnvelope("setRelay", payload, envelope)) {
@@ -261,7 +261,7 @@ void RemoteSwitchDriver::sendRelayCommand(bool on) {
 
     String json;
     serializeJson(envelope, json);
-    String topic = String("devices/") + _cfg->targetId + "/cmd";
+    String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
     LT_IM(CMD, "Sending setRelay(%s) to %s", on ? "ON" : "OFF", _cfg->targetId);
     if (_services.mqttPublish) {
         _services.mqttPublish(topic, json);
@@ -274,7 +274,7 @@ void RemoteSwitchDriver::requestStatusStream() {
     if (_cfg->targetId[0] == '\0') return;
 
     JsonDocument payload;
-    payload["stream"] = true;
+    payload[F("stream")] = true;
 
     JsonDocument envelope;
     if (!buildEnvelope("getStatus", payload, envelope)) {
@@ -284,7 +284,7 @@ void RemoteSwitchDriver::requestStatusStream() {
 
     String json;
     serializeJson(envelope, json);
-    String topic = String("devices/") + _cfg->targetId + "/cmd";
+    String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
     LT_IM(CMD, "Requesting status stream from %s", _cfg->targetId);
     if (_services.mqttPublish) {
         _services.mqttPublish(topic, json);
@@ -296,13 +296,13 @@ void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
     _lastStatusRxMs = millis();
 
     // Reply của target đối với setRelay chuyển tiếp: {state: "on" | "off"}
-    const char* cmd = doc["cmd"] | "";
-    if (strcmp(cmd, "setRelay") == 0) {
-        const char* st = doc["state"].as<const char*>();
-        if (st && strcmp(st, "on") == 0) {
+    const char* cmd = doc[F("cmd")] | "";
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
+        const char* st = doc[F("state")].as<const char*>();
+        if (st && strcmp_P(st, PSTR("on")) == 0) {
             _targetOn = true;
             // Ack "on" chưa khẳng định RUNNING OK → giữ WAITING chờ status
-        } else if (st && strcmp(st, "off") == 0) {
+        } else if (st && strcmp_P(st, PSTR("off")) == 0) {
             _targetOn = false;
             enterVisualState(TargetVisualState::OFF, millis());
         }
@@ -310,9 +310,9 @@ void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
     }
 
     // Status snapshot của target: relay state + pump protection state
-    if (strcmp(cmd, "getStatus") == 0) {
-        if (doc["relay"].is<bool>()) {
-            _targetOn = doc["relay"].as<bool>();
+    if (strcmp_P(cmd, PSTR("getStatus")) == 0) {
+        if (doc[F("relay")].is<bool>()) {
+            _targetOn = doc[F("relay")].as<bool>();
         }
         updateTargetError(doc);
         updateVisualFromStatus(millis());
@@ -320,13 +320,13 @@ void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
     }
 
     // Unknown message (announce, ...): fall back to parsing any fields present
-    if (doc["relay"].is<bool>()) {
-        _targetOn = doc["relay"].as<bool>();
+    if (doc[F("relay")].is<bool>()) {
+        _targetOn = doc[F("relay")].as<bool>();
     }
-    const char* st = doc["state"].as<const char*>();
-    if (st && strcmp(st, "on") == 0) {
+    const char* st = doc[F("state")].as<const char*>();
+    if (st && strcmp_P(st, PSTR("on")) == 0) {
         _targetOn = true;
-    } else if (st && strcmp(st, "off") == 0) {
+    } else if (st && strcmp_P(st, PSTR("off")) == 0) {
         _targetOn = false;
     }
     updateTargetError(doc);
@@ -335,44 +335,44 @@ void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
 
 void RemoteSwitchDriver::updateTargetError(const JsonDocument& doc) {
     // Lưu state pump để xác định điều kiện "chặt" RUNNING OK
-    const char* pumpStateStr = doc["pumpStateStr"] | "";
+    const char* pumpStateStr = doc[F("pumpStateStr")] | "";
     strlcpy(_targetPumpStateStr, pumpStateStr, sizeof(_targetPumpStateStr));
 
     _targetError = false;
 
     // Pump errors — top level getStatus fields (pumpStateStr / pumpState enum int)
-    if (strcmp(_targetPumpStateStr, "DRY RUN") == 0 || strcmp(_targetPumpStateStr, "OVERLOAD") == 0 || strcmp(_targetPumpStateStr, "CRITICAL CURRENT") == 0) {
+    if (strcmp_P(_targetPumpStateStr, PSTR("DRY RUN")) == 0 || strcmp_P(_targetPumpStateStr, PSTR("OVERLOAD")) == 0 || strcmp_P(_targetPumpStateStr, PSTR("CRITICAL CURRENT")) == 0) {
         _targetError = true;
     }
-    if (doc["pumpState"].is<int>()) {
-        int s = doc["pumpState"].as<int>();
+    if (doc[F("pumpState")].is<int>()) {
+        int s = doc[F("pumpState")].as<int>();
         if (s == 3 || s == 4 || s == 5) _targetError = true; // PumpState::DRY_RUN / CRITICAL_CURRENT / OVERLOAD
     }
 
     // Pump errors — getSystemInfo stream (nested pump.pumpState)
-    if (doc["pump"].is<JsonObject>()) {
-        JsonObjectConst p = doc["pump"].as<JsonObjectConst>();
-        const char* ps = p["pumpState"] | "";
-        if (strcmp(ps, "dry_run") == 0 || strcmp(ps, "overload") == 0 || strcmp(ps, "critical_current") == 0) {
+    if (doc[F("pump")].is<JsonObject>()) {
+        JsonObjectConst p = doc[F("pump")].as<JsonObjectConst>();
+        const char* ps = p[F("pumpState")] | "";
+        if (strcmp_P(ps, PSTR("dry_run")) == 0 || strcmp_P(ps, PSTR("overload")) == 0 || strcmp_P(ps, PSTR("critical_current")) == 0) {
             _targetError = true;
         }
     }
 }
 
 bool RemoteSwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
-    if (strcmp(cmd, "setRelay") == 0) {
-        if (!payload["state"].is<bool>()) {
-            resp["status"] = "error";
-            resp["message"] = "Missing or invalid 'state' field";
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
+        if (!payload[F("state")].is<bool>()) {
+            resp[F("status")] = F("error");
+            resp[F("message")] = F("Missing or invalid 'state' field");
             return true;
         }
-        bool on = payload["state"].as<bool>();
+        bool on = payload[F("state")].as<bool>();
         sendRelayCommand(on);
         if (_services.log) {
             _services.log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         }
-        resp["status"] = "ok";
-        resp["state"] = on ? "on" : "off";
+        resp[F("status")] = F("ok");
+        resp[F("state")] = on ? F("on") : F("off");
         LT_IM(CMD, "Forward relay %s to target %s", on ? "ON" : "OFF", _cfg->targetId);
         return true;
     }
@@ -380,26 +380,26 @@ bool RemoteSwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload,
 }
 
 void RemoteSwitchDriver::getStatus(JsonDocument& resp) {
-    resp["targetId"] = _cfg->targetId;
-    resp["targetType"] = _cfg->targetType;
-    resp["targetPaired"] = _cfg->targetKey[0] != '\0';
-    resp["relay"] = _targetOn;
-    resp["targetError"] = _targetError;
+    resp[F("targetId")] = _cfg->targetId;
+    resp[F("targetType")] = _cfg->targetType;
+    resp[F("targetPaired")] = _cfg->targetKey[0] != '\0';
+    resp[F("relay")] = _targetOn;
+    resp[F("targetError")] = _targetError;
 }
 
 void RemoteSwitchDriver::getConfig(JsonDocument& resp) {
-    resp["targetId"] = _cfg->targetId;
-    resp["targetType"] = _cfg->targetType;
+    resp[F("targetId")] = _cfg->targetId;
+    resp[F("targetType")] = _cfg->targetType;
     // targetKey is never exposed (same policy as mqttPass): only show whether it is set
-    resp["targetKey"] = _cfg->targetKey[0] != '\0' ? "********" : "";
+    resp[F("targetKey")] = _cfg->targetKey[0] != '\0' ? F("********") : F("");
 }
 
 bool RemoteSwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
     (void)resp;
     bool changed = false;
 
-    if (payload["targetId"].is<const char*>()) {
-        const char* id = payload["targetId"].as<const char*>();
+    if (payload[F("targetId")].is<const char*>()) {
+        const char* id = payload[F("targetId")].as<const char*>();
         if (strlen(id) >= sizeof(_cfg->targetId)) {
             LT_EM(CMD, "setConfig: targetId too long");
             return false;
@@ -408,8 +408,8 @@ bool RemoteSwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& re
         changed = true;
         subscribeTargetTopic();
     }
-    if (payload["targetKey"].is<const char*>()) {
-        const char* k = payload["targetKey"].as<const char*>();
+    if (payload[F("targetKey")].is<const char*>()) {
+        const char* k = payload[F("targetKey")].as<const char*>();
         size_t klen = strlen(k);
         if (klen == 0) {
             _cfg->targetKey[0] = '\0';
@@ -451,9 +451,9 @@ bool RemoteSwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& re
             return false;
         }
     }
-    if (payload["targetType"].is<const char*>()) {
-        const char* t = payload["targetType"].as<const char*>();
-        if (strlen(t) > 0 && strcmp(t, "pump") != 0 && strcmp(t, "switch") != 0) {
+    if (payload[F("targetType")].is<const char*>()) {
+        const char* t = payload[F("targetType")].as<const char*>();
+        if (strlen(t) > 0 && strcmp_P(t, PSTR("pump")) != 0 && strcmp_P(t, PSTR("switch")) != 0) {
             LT_EM(CMD, "setConfig: targetType must be 'pump', 'switch', or empty");
             return false;
         }
@@ -485,9 +485,9 @@ void RemoteSwitchDriver::_onButtonClick() {
 
     // Notify app so its UI updates (same shape as setRelay response)
     JsonDocument resp;
-    resp["cmd"] = "setRelay";
-    resp["status"] = "ok";
-    resp["state"] = on ? "on" : "off";
+    resp[F("cmd")] = F("setRelay");
+    resp[F("status")] = F("ok");
+    resp[F("state")] = on ? F("on") : F("off");
     String json;
     serializeJson(resp, json);
     if (_services.sendResponse) {

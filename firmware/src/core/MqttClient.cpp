@@ -44,8 +44,8 @@ bool MqttClient::connect() {
         _mqtt.setClient(_wifiClient);
         bool ok = _mqtt.connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
         if (ok) {
-            _mqtt.subscribe((_topic + "/cmd").c_str());
-            _mqtt.subscribe((_topic + "/otachunk").c_str());
+            _mqtt.subscribe((_topic + F("/cmd")).c_str());
+            _mqtt.subscribe((_topic + F("/otachunk")).c_str());
             resubscribeExtra();
         }
         return ok;
@@ -58,8 +58,8 @@ bool MqttClient::connect() {
 
     bool ok = _mqtt.connect(_clientId.c_str(), _user.c_str(), _pass.c_str());
     if (ok) {
-        _mqtt.subscribe((_topic + "/cmd").c_str());
-        _mqtt.subscribe((_topic + "/otachunk").c_str());
+        _mqtt.subscribe((_topic + F("/cmd")).c_str());
+        _mqtt.subscribe((_topic + F("/otachunk")).c_str());
         resubscribeExtra();
     }
     return ok;

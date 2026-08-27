@@ -29,14 +29,14 @@ String TimeManager::ts() const {
         struct tm ti;
         gmtime_r(&raw, &ti);
         char buf[16];
-        snprintf(buf, sizeof(buf), "%02u:%02u:%02u.%03u",
+        snprintf_P(buf, sizeof(buf), PSTR("%02u:%02u:%02u.%03u"),
                  ti.tm_hour, ti.tm_min, ti.tm_sec, ms);
         return String(buf);
     }
     unsigned long ms = millis();
     unsigned long t = ms / 1000;
     char buf[16];
-    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu.%03lu",
+    snprintf_P(buf, sizeof(buf), PSTR("%02lu:%02lu:%02lu.%03lu"),
              t / 3600, (t / 60) % 60, t % 60, ms % 1000);
     return String(buf);
 }
@@ -47,9 +47,9 @@ String TimeManager::dateStr() const {
         struct tm ti;
         gmtime_r(&raw, &ti);
         char buf[12];
-        snprintf(buf, sizeof(buf), "%02d-%02d-%04d",
+        snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d"),
                  ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
         return String(buf);
     }
-    return "nosync";
+    return F("nosync");
 }

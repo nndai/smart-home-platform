@@ -60,7 +60,7 @@
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
 
 #if defined(ARDUINO_ARCH_ESP8266)
-#define MQTT_BUFFER_SIZE           2048
+#define MQTT_BUFFER_SIZE           (3*1024)
 #else
 #define MQTT_BUFFER_SIZE           5000
 #endif

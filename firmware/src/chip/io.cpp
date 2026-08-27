@@ -84,7 +84,7 @@ namespace chip {
         analogWrite(pin, val);
     }
 
-    String chipModelName() { return "ESP8266"; }
+    String chipModelName() { return F("ESP8266"); }
 
     uint32_t systemChipId() { return ESP.getChipId(); }
 

@@ -24,17 +24,17 @@ void SwitchDriver::loop(uint32_t nowMs) {
 }
 
 bool SwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
-    if (strcmp(cmd, "setRelay") == 0) {
-        if (!payload["state"].is<bool>()) {
-            resp["status"] = "error";
-            resp["message"] = "Missing or invalid 'state' field";
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
+        if (!payload[F("state")].is<bool>()) {
+            resp[F("status")] = F("error");
+            resp[F("message")] = F("Missing or invalid 'state' field");
             return true;
         }
-        bool on = payload["state"].as<bool>();
+        bool on = payload[F("state")].as<bool>();
         setRelay(on);
         _persistRelayState();
-        resp["status"] = "ok";
-        resp["state"] = on ? "on" : "off";
+        resp[F("status")] = F("ok");
+        resp[F("state")] = on ? F("on") : F("off");
         LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;
@@ -43,20 +43,20 @@ bool SwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonD
 }
 
 void SwitchDriver::getStatus(JsonDocument& resp) {
-    resp["relay"] = _switch.getState();
-    resp["onDuration"] = _switch.getState() ? (uint32_t)(_switch.getOnDuration() / 1000) : 0;
+    resp[F("relay")] = _switch.getState();
+    resp[F("onDuration")] = _switch.getState() ? (uint32_t)(_switch.getOnDuration() / 1000) : 0;
 }
 
 void SwitchDriver::getConfig(JsonDocument& resp) {
-    resp["relayStartMode"] = (int)_cfg->relayStartMode;
+    resp[F("relayStartMode")] = (int)_cfg->relayStartMode;
 }
 
 bool SwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
     (void)resp;
     bool changed = false;
 
-    if (payload["relayStartMode"].is<int>()) {
-        _cfg->relayStartMode = (RelayStartMode)payload["relayStartMode"].as<int>();
+    if (payload[F("relayStartMode")].is<int>()) {
+        _cfg->relayStartMode = (RelayStartMode)payload[F("relayStartMode")].as<int>();
         changed = true;
     }
     return changed;
