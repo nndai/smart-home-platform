@@ -67,24 +67,28 @@ void RemoteSwitchDriver::updateLeds(uint32_t nowMs) {
 }
 
 void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
-    (void)nowMs;
+    // Check connection status once every 1000ms to avoid high-frequency WiFi SDK calls
+    static uint32_t lastCheckMs = 0;
+    if (nowMs - lastCheckMs < 500 && lastCheckMs != 0) {
+        return;
+    }
+    lastCheckMs = nowMs;
 
-    // AP mode (pairing): chỉ cần AP đang chạy — xanh nháy đều,
-    // không check mqtt/ntp/timeout status
+    // 1. AP mode (pairing): green blinks evenly, no need to check mqtt/ntp/timeout
     if (WiFi.getMode() == WIFI_AP) {
         _ledConnRed.off();
         _ledConnGreen.blink(CONNECT_AP_BLINK_MS);
         return;
     }
 
-    // Check theo thứ tự: wifi → mqtt → ntp → timeout status (lỗi đầu tiên hiển thị)
-    bool wifiOk = (WiFi.status() == WL_CONNECTED);
-    if (!wifiOk) {
+    // 2. WiFi STA connection
+    if (WiFi.status() != WL_CONNECTED) {
         _ledConnGreen.off();
         _ledConnRed.blink(2, CONNECT_BLINK_ON, CONNECT_BLINK_OFF);
         return;
     }
 
+    // 3. MQTT connection
     bool mqttOk = _services.isConnected ? _services.isConnected() : false;
     if (!mqttOk) {
         _ledConnGreen.off();
@@ -92,6 +96,7 @@ void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
         return;
     }
 
+    // 4. NTP sync
     bool ntpOk = _services.log && _services.log->isTimeSynced();
     if (!ntpOk) {
         _ledConnGreen.off();
@@ -99,14 +104,14 @@ void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
         return;
     }
 
-    // Quá 1p10s không nhận được status từ target → đỏ sáng mãi
-    // (target tự báo status mỗi 60s khi rảnh / 2s khi stream → 70s có 10s dư)
+    // 5. Target status timeout (> 70s without status from target) -> solid red
     if (_cfg->targetId[0] != '\0' && nowMs - _lastStatusRxMs >= STATUS_TIMEOUT_MS) {
         _ledConnGreen.off();
         _ledConnRed.on();
         return;
     }
 
+    // Healthy state: solid green
     _ledConnRed.off();
     _ledConnGreen.on();
 }

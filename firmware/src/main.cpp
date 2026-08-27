@@ -375,7 +375,9 @@ uint32_t taskStreamSender_cb() {
     static uint32_t lastStatusUp = 0;
 
     commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_STATUS);
+    yield();
     commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_SYSINFO);
+    yield();
 
     uint32_t nowMs = millis();
     if (!commandHandler.isStreamActive(
@@ -383,6 +385,7 @@ uint32_t taskStreamSender_cb() {
         if (nowMs - lastStatusUp >= 60000) {
             lastStatusUp = nowMs;
             commandHandler.publishStatusToUp();
+            yield();
         }
     }
     return 2000;
