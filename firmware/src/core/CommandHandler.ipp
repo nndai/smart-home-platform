@@ -515,7 +515,7 @@ void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const protocol::Comman
     static int lastPct = -1;
     lastPct = -1;
 
-    _ota->startFromUrl(url.c_str(),
+    _ota->queueUrl(url.c_str(),
         [this, source](int progress, int total) {
             int pct = (total > 0) ? (progress * 100 / total) : 0;
             if (pct >= lastPct + 5 || pct == 100 || (pct == 0 && pct != lastPct)) {
@@ -993,8 +993,6 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
     }
 
     LT_IM(CMD, "Pairing: ssid=%s connMode=STA_MQTT, rebooting", ssid.c_str());
-    delay(1200);
-    ESP.restart();
 }
 
 template <typename T>

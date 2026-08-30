@@ -13,9 +13,13 @@ inline void tlsReset(WiFiClientSecure& client) {
 }
 
 
-inline void setTlsBufferSize(WiFiClientSecure& client, size_t size) {
+inline void setTlsBufferSize(WiFiClientSecure& client, size_t rxSize, size_t txSize = 512) {
 #if defined(ARDUINO_ARCH_ESP8266)
-    client.setBufferSizes(size, size);
+    client.setBufferSizes(rxSize, txSize);
+#else
+    (void)client;
+    (void)rxSize;
+    (void)txSize;
 #endif
 }
 

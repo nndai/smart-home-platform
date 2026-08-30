@@ -80,7 +80,7 @@
 #define DEFAULT_OTA_URL_LN882H    "http://192.168.137.1:8090/firmware.uf2"
 #define DEFAULT_OTA_URL_ESP8266   "http://192.168.137.1:8090/firmware.bin"
 #define OTA_WIFI_TIMEOUT_MS       60000   // chờ kết nối WiFi tối đa 60s
-#define OTA_CHUNK_SIZE            1400    // buffer đọc HTTP khi tải firmware
+#define OTA_CHUNK_SIZE            1000    // buffer đọc HTTP khi tải firmware
 
 
 // ── Log Sizes ──

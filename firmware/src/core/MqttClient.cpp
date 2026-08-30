@@ -11,7 +11,7 @@ MqttClient::MqttClient()
     , _lastReconnect(0)
 {
     _mqtt.setBufferSize(MQTT_BUFFER_SIZE);
-    compat::setTlsBufferSize(_wifiClientTls, MQTT_BUFFER_SIZE);
+    compat::setTlsBufferSize(_wifiClientTls, MQTT_BUFFER_SIZE, MQTT_BUFFER_SIZE);
     _mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
     _mqtt.setCallback(_onMessage);
     s_instance = this;

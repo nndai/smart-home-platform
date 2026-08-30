@@ -314,6 +314,7 @@ uint32_t taskWsLoop_cb() {
         wsServer.handle();
         break;
     }
+    otaManager.handle();
     return otaManager.isRunning() ? 5 : 50;
 }
 
@@ -322,6 +323,14 @@ uint32_t taskMqttLoop_cb() {
     static bool logLostConnection = true;
 
     compat::wdtFeed();
+
+    if (otaManager.hasPending()) {
+        mqttClient.disconnect();
+        delay(100);
+        otaManager.handle();
+        return 50;
+    }
+
     bool connected = mqttClient.loop();
     if (!connected && !logLostConnection) {
         LT_E("MQTT connection lost. Attempting to reconnect...");

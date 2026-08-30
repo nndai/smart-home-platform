@@ -324,32 +324,37 @@ class PairingRepository(
         }
 
         // AP stays alive: wait for the device to finish and report via event.
-        val completed = CompletableDeferred<Boolean>()
+        val completed = CompletableDeferred<List<WifiNetworkInfo>>()
         wsClient.setEventHandler { doc ->
-            if (doc["cmd"]?.jsonPrimitive?.content == "scanWifi" &&
-                doc["status"]?.jsonPrimitive?.content == "completed"
-            ) {
-                Log.d(TAG, "scanWifiSync(): device sent 'completed' event: $doc")
-                completed.complete(true)
-            } else {
-                Log.d(TAG, "scanWifiSync(): event: $doc")
+            val cmd = doc["cmd"]?.jsonPrimitive?.content
+            val status = doc["status"]?.jsonPrimitive?.content
+            Log.d(TAG, "scanWifiSync(): event: $doc")
+
+            if (doc.containsKey("networks")) {
+                val parsed = parseNetworks(doc)
+                if (parsed != null) {
+                    Log.d(TAG, "scanWifiSync(): got networks directly from event (${parsed.size} nets)")
+                    completed.complete(parsed)
+                    return@setEventHandler
+                }
+            }
+
+            if (cmd == "scanWifi" && status == "completed") {
+                Log.d(TAG, "scanWifiSync(): device sent 'completed' event, requesting getScanWifiData")
+                scope.launch {
+                    val data = wsClient.request("getScanWifiData")
+                    val parsed = data?.let { parseNetworks(it) } ?: emptyList()
+                    completed.complete(parsed)
+                }
             }
         }
-        val done = try {
+        val result = try {
             withTimeout(30_000) { completed.await() }
         } catch (e: Exception) {
-            Log.e(TAG, "scanWifiSync(): timed out waiting 'completed'")
-            false
+            Log.e(TAG, "scanWifiSync(): timed out waiting 'completed' — ${e.message}")
+            null
         }
-        if (!done) return null
-        val data = wsClient.request("getScanWifiData") ?: run {
-            Log.e(TAG, "scanWifiSync(): getScanWifiData returned null")
-            return null
-        }
-        return parseNetworks(data) ?: run {
-            Log.e(TAG, "scanWifiSync(): no 'networks' array in $data")
-            emptyList()
-        }
+        return result
     }
 
     /**
@@ -475,6 +480,10 @@ class PairingRepository(
             val ok = resp != null && resp["status"]?.jsonPrimitive?.content == "ok"
             val deviceId = resp?.get("deviceId")?.jsonPrimitive?.content ?: current.deviceId
             keyStore.save(deviceId, controlKey)
+            if (ok) {
+                Log.d(TAG, "pair(): sending reboot to device")
+                runCatching { wsClient.request("reboot", timeoutMs = 2_000) }
+            }
             wsClient.close()
             connector.disconnect()
             if (ok) {

@@ -60,6 +60,8 @@ const app = {
     const mqttTopicPub = localStorage.getItem('rp_mqtt_topic_pub');
     const mqttTopicSub = localStorage.getItem('rp_mqtt_topic_sub');
     const mqttTopicOta = localStorage.getItem('rp_mqtt_topic_ota');
+    const controlKey = localStorage.getItem('rp_control_key') || '';
+    const senderId = localStorage.getItem('rp_sender_id') || 'web-debug';
 
     if (protocol) {
       const radio = document.querySelector(`input[name="protocol"][value="${protocol}"]`);
@@ -73,15 +75,25 @@ const app = {
     if (mqttTopicPub) Utils.$('mqtt-topic-pub').value = mqttTopicPub;
     if (mqttTopicSub) Utils.$('mqtt-topic-sub').value = mqttTopicSub;
     if (mqttTopicOta && Utils.$('mqtt-topic-ota')) Utils.$('mqtt-topic-ota').value = mqttTopicOta;
+    if (Utils.$('control-key')) Utils.$('control-key').value = controlKey;
+    if (Utils.$('sender-id')) Utils.$('sender-id').value = senderId;
 
     // Attach listeners to save on change
-    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota'];
+    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota', 'control-key', 'sender-id'];
     inputs.forEach(id => {
       const el = Utils.$(id);
       if (el) {
         el.addEventListener('change', () => this.saveSettings());
       }
     });
+
+    const keyEl = Utils.$('control-key');
+    if (keyEl) {
+      keyEl.addEventListener('input', () => this.updateControlKeyStatus());
+    }
+
+    this.updateControlKeyStatus();
+    this.updateSeqDisplay();
   },
 
   saveSettings() {
@@ -95,6 +107,9 @@ const app = {
     localStorage.setItem('rp_mqtt_topic_pub', Utils.$('mqtt-topic-pub').value);
     localStorage.setItem('rp_mqtt_topic_sub', Utils.$('mqtt-topic-sub').value);
     if (Utils.$('mqtt-topic-ota')) localStorage.setItem('rp_mqtt_topic_ota', Utils.$('mqtt-topic-ota').value);
+    if (Utils.$('control-key')) localStorage.setItem('rp_control_key', Utils.$('control-key').value.trim());
+    if (Utils.$('sender-id')) localStorage.setItem('rp_sender_id', Utils.$('sender-id').value.trim() || 'web-debug');
+    this.updateControlKeyStatus();
   },
 
   updateSettingsUI() {
@@ -110,6 +125,62 @@ const app = {
       mqttSettings.classList.remove('hidden');
     }
     this.saveSettings();
+  },
+
+  updateControlKeyStatus() {
+    const keyEl = Utils.$('control-key');
+    const badge = Utils.$('control-key-badge');
+    const lenEl = Utils.$('control-key-len');
+    if (!keyEl || !badge || !lenEl) return;
+
+    const val = keyEl.value.trim();
+    lenEl.textContent = `${val.length}/64`;
+
+    if (val.length === 0) {
+      badge.textContent = 'Not Set';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/10 text-gray-400 border border-gray-500/20';
+      lenEl.className = 'text-[10px] font-mono text-gray-500';
+    } else if (val.length === 64 && /^[0-9a-fA-F]{64}$/.test(val)) {
+      badge.textContent = '32B Key Valid';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+      lenEl.className = 'text-[10px] font-mono text-emerald-400';
+    } else {
+      badge.textContent = 'Invalid Key';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
+      lenEl.className = 'text-[10px] font-mono text-rose-400';
+    }
+  },
+
+  updateSeqDisplay() {
+    const badge = Utils.$('seq-badge');
+    if (badge) {
+      const ts = Math.floor(Date.now() / 1000) + (7 * 3600);
+      const seq = localStorage.getItem('rp_seq') || ts;
+      badge.textContent = `Seq: ${seq}`;
+    }
+  },
+
+  resetSeq() {
+    const ts = Math.floor(Date.now() / 1000) + (7 * 3600);
+    localStorage.setItem('rp_seq', ts.toString());
+    this.updateSeqDisplay();
+    Utils.toast('info', `Command Sequence (seq) set to timestamp: ${ts}`);
+    this._logger.log(`[INFO] Command Sequence (seq) synced with timestamp: ${ts}`, 'info');
+  },
+
+  toggleControlKeyVisibility() {
+    const input = Utils.$('control-key');
+    const eye = Utils.$('control-key-eye');
+    if (!input) return;
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (eye) eye.setAttribute('data-lucide', 'eye-off');
+    } else {
+      input.type = 'password';
+      if (eye) eye.setAttribute('data-lucide', 'eye-outline');
+    }
+    Utils.refreshIcons();
   },
 
   // ── Connection ──
@@ -159,6 +230,9 @@ const app = {
       }
 
       this._logger.log(`[INFO] Command Bridge to connect via MQTT: ${broker}:${port}`, 'info');
+      const control_key = (localStorage.getItem('rp_control_key') || '').trim();
+      const sender_id = (localStorage.getItem('rp_sender_id') || 'web-debug').trim() || 'web-debug';
+      const current_seq = parseInt(localStorage.getItem('rp_seq') || '0', 10);
       this._wsManager.send(JSON.stringify({
         cmd: "bridgeConnectMqtt",
         broker: broker,
@@ -167,7 +241,10 @@ const app = {
         password: password,
         topic_pub: topic_pub,
         topic_sub: topic_sub,
-        topic_ota: topic_ota
+        topic_ota: topic_ota,
+        control_key: control_key,
+        sender_id: sender_id,
+        current_seq: current_seq
       }));
     }
   },
@@ -251,6 +328,14 @@ const app = {
       }
 
       if (typeof data === 'object' && data !== null) {
+        if (typeof data.seq === 'number') {
+          const cur = parseInt(localStorage.getItem('rp_seq') || '0', 10);
+          if (data.seq > cur) {
+            localStorage.setItem('rp_seq', data.seq.toString());
+            this.updateSeqDisplay();
+          }
+        }
+
         const cmd = data.cmd;
 
         if (cmd === 'bridgeConnected') {
@@ -356,10 +441,92 @@ const app = {
     this._logger.log(rawMessage);
   },
 
-  // ── Sending ──
+  // ── Sending & Signing ──
+
+  /**
+   * Format and sign a JSON command with HMAC-SHA256 envelope if MQTT protocol is active.
+   * Canonical: "seq|ts|cmd|payload|src"
+   * HMAC: HMAC-SHA256(controlKey, canonical)
+   *
+   * @param {string|object} rawMsg JSON string or object
+   * @returns {string} Signed JSON string or original message
+   */
+  formatAndSignCommand(rawMsg) {
+    if (!rawMsg) return rawMsg;
+
+    const protocolRadio = document.querySelector('input[name="protocol"]:checked');
+    const protocol = protocolRadio ? protocolRadio.value : (localStorage.getItem('rp_protocol') || 'ws');
+
+    // Only sign for MQTT protocol
+    if (protocol !== 'mqtt') {
+      return typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+    }
+
+    try {
+      const data = typeof rawMsg === 'object' ? { ...rawMsg } : JSON.parse(rawMsg);
+      if (typeof data !== 'object' || data === null) {
+        return rawMsg;
+      }
+
+      const cmd = data.cmd;
+      if (!cmd || typeof cmd !== 'string' || cmd.startsWith('bridge')) {
+        return typeof rawMsg === 'string' ? rawMsg : JSON.stringify(data);
+      }
+
+      // If already signed, do not re-sign
+      if (data.hmac) {
+        return typeof rawMsg === 'string' ? rawMsg : JSON.stringify(data);
+      }
+
+      const controlKey = (localStorage.getItem('rp_control_key') || '').trim();
+      if (!controlKey) {
+        return typeof rawMsg === 'string' ? rawMsg : JSON.stringify(data);
+      }
+
+      if (controlKey.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(controlKey)) {
+        this._logger.log(`[WARN] Invalid controlKey (${controlKey.length}/64 hex chars). Sending unsigned command '${cmd}'.`, 'warn');
+        return typeof rawMsg === 'string' ? rawMsg : JSON.stringify(data);
+      }
+
+      // Ensure payload object exists and is compact JSON
+      if (data.payload === undefined) {
+        data.payload = {};
+      }
+      const payloadCompact = typeof data.payload === 'object' && data.payload !== null
+        ? JSON.stringify(data.payload)
+        : (data.payload ? String(data.payload) : "{}");
+
+      // Timestamp with UTC+7 offset (firmware local clock)
+      const ts = Math.floor(Date.now() / 1000) + (7 * 3600);
+
+      // Sequence number: always strictly increasing, tracking at least the current timestamp
+      let currentSeq = parseInt(localStorage.getItem('rp_seq') || '0', 10);
+      let seq = Math.max(ts, currentSeq + 1) >>> 0;
+      localStorage.setItem('rp_seq', seq.toString());
+      this.updateSeqDisplay();
+
+      const src = (localStorage.getItem('rp_sender_id') || 'web-debug').trim() || 'web-debug';
+
+      // Canonical string format: "seq|ts|cmd|payload|src"
+      // Matching DeviceCommandEnvelope.kt and Crypto.h
+      const canonical = `${seq}|${ts}|${cmd}|${payloadCompact}|${src}`;
+      const hmac = Utils.hmacSha256Hex(controlKey, canonical);
+
+      data.seq = seq;
+      data.ts = ts;
+      data.src = src;
+      data.hmac = hmac;
+
+      return JSON.stringify(data);
+    } catch (_) {
+      // Not a valid JSON, send as raw string
+      return rawMsg;
+    }
+  },
 
   _sendRaw(text) {
-    this._wsManager.send(text);
+    const toSend = this.formatAndSignCommand(text);
+    this._wsManager.send(toSend);
   },
 
   sendCmd() {
@@ -367,8 +534,10 @@ const app = {
     const input = Utils.$('cmd-input');
     const text = input.value.trim();
     if (!text) return;
-    if (this._wsManager.send(text)) {
-      this._logger.log(`>>> ${text}`, 'sent');
+
+    const signed = this.formatAndSignCommand(text);
+    if (this._wsManager.send(signed)) {
+      this._logger.log(`>>> ${signed}`, 'sent');
       input.value = '';
     } else {
       this._logger.log('[ERROR] Send failed', 'error');

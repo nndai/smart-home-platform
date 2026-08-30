@@ -408,6 +408,53 @@
                      class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
             </div>
           </div>
+
+          <!-- Command Signing (HMAC-SHA256 Envelope) -->
+          <div class="pt-2 border-t border-white/5 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                <i data-lucide="key" class="w-3.5 h-3.5 text-accent"></i>
+                Command Signing Envelope (HMAC-SHA256)
+              </span>
+              <span id="control-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/10 text-gray-400 border border-gray-500/20">Not Set</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-gray-500 flex items-center justify-between">
+                  <span>Control Key (Hex 64)</span>
+                  <span id="control-key-len" class="text-[10px] font-mono text-gray-500">0/64</span>
+                </label>
+                <div class="relative">
+                  <input id="control-key" type="password" placeholder="64 hex characters (32 bytes)"
+                         class="w-full bg-surface-800 border border-white/10 rounded-lg pl-3 pr-10 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+                  <button type="button" id="btn-toggle-key" onclick="app.toggleControlKeyVisibility()"
+                          class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 p-1.5 rounded"
+                          title="Toggle Key Visibility">
+                    <i data-lucide="eye" id="control-key-eye" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-gray-500 flex items-center justify-between">
+                  <span>Sender ID (src)</span>
+                  <span id="seq-badge" class="text-[10px] font-mono text-gray-400">Seq: 0</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="sender-id" type="text" placeholder="web-debug" value="web-debug"
+                         class="flex-1 bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+                  <button type="button" onclick="app.resetSeq()" title="Sync Seq with current timestamp"
+                          class="px-3 py-2 text-xs font-medium rounded-lg bg-surface-800 border border-white/10 text-gray-400 hover:text-white hover:border-accent/40 hover:bg-accent/10 transition-all whitespace-nowrap active:scale-95">
+                    Sync Seq
+                  </button>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] text-gray-500 italic">
+              When MQTT is used, commands will automatically be signed: <code class="text-accent/80 font-mono text-[10px]">seq|ts|cmd|payload|src</code> (seq = timestamp).
+            </span>
+          </div>
         </div>
 
         <!-- Firmware Target Settings -->
@@ -514,14 +561,14 @@
   <div id="toast-container" class="fixed top-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"></div>
 
   <!-- JS Modules -->
-  <script src="js/utils.js?v=6"></script>
-  <script src="js/websocket.js?v=6"></script>
-  <script src="js/logger.js?v=6"></script>
-  <script src="js/file-browser.js?v=6"></script>
-  <script src="js/debug-info.js?v=6"></script>
-  <script src="js/uploader.js?v=6"></script>
-  <script src="js/dashboard.js?v=6"></script>
-  <script src="js/app.js?v=6"></script>
+  <script src="js/utils.js?v=10"></script>
+  <script src="js/websocket.js?v=10"></script>
+  <script src="js/logger.js?v=10"></script>
+  <script src="js/file-browser.js?v=10"></script>
+  <script src="js/debug-info.js?v=10"></script>
+  <script src="js/uploader.js?v=10"></script>
+  <script src="js/dashboard.js?v=10"></script>
+  <script src="js/app.js?v=10"></script>
   <script>
     lucide.createIcons();
   </script>

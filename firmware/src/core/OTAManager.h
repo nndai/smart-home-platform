@@ -12,6 +12,8 @@ public:
     OTAManager();
     bool begin();
     void handle();
+    void queueUrl(const String& url, ProgressCallback onProgress = nullptr, ResultCallback onResult = nullptr);
+    bool hasPending() const { return _hasPending; }
     bool startFromUrl(const String& url, ProgressCallback onProgress = nullptr, ResultCallback onResult = nullptr);
     bool startFromStream(size_t size, ProgressCallback onProgress = nullptr, ResultCallback onResult = nullptr);
     bool writeChunk(const uint8_t* data, size_t len);
@@ -27,6 +29,8 @@ public:
 private:
     bool _running;
     bool _urlMode;
+    bool _hasPending;
+    String _pendingUrl;
     int _progress;
     int _total;
     size_t _written;
