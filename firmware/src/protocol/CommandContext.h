@@ -15,6 +15,8 @@ public:
     virtual bool getFloat(FieldId id, float& out) const = 0;
     virtual bool getDouble(FieldId id, double& out) const = 0;
     
+    virtual bool getBytes(FieldId id, const uint8_t*& outData, size_t& outLen) const = 0;
+    
     virtual bool arrayContainsString(FieldId id, const char* value) const = 0;
 };
 
@@ -34,6 +36,7 @@ public:
     
     virtual void setString(FieldId id, const char* value) = 0;
     virtual void setString(FieldId id, const String& value) = 0;
+    virtual void setBytes(FieldId id, const uint8_t* data, size_t len) = 0;
     
     virtual CommandResponse* beginObject(FieldId id) = 0;
     virtual CommandResponse* beginArray(FieldId id) = 0;
@@ -43,6 +46,10 @@ public:
     // Add raw array element appending
     virtual void addString(const char* value) = 0;
     virtual CommandResponse* addBeginObject() = 0;
+
+    // Buffer access
+    virtual const uint8_t* rawData() const { return nullptr; }
+    virtual size_t rawSize() const { return 0; }
 };
 
 } // namespace protocol

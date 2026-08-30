@@ -420,6 +420,13 @@ static void onMqttMessage(const String& topic, const String& payload) {
 }
 
 static void onMqttBinary(const String& topic, const uint8_t* payload, size_t length) {
+    if (topic == (mqttBaseTopic() + F("/otachunk")) && otaManager.isRunning()) {
+        if (!otaManager.writeChunk(payload, length)) {
+            otaManager.writeError();
+        }
+        return;
+    }
+
     if (topic.startsWith(mqttBaseTopic() + F("/"))) {
         commandHandler.handleCommandBinary(F("mqtt"), payload, length);
         return;

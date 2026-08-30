@@ -267,6 +267,21 @@ class BridgeManager:
                 print(f"[BRIDGE] MQTT send error: {e}")
                 self.disconnect()
 
+    def send_ota_chunk(self, chunk):
+        if self.protocol == 'ws' and self.device_ws and self.is_connected:
+            try:
+                self.device_ws.send_binary(chunk)
+            except Exception as e:
+                print(f"[BRIDGE] WS send OTA error: {e}")
+                self.disconnect()
+        elif self.protocol == 'mqtt' and self.mqtt and self.is_connected:
+            try:
+                target_topic = self.mqtt_topic_ota if self.mqtt_topic_ota else self.mqtt_topic_pub
+                self.mqtt.publish(target_topic, chunk)
+            except Exception as e:
+                print(f"[BRIDGE] MQTT send OTA error: {e}")
+                self.disconnect()
+
     def start_upload(self, data_bytes):
         self.uploading = True
         self._ota_ack = threading.Event() if self.protocol == 'mqtt' else None
@@ -294,7 +309,7 @@ class BridgeManager:
                 break
 
             chunk = data_bytes[i:i+chunk_size]
-            self.send(chunk)
+            self.send_ota_chunk(chunk)
             time.sleep(0.01)
 
             pct = int(((i + len(chunk)) / total) * 100)
@@ -323,7 +338,7 @@ class BridgeManager:
 
             while offset < target_bytes and offset < total and self.uploading and self.is_connected:
                 chunk_end = min(offset + chunk_size, target_bytes, total)
-                self.send(data_bytes[offset:chunk_end])
+                self.send_ota_chunk(data_bytes[offset:chunk_end])
                 offset = chunk_end
                 time.sleep(0.4)
                 # Không broadcast bridgeProgress 100% từ bridge

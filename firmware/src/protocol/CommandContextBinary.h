@@ -104,6 +104,17 @@ public:
         return false;
     }
     
+    bool getBytes(FieldId id, const uint8_t*& outData, size_t& outLen) const override {
+        FieldView field;
+        if (!findField(id, field)) return false;
+        if (field.type == BinaryType::BYTES || field.type == BinaryType::STRING) {
+            outData = field.data;
+            outLen = field.size;
+            return true;
+        }
+        return false;
+    }
+
     bool arrayContainsString(FieldId id, const char* value) const override {
         FieldView field;
         if (!findField(id, field)) return false;
@@ -149,6 +160,10 @@ public:
         _writer->writeString(id, value);
     }
     
+    void setBytes(FieldId id, const uint8_t* data, size_t len) override {
+        _writer->writeBytes(id, data, static_cast<uint16_t>(len));
+    }
+    
     CommandResponse* beginObject(FieldId id) override {
         BinaryWriter::Container* child = new BinaryWriter::Container(_writer->beginObject(id));
         return new BinaryCommandResponse(_writer, child);
@@ -182,6 +197,9 @@ public:
         BinaryWriter::Container* child = new BinaryWriter::Container(_writer->beginObject(FieldId::None));
         return new BinaryCommandResponse(_writer, child);
     }
+
+    const uint8_t* rawData() const override { return _writer ? _writer->data() : nullptr; }
+    size_t rawSize() const override { return _writer ? _writer->size() : 0; }
 
 private:
     BinaryWriter* _writer;

@@ -57,8 +57,8 @@ class FirmwareUploader {
       this._logger.log('[INFO] Sent uploadFirmwareStart', 'info');
 
       // Wait for begin response
-      const startResp = await this._waitForResponse(ws, 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
-      if (!startResp || startResp.cmd === 'beginUploadFirmwareFailed') {
+      const startResp = await this._waitForResponse(ws, 'uploadFirmwareStart', 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
+      if (!startResp || (startResp.cmd === 'uploadFirmwareStart' && startResp.status !== 'ok') || startResp.cmd === 'beginUploadFirmwareFailed') {
         throw new Error(`Device refused: ${startResp?.message || 'unknown error'}`);
       }
 
@@ -181,8 +181,8 @@ class FirmwareUploader {
       this._logger.log('[INFO] Sent uploadFirmwareStart', 'info');
 
       // Wait for device success
-      const startResp = await this._waitForResponse(ws, 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
-      if (!startResp || startResp.cmd === 'beginUploadFirmwareFailed') {
+      const startResp = await this._waitForResponse(ws, 'uploadFirmwareStart', 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
+      if (!startResp || (startResp.cmd === 'uploadFirmwareStart' && startResp.status !== 'ok') || startResp.cmd === 'beginUploadFirmwareFailed') {
         throw new Error(`Device refused: ${startResp?.message || 'unknown error'}`);
       }
 

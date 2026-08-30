@@ -101,9 +101,11 @@ void FileBrowser::listDir(const String& path, size_t offset, size_t limit, proto
     }
 }
 
-void FileBrowser::readFile(const String& path, size_t offset, size_t limit, bool encode, protocol::CommandResponse& resp) {
+void FileBrowser::readFile(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
+    if (limit == 0 || limit > 1000) {
+        limit = 1000;
+    }
     resp.setString(protocol::FieldId::Path, path);
-    resp.setBool(protocol::FieldId::Encode, encode);
     resp.setU32(protocol::FieldId::Offset, (uint32_t)offset);
 
     File f = LITTLEFS.open(path, "r");
@@ -118,7 +120,7 @@ void FileBrowser::readFile(const String& path, size_t offset, size_t limit, bool
     resp.setU32(protocol::FieldId::Size, (uint32_t)fileSize);
 
     if (offset >= fileSize) {
-        resp.setString(protocol::FieldId::Data, "");
+        resp.setBytes(protocol::FieldId::Data, nullptr, 0);
         resp.setBool(protocol::FieldId::More, false);
         f.close();
         return;
@@ -131,34 +133,17 @@ void FileBrowser::readFile(const String& path, size_t offset, size_t limit, bool
         toRead = fileSize - offset;
     }
 
-    if (encode) {
-        uint8_t* buf = (uint8_t*)malloc(toRead);
-        if (!buf) {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Out of memory");
-            f.close();
-            return;
-        }
-        size_t n = f.read(buf, toRead);
-        String encoded = crypto::base64Encode(buf, n);
-        free(buf);
-        resp.setString(protocol::FieldId::Data, encoded);
-        resp.setBool(protocol::FieldId::More, (offset + n < fileSize));
-    } else {
-        char buf[128];
-        String data;
-        data.reserve(toRead + 64);
-        size_t remaining = toRead;
-        while (remaining > 0) {
-            size_t n = f.read((uint8_t*)buf, std::min<size_t>(sizeof(buf) - 1, remaining));
-            if (n == 0) break;
-            buf[n] = '\0';
-            data += buf;
-            remaining -= n;
-        }
-        resp.setString(protocol::FieldId::Data, data);
-        resp.setBool(protocol::FieldId::More, (offset + data.length() < fileSize));
+    uint8_t* buf = (uint8_t*)malloc(toRead);
+    if (!buf) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Out of memory");
+        f.close();
+        return;
     }
+    size_t n = f.read(buf, toRead);
+    resp.setBytes(protocol::FieldId::Data, buf, n);
+    free(buf);
+    resp.setBool(protocol::FieldId::More, (offset + n < fileSize));
 
     f.close();
 }
