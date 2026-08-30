@@ -294,13 +294,18 @@ class FirmwareUploader {
 
       const handler = (event) => {
         try {
+          let data = null;
           if (typeof event.data === 'string') {
-            const data = JSON.parse(event.data);
-            if (data && expectedCmds.includes(data.cmd)) {
-              clearTimeout(timeout);
-              ws.removeEventListener('message', handler);
-              resolve(data);
+            data = JSON.parse(event.data);
+          } else if (event.data instanceof ArrayBuffer || event.data instanceof Uint8Array) {
+            if (typeof BinaryProtocolParser !== 'undefined') {
+              data = BinaryProtocolParser.parse(event.data);
             }
+          }
+          if (data && expectedCmds.includes(data.cmd)) {
+            clearTimeout(timeout);
+            ws.removeEventListener('message', handler);
+            resolve(data);
           }
         } catch (_) { }
       };
