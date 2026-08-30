@@ -9,10 +9,10 @@ class SwitchDriver : public DeviceDriver {
 public:
     void begin(DeviceConfig& cfg, ConfigSaveFn saveFn) override;
     void loop(uint32_t nowMs) override;
-    bool handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) override;
-    void getStatus(JsonDocument& resp) override;
-    void getConfig(JsonDocument& resp) override;
-    bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
+    bool handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
+    void getStatus(protocol::CommandResponse& resp) override;
+    void getConfig(protocol::CommandResponse& resp) override;
+    bool setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
 
     bool isRelayOn() override { return _switch.getState(); }
     void setRelay(bool on) override { on ? _switch.turnOn() : _switch.turnOff(); }

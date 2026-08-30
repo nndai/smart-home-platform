@@ -178,12 +178,15 @@ class DeviceHandshakeManager(
         startProbeResponseWatchdog(deviceId, isSilentProbe)
     }
 
-    private fun handleIncomingMqttMessage(topic: String, payload: String) {
+    private fun handleIncomingMqttMessage(topic: String, payload: ByteArray) {
         val deviceId = extractDeviceIdFromTopic(topic) ?: return
         val stateFlow = healthStates[deviceId] ?: return
 
+        val isBinary = payload.size >= 2 && payload[0] == 0xB7.toByte() && payload[1] == 0x01.toByte()
+        val payloadStr = if (!isBinary) String(payload, Charsets.UTF_8) else null
+
         // Ignore old retained "announce" messages pushed by broker history during active handshake probe
-        if (stateFlow.value is DeviceHealthStatus.Handshaking && payload.contains("\"cmd\":\"announce\"")) {
+        if (!isBinary && stateFlow.value is DeviceHealthStatus.Handshaking && payloadStr?.contains("\"cmd\":\"announce\"") == true) {
             Log.d(TAG, "Ignoring retained announce message for $deviceId during handshake probe")
             return
         }
@@ -192,7 +195,7 @@ class DeviceHandshakeManager(
         lastRxTimes[deviceId] = now
         failedAttempts[deviceId] = 0 // Reset failed attempt counter on successful RX
 
-        stateFlow.value = DeviceHealthStatus.Online(lastRxTimeMs = now, snapshotJson = payload)
+        stateFlow.value = DeviceHealthStatus.Online(lastRxTimeMs = now, snapshotJson = payloadStr)
 
         // Schedule next idle check watchdog
         scheduleIdleWatchdog(deviceId)

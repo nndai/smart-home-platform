@@ -270,7 +270,10 @@ Data:
 
 ## 9. OTA
 
-- Firmware upload → Supabase Storage (1GB free) → URL HTTPS → giữ nguyên cơ chế OTA verify + rollback hiện có (OtaVerify/boot guard)
+- Firmware binary (`.bin`) upload → **Supabase Storage** (bucket `firmwares`, 1GB free) → URL HTTPS trực tiếp.
+- Metadata (version, profile, env, chip, checksum SHA-256/MD5, changelog) lưu tại bảng **`public.firmware_releases`** (`supabase/migrations/0009_firmware_releases.sql`).
+- Script tự động build & upload: `tools/upload_firmware.py` (hoặc `.ps1`). Chi tiết xem `docs/OTA_FIRMWARE_GUIDE.md`.
+- Giữ nguyên cơ chế OTA an toàn (stream timeout, abort khi ngắt mạng, reboot flash swap).
 
 ## 10. Lộ trình triển khai
 

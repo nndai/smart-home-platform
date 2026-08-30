@@ -16,11 +16,11 @@ class PumpDriver : public DeviceDriver {
 public:
     void begin(DeviceConfig& cfg, ConfigSaveFn saveFn) override;
     void loop(uint32_t nowMs) override;
-    bool handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) override;
-    void getStatus(JsonDocument& resp) override;
-    void getConfig(JsonDocument& resp) override;
-    bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
-    void getSysInfo(JsonDocument& resp) override;
+    bool handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
+    void getStatus(protocol::CommandResponse& resp) override;
+    void getConfig(protocol::CommandResponse& resp) override;
+    bool setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
+    void getSysInfo(protocol::CommandResponse& resp) override;
 
     void setServices(const DriverServices& svc) override;
     bool isRelayOn() override { return _pump.isOn(); }
@@ -44,6 +44,7 @@ private:
     std::function<bool()> _saveConfig;
     std::function<void()> _resetConfig;
     std::function<void(const String&)> _sendResponse;
+    std::function<void(const uint8_t* payload, size_t length)> _sendBinaryResponse;
     std::function<void()> _publishStatus;
     ButtonMenu::Step _menuSteps[3];
 
@@ -57,7 +58,7 @@ private:
 
     void _onPumpState(PumpState state, float current, bool isOn, const char* msg);
     void _energyTick();
-    void _handleCalibrate(const JsonDocument& payload, JsonDocument& resp);
+    void _handleCalibrate(const protocol::CommandRequest& payload, protocol::CommandResponse& resp);
 
     // ── Hành vi nút nhấn (riêng của pump) ──
     void _onButtonClick();

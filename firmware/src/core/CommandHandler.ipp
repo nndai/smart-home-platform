@@ -1,12 +1,18 @@
 #include "core/CommandHandler.h"
-#include "compat/log.h"
-#include "core/BuildInfo.h"
-#include "core/Crypto.h"
+#include <Arduino.h>
+#include "compat/wifi.h"
 #include "compat/wifi_scan.h"
-#include "chip/scan.h"
 #include "chip/io.h"
-
-extern ConnMode g_connMode;
+#include "chip/scan.h"
+#include "core/Crypto.h"
+#include "core/BuildInfo.h"
+#include "core/DeviceIdentity.h"
+#include "core/FileBrowser.h"
+#include "protocol/BinaryProtocol.h"
+#include "protocol/BinaryWriter.h"
+#include "protocol/BinaryCommandIds.h"
+#include "protocol/BinaryFieldIds.h"
+#include "protocol/CommandContextBinary.h"
 
 template <typename T>
 CommandHandlerT<T>::CommandHandlerT()
@@ -25,83 +31,47 @@ void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     _ota = ota;
     _identity = identity;
     _profile = profile ? profile : "unknown";
-
-    // Per-sender seq table lives in RAM only (intentional: no flash persistence).
-    // After reboot the ts window (60s) guards replay until NTP sync.
     _seqCount = 0;
 }
 
 template <typename T>
-void CommandHandlerT<T>::setResponseCallback(ResponseCallback cb) {
-    _responseCb = cb;
+void CommandHandlerT<T>::setBinaryResponseCallback(BinaryResponseCallback cb) {
+    _binaryResponseCb = cb;
 }
 
 template <typename T>
-void CommandHandlerT<T>::handleCommand(const String& source, const String& json) {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, json);
-    if (err) {
-        JsonDocument resp;
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Invalid JSON");
-        _sendResponse(source, resp);
-        return;
-    }
-
-    const char* cmd = doc[F("cmd")];
-    JsonVariant payloadVar = doc[F("payload")];
-
-    if (!cmd) {
-        JsonDocument resp;
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing cmd");
-        _sendResponse(source, resp);
-        return;
-    }
-
-    JsonDocument payload;
-    if (!payloadVar.isNull()) {
-        payload = payloadVar.as<JsonObject>();
-    }
-
-    _handleCommand(source, doc, payload);
-}
-
-template <typename T>
-void CommandHandlerT<T>::_sendResponse(const String& source, const String& json) {
-    if (_responseCb) _responseCb(source, json);
+void CommandHandlerT<T>::_sendBinaryResponse(const String& source, const uint8_t* data, size_t length) {
+    if (_binaryResponseCb) _binaryResponseCb(source, data, length);
 }
 
 // ── Envelope verify (docs §3.2) ──
-// Lệnh MQTT hợp lệ: {cmd, payload, seq, ts, hmac, src} với
-//   hmac = HMAC-SHA256(controlKey, "<seq>|<ts>|<cmd>|<payload JSON compact>|<src>")
-// Kiểm tra: seq tăng dần THEO TỪNG SENDER (chống replay, RAM-only), |now-ts| <= 60s,
-// HMAC đúng (chống giả mạo — kẻ khác không có controlKey).
 template <typename T>
-bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocument& payload) {
+bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protocol::CommandRequest& req) {
     if (!_identity) {
         LT_EM(CMD, "Envelope: identity unavailable");
         return false;
     }
 
-    if (!cmd[F("seq")].is<uint32_t>() || !cmd[F("ts")].is<uint32_t>() || !cmd[F("hmac")].is<const char*>()) {
+    uint32_t seq = 0;
+    uint32_t ts = 0;
+    String hmacHex;
+    String src;
+
+    if (!req.getUint(protocol::FieldId::Seq, seq) ||
+        !req.getUint(protocol::FieldId::Ts, ts) ||
+        !req.getString(protocol::FieldId::Hmac, hmacHex)) {
         LT_EM(CMD, "Envelope: missing seq/ts/hmac");
         return false;
     }
-    const uint32_t seq = cmd[F("seq")].as<uint32_t>();
-    const uint32_t ts = cmd[F("ts")].as<uint32_t>();
-    const char* hmacHex = cmd[F("hmac")].as<const char*>();
 
-    if (strlen(hmacHex) != 64) {
+    if (hmacHex.length() != 64) {
         LT_EM(CMD, "Envelope: bad hmac length");
         return false;
     }
 
-    // Nhiều controller (app, remote switch...) ký cùng controlKey nhưng giữ seq
-    // riêng → floor riêng cho từng sender ("" = legacy sender thiếu src).
-    const char* src = cmd[F("src")] | "";
+    req.getString(protocol::FieldId::Src, src);
 
-    // Lệch giờ: chỉ kiểm tra khi đã đồng bộ NTP (now != 0).
+    // Time drift check
     if (_log->isTimeSynced()) {
         const uint32_t now = _log->getEpoch();
         if (now != 0) {
@@ -113,34 +83,28 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
         }
     }
 
-    // Canonical: "seq|ts|cmd|payload|src" — payload serialize lại từ doc (compact, giữ thứ tự key).
     String keyHex;
     if (!_identity->controlKeyHex(keyHex)) {
         LT_EM(CMD, "Envelope: no controlKey");
         return false;
     }
-    String payloadStr;
-    serializeJson(payload, payloadStr);
-    const String canonical = crypto::buildCanonical(seq, ts, cmd["cmd"].as<const char*>(), payloadStr, src);
+
+    const char* cmdStr = protocol::commandIdToString(static_cast<uint8_t>(cmdId));
+    const String canonical = crypto::buildCanonical(seq, ts, cmdStr, "", src.c_str());
 
     char expectedHex[65];
     if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
         LT_EM(CMD, "Envelope: hmac compute failed");
         return false;
     }
-    if (strcmp(expectedHex, hmacHex) != 0) {
-        LT_EM(CMD, "Envelope: hmac mismatch (cmd=%s)", cmd[F("cmd")].as<const char*>());
+    if (strcmp(expectedHex, hmacHex.c_str()) != 0) {
+        LT_EM(CMD, "Envelope: hmac mismatch (cmd=%s)", cmdStr);
         return false;
     }
 
-    // ── HMAC hợp lệ mới được phép thay đổi bảng seq ──
-    // Nếu cấp slot trước verify, kẻ spam (có credential MQTT shared nhưng
-    // không có controlKey) có thể lấp đầy MAX_SEQ_ENTRIES bằng src giả →
-    // DoS khóa cả sender chính chủ tới khi reboot.
-
     SeqEntry* entry = nullptr;
     for (uint8_t i = 0; i < _seqCount; i++) {
-        if (strcmp(_seqTable[i].src, src) == 0) {
+        if (strcmp(_seqTable[i].src, src.c_str()) == 0) {
             entry = &_seqTable[i];
             break;
         }
@@ -150,93 +114,147 @@ bool CommandHandlerT<T>::_verifyEnvelope(const JsonDocument& cmd, const JsonDocu
             LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
             return false;
         }
-        if (strlen(src) >= sizeof(entry->src)) {
+        if (src.length() >= sizeof(entry->src)) {
             LT_EM(CMD, "Envelope: src too long");
             return false;
         }
         entry = &_seqTable[_seqCount++];
-        strlcpy(entry->src, src, sizeof(entry->src));
+        strlcpy(entry->src, src.c_str(), sizeof(entry->src));
         entry->seq = 0;
     }
 
-    // Replay: seq phải lớn hơn seq cuối đã duyệt của SENDER này.
     if (seq <= entry->seq) {
-        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src);
+        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src.c_str());
         return false;
     }
 
     entry->seq = seq;
-    // Cố ý KHÔNG persist floor xuống flash: sau reboot bảng rỗng, replay bị chặn
-    // bằng cửa sổ ts 60s — đánh đổi flash wear vs an toàn đã được chấp nhận.
     return true;
 }
 
-// Reset floor của mọi sender — gọi khi controlKey đổi (pair mới / provision) hoặc factory reset.
 template <typename T>
 void CommandHandlerT<T>::_resetSeq() {
     _seqCount = 0;
 }
 
 template <typename T>
-void CommandHandlerT<T>::_sendResponse(const String& source, const JsonDocument& doc) {
-    String json;
-    serializeJson(doc, json);
-    _sendResponse(source, json);
-}
+void CommandHandlerT<T>::handleCommandBinary(const String& source, const uint8_t* payload, size_t length) {
+    protocol::CommandId commandId = protocol::CommandId::Unknown;
+    const uint8_t* payloadData = nullptr;
+    size_t payloadLen = 0;
 
-template <typename T>
-void CommandHandlerT<T>::_handleCommand(const String& source, const JsonDocument& cmd, const JsonDocument& payload) {
-    String cmdStr = cmd[F("cmd")].as<String>();
-    String reqId = cmd[F("reqId")].is<String>() ? cmd[F("reqId")].as<String>() : "";
-
-    // ── Lệnh từ MQTT PHẢI có envelope hợp lệ (seq/ts/hmac) — docs §3.2 ──
-    // Chặn: giả mạo (kẻ khác publish lệnh), replay (seq cũ), lệch giờ (ts).
-    // AP/WS (pairing) không cần envelope: proximity + WPA2.
-    if (source == F("mqtt") && !_verifyEnvelope(cmd, payload)) {
-        LT_EM(CMD, "Mqtt command '%s' rejected: invalid envelope", cmdStr.c_str());
+    if (!protocol::parseFrame(payload, length, commandId, payloadData, payloadLen)) {
+        LT_EM(CMD, "Invalid binary frame");
         return;
     }
 
-    JsonDocument resp;
-    resp[F("cmd")] = cmdStr;
-    
-    if (reqId.length() > 0) resp[F("reqId")] = reqId;
+    protocol::BinaryCommandRequest req(payloadData, payloadLen);
 
-    // Command riêng của thiết bị → chuyển cho driver
-    if (_driver && _driver->handleCmd(cmdStr.c_str(), payload, resp)) {
-        _sendResponse(source, resp);
+    if (source == F("mqtt") && !_verifyEnvelope(commandId, req)) {
+        LT_EM(CMD, "Mqtt binary cmd %u rejected: invalid envelope", static_cast<uint8_t>(commandId));
         return;
     }
 
-    if (cmdStr == F("getStatus")) _cmdGetStatus(source, payload, resp);
-    else if (cmdStr == F("getConfig")) _cmdGetConfig(source, payload, resp);
-    else if (cmdStr == F("setConfig")) _cmdSetConfig(source, payload, resp);
-    else if (cmdStr == F("getLog")) _cmdGetLog(source, payload, resp);
-    else if (cmdStr == F("clearSysLog")) _cmdClearSysLog(source, payload, resp);
-    else if (cmdStr == F("otaUrl")) _cmdOtaUrl(source, payload, resp);
-    else if (cmdStr == F("reboot")) _cmdReboot(source, payload, resp);
-    else if (cmdStr == F("factoryReset")) _cmdFactoryReset(source, payload, resp);
-    else if (cmdStr == F("setLogMqtt")) _cmdSetLogMqtt(source, payload, resp);
-    else if (cmdStr == F("getLogMqtt")) _cmdGetLogMqtt(source, payload, resp);
-    else if (cmdStr == F("getLogStats")) _cmdGetLogStats(source, payload, resp);
-    else if (cmdStr == F("getSystemInfo")) _cmdGetSystemInfo(source, payload, resp);
-    else if (cmdStr == F("uploadFirmwareStart")) _cmdUploadFirmwareStart(source, payload, resp);
-    else if (cmdStr == F("uploadFirmwareEnd")) _cmdUploadFirmwareEnd(source, payload, resp);
-    else if (cmdStr == F("uploadFirmwareAbort")) _cmdUploadFirmwareAbort(source, payload, resp);
-    else if (cmdStr == F("otaChunk")) _cmdOtaChunk(source, payload, resp);
-    else if (cmdStr == F("scanWifi")) _cmdScanWifi(source, payload, resp);
-    else if (cmdStr == F("getScanWifiData")) _cmdGetScanWifiData(source, payload, resp);
-    else if (cmdStr == F("pair")) _cmdPair(source, payload, resp);
-    else if (cmdStr == F("provision")) _cmdProvision(source, payload, resp);
-    else if (cmdStr == F("listDir") || cmdStr == F("readFile") || cmdStr == F("fileInfo") || cmdStr == F("deleteItem") || cmdStr == F("fsInfo") || cmdStr == F("downloadFile")) {
-        _handleFileCommand(source, cmdStr, payload, reqId);
+    protocol::BinaryWriter writer(commandId);
+    protocol::BinaryCommandResponse resp(&writer);
+
+    String reqId;
+    if (req.getString(protocol::FieldId::ReqId, reqId) && reqId.length() > 0) {
+        resp.setString(protocol::FieldId::ReqId, reqId);
+    }
+
+    // Driver command handling
+    String cmdStr = protocol::commandIdToString(static_cast<uint8_t>(commandId));
+    if (_driver && _driver->handleCmd(cmdStr.c_str(), req, resp)) {
+        _sendBinaryResponse(source, writer.data(), writer.size());
         return;
     }
-    else {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Unknown command");
-        _sendResponse(source, resp);
+
+    // System commands
+    switch (commandId) {
+        case protocol::CommandId::GetStatus:
+            _cmdGetStatus(source, req, resp);
+            break;
+        case protocol::CommandId::GetConfig:
+            _cmdGetConfig(source, req, resp);
+            break;
+        case protocol::CommandId::SetConfig:
+            _cmdSetConfig(source, req, resp);
+            break;
+        case protocol::CommandId::GetLog:
+            _cmdGetLog(source, req, resp);
+            break;
+        case protocol::CommandId::ClearSysLog:
+            _cmdClearSysLog(source, req, resp);
+            break;
+        case protocol::CommandId::OtaUrl:
+            _cmdOtaUrl(source, req, resp);
+            break;
+        case protocol::CommandId::Reboot:
+            _cmdReboot(source, req, resp);
+            break;
+        case protocol::CommandId::FactoryReset:
+            _cmdFactoryReset(source, req, resp);
+            break;
+        case protocol::CommandId::SetLogMqtt:
+            _cmdSetLogMqtt(source, req, resp);
+            break;
+        case protocol::CommandId::GetLogMqtt:
+            _cmdGetLogMqtt(source, req, resp);
+            break;
+        case protocol::CommandId::GetLogStats:
+            _cmdGetLogStats(source, req, resp);
+            break;
+        case protocol::CommandId::GetSystemInfo:
+            _cmdGetSystemInfo(source, req, resp);
+            break;
+        case protocol::CommandId::UploadFirmwareStart:
+            _cmdUploadFirmwareStart(source, req, resp);
+            break;
+        case protocol::CommandId::UploadFirmwareEnd:
+            _cmdUploadFirmwareEnd(source, req, resp);
+            break;
+        case protocol::CommandId::UploadFirmwareAbort:
+            _cmdUploadFirmwareAbort(source, req, resp);
+            break;
+        case protocol::CommandId::OtaChunk:
+            _cmdOtaChunk(source, req, resp);
+            break;
+        case protocol::CommandId::ScanWifi:
+            _cmdScanWifi(source, req, resp);
+            break;
+        case protocol::CommandId::GetScanWifiData:
+            if (_scanResultReady && _scanResultBuf && _scanResultLen > 0) {
+                _scanResultReady = false;
+                _sendBinaryResponse(source, _scanResultBuf, _scanResultLen);
+                free(_scanResultBuf);
+                _scanResultBuf = nullptr;
+                _scanResultLen = 0;
+                return;
+            }
+            _cmdGetScanWifiData(source, req, resp);
+            break;
+        case protocol::CommandId::Pair:
+            _cmdPair(source, req, resp);
+            break;
+        case protocol::CommandId::Provision:
+            _cmdProvision(source, req, resp);
+            break;
+        case protocol::CommandId::ListDir:
+        case protocol::CommandId::ReadFile:
+        case protocol::CommandId::FileInfo:
+        case protocol::CommandId::DeleteItem:
+        case protocol::CommandId::FsInfo:
+        case protocol::CommandId::DownloadFile:
+            _handleFileCommand(source, commandId, req, resp);
+            break;
+        default:
+            resp.setString(protocol::FieldId::Status, "error");
+            resp.setString(protocol::FieldId::Message, "Unknown command");
+            break;
     }
+
+    _sendBinaryResponse(source, writer.data(), writer.size());
 }
 
 template <typename T>
@@ -263,116 +281,104 @@ bool CommandHandlerT<T>::anyStreamActive() const {
 template <typename T>
 void CommandHandlerT<T>::sendStream(StreamType type) {
     if (!isStreamActive(type)) return;
-
-    JsonDocument resp;
-    JsonDocument emptyPayload;
     const String& source = _streamSource[type];
 
-    switch (type) {
-    case STREAM_STATUS:
-        resp[F("cmd")] = F("getStatus");
-        _cmdGetStatus(source, emptyPayload, resp);
-        break;
-    case STREAM_SYSINFO:
-        resp[F("cmd")] = F("getSystemInfo");
-        emptyPayload[F("fields")] = F("all");
-        _cmdGetSystemInfo(source, emptyPayload, resp);
-        break;
-        case STREAM_COUNT:
-        default:
-            break;
+    protocol::CommandId cmdId = (type == STREAM_STATUS) ? protocol::CommandId::GetStatus : protocol::CommandId::GetSystemInfo;
+    protocol::BinaryWriter writer(cmdId);
+    protocol::BinaryCommandResponse resp(&writer);
+
+    protocol::BinaryCommandRequest emptyReq(nullptr, 0);
+    if (type == STREAM_STATUS) {
+        _cmdGetStatus(source, emptyReq, resp);
+    } else if (type == STREAM_SYSINFO) {
+        _cmdGetSystemInfo(source, emptyReq, resp);
     }
+
+    _sendBinaryResponse(source, writer.data(), writer.size());
 }
 
 template <typename T>
 void CommandHandlerT<T>::publishStatusToUp() {
-    JsonDocument resp;
-    JsonDocument emptyPayload;
-    resp[F("cmd")] = F("getStatus");
-    _cmdGetStatus(F("mqtt"), emptyPayload, resp);
+    protocol::BinaryWriter writer(protocol::CommandId::GetStatus);
+    protocol::BinaryCommandResponse resp(&writer);
+
+    protocol::BinaryCommandRequest emptyReq(nullptr, 0);
+    _cmdGetStatus(F("mqtt"), emptyReq, resp);
+
+    _sendBinaryResponse(F("mqtt"), writer.data(), writer.size());
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdGetStatus(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    (void)payload;
-    
-    resp[F("timestamp")] = _log->getEpoch();
+void CommandHandlerT<T>::_cmdGetStatus(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setU32(protocol::FieldId::Timestamp, _log ? _log->getEpoch() : 0);
+    resp.setI32(protocol::FieldId::Rssi, WiFi.RSSI());
 
-    resp[F("status")] = F("ok");
-    resp[F("rssi")] = WiFi.RSSI();
-    if (_driver) _driver->getStatus(resp);
+    if (_driver) {
+        _driver->getStatus(resp);
+    }
 
-    _sendResponse(source, resp);
-
-    if (payload[F("stream")].is<bool>() && payload[F("stream")].as<bool>()) {
+    bool stream = false;
+    if (payload.getBool(protocol::FieldId::Stream, stream) && stream) {
         startStream(STREAM_STATUS, source, STREAM_DURATION_MS);
     }
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdGetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdGetConfig(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)payload;
+    (void)source;
     T& c = _cfg->get();
-    resp[F("status")] = F("ok");
+    resp.setString(protocol::FieldId::Status, "ok");
 
-    // Connection mode
-    resp[F("connMode")] = (int)c.connMode;
-
-    // MQTT — topic là "devices/{deviceId}" (chuẩn phase 2, không cấu hình tay)
-    resp[F("mqttServer")] = c.mqttServer;
-    resp[F("mqttPort")] = c.mqttPort;
-    resp[F("mqttUser")] = c.mqttUser;
-    resp[F("mqttPass")] = strlen(_cfg->passPlain()) > 0 ? F("********") : F("");
+    resp.setI32(protocol::FieldId::ConnMode, (int)c.connMode);
+    resp.setString(protocol::FieldId::MqttServer, c.mqttServer);
+    resp.setU16(protocol::FieldId::MqttPort, c.mqttPort);
+    resp.setString(protocol::FieldId::MqttUser, c.mqttUser);
+    resp.setString(protocol::FieldId::MqttPass, strlen(_cfg->passPlain()) > 0 ? "********" : "");
     if (_identity) {
-        resp[F("mqttTopic")] = String(F("devices/")) + _identity->deviceId();
+        resp.setString(protocol::FieldId::MqttTopic, String(F("devices/")) + _identity->deviceId());
+        resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
+        resp.setString(protocol::FieldId::ApSSID, _identity->apSSID());
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
     } else {
-        resp[F("mqttTopic")] = F("");
+        resp.setString(protocol::FieldId::MqttTopic, "");
+        resp.setString(protocol::FieldId::DeviceId, "");
+        resp.setString(protocol::FieldId::ApSSID, "");
+        resp.setString(protocol::FieldId::PairingState, "unprovisioned");
     }
 
-    // WiFi
-    resp[F("wifiSSID")] = c.wifiSSID;
-    resp[F("wifiPass")] = strlen(c.wifiPass) > 0 ? F("********") : F("");
-    resp[F("debugSSID")] = c.debugSSID;
-    resp[F("debugPass")] = strlen(c.debugPass) > 0 ? F("********") : F("");
+    resp.setString(protocol::FieldId::WifiSSID, c.wifiSSID);
+    resp.setString(protocol::FieldId::WifiPass, strlen(c.wifiPass) > 0 ? "********" : "");
+    resp.setString(protocol::FieldId::DebugSSID, c.debugSSID);
+    resp.setString(protocol::FieldId::DebugPass, strlen(c.debugPass) > 0 ? "********" : "");
+    resp.setString(protocol::FieldId::Profile, _profile);
 
-    // Danh tính + pairing (AP SSID tự suy ra từ deviceId — không cấu hình tay)
-    if (_identity) {
-        resp[F("deviceId")] = _identity->deviceId();
-        resp[F("apSSID")] = _identity->apSSID();
-    } else {
-        resp[F("deviceId")] = F("");
-        resp[F("apSSID")] = F("");
-    }
-    resp[F("profile")] = _profile;
-    resp[F("pairingState")] = (_identity && _identity->isProvisioned()) ? F("provisioned") : F("unprovisioned");
-
-    // Debug network settings
     char ipBuf[16];
     snprintf_P(ipBuf, sizeof(ipBuf), PSTR("%d.%d.%d.%d"), c.debugIp[0], c.debugIp[1], c.debugIp[2], c.debugIp[3]);
-    resp[F("debugIp")] = (const char*)ipBuf;
+    resp.setString(protocol::FieldId::DebugIp, ipBuf);
     snprintf_P(ipBuf, sizeof(ipBuf), PSTR("%d.%d.%d.%d"), c.debugGateway[0], c.debugGateway[1], c.debugGateway[2], c.debugGateway[3]);
-    resp[F("debugGateway")] = (const char*)ipBuf;
+    resp.setString(protocol::FieldId::DebugGateway, ipBuf);
     snprintf_P(ipBuf, sizeof(ipBuf), PSTR("%d.%d.%d.%d"), c.debugNetmask[0], c.debugNetmask[1], c.debugNetmask[2], c.debugNetmask[3]);
-    resp[F("debugNetmask")] = (const char*)ipBuf;
+    resp.setString(protocol::FieldId::DebugNetmask, ipBuf);
 
-    resp[F("sysLogFileEnabled")] = c.sysLogFileEnabled;
-    resp[F("sysLogFileLevel")] = c.sysLogFileLevel;
+    resp.setBool(protocol::FieldId::SysLogFileEnabled, c.sysLogFileEnabled);
+    resp.setU8(protocol::FieldId::SysLogFileLevel, c.sysLogFileLevel);
 
-    // Field riêng của thiết bị
-    if (_driver) _driver->getConfig(resp);
-
-    _sendResponse(source, resp);
+    if (_driver) {
+        _driver->getConfig(resp);
+    }
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdSetConfig(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     T& c = _cfg->get();
     bool changed = false;
     bool needReboot = false;
 
-    // Connection mode
-    if (payload[F("connMode")].is<unsigned int>()) {
-        int v = payload[F("connMode")].as<int>();
+    int32_t v = 0;
+    if (payload.getInt(protocol::FieldId::ConnMode, v)) {
         if (v >= 0 && v <= 2) {
             c.connMode = (ConnMode)v;
             changed = true;
@@ -380,148 +386,138 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const JsonDocument&
         }
     }
 
-    // MQTT settings
-    if (payload[F("mqttServer")].is<const char*>()) {
-        strlcpy(c.mqttServer, payload[F("mqttServer")], sizeof(c.mqttServer));
+    String s;
+    if (payload.getString(protocol::FieldId::MqttServer, s)) {
+        strlcpy(c.mqttServer, s.c_str(), sizeof(c.mqttServer));
         changed = true;
         needReboot = true;
     }
-    if (payload[F("mqttPort")].is<unsigned int>()) { 
-        c.mqttPort = payload[F("mqttPort")]; 
+    uint32_t u = 0;
+    if (payload.getUint(protocol::FieldId::MqttPort, u)) {
+        c.mqttPort = (uint16_t)u;
         changed = true;
         needReboot = true;
     }
-    if (payload[F("mqttUser")].is<const char*>()) {
-        strlcpy(c.mqttUser, payload[F("mqttUser")], sizeof(c.mqttUser));
+    if (payload.getString(protocol::FieldId::MqttUser, s)) {
+        strlcpy(c.mqttUser, s.c_str(), sizeof(c.mqttUser));
         changed = true;
         needReboot = true;
     }
-    if (payload[F("mqttPass")].is<const char*>()) { 
-        _cfg->setPassPlain(payload[F("mqttPass")].as<const char*>());
-        changed = true; 
-        needReboot = true;
-    }
-    // mqttTopic KHÔNG cấu hình tay nữa — topic chuẩn "devices/{deviceId}" (xem getConfig).
-
-    // WiFi STA settings
-    if (payload[F("wifiSSID")].is<const char*>()) { 
-        strlcpy(c.wifiSSID, payload[F("wifiSSID")], sizeof(c.wifiSSID)); 
-        changed = true; 
-        needReboot = true;
-    }
-    if (payload[F("wifiPass")].is<const char*>()) { 
-        strlcpy(c.wifiPass, payload[F("wifiPass")], sizeof(c.wifiPass)); 
-        changed = true; 
-        needReboot = true;
-    }
-
-    // WiFi DEBUG settings
-    if (payload[F("debugSSID")].is<const char*>()) { 
-        strlcpy(c.debugSSID, payload[F("debugSSID")], sizeof(c.debugSSID)); 
-        changed = true; 
-        needReboot = true;
-    }
-    if (payload[F("debugPass")].is<const char*>()) { 
-        strlcpy(c.debugPass, payload[F("debugPass")], sizeof(c.debugPass)); 
-        changed = true; 
-        needReboot = true;
-    }
-
-    // Settings riêng của thiết bị → driver (pump thresholds, calib, relayStartMode...)
-    if (_driver && _driver->setConfig(payload, resp)) {
+    if (payload.getString(protocol::FieldId::MqttPass, s)) {
+        _cfg->setPassPlain(s.c_str());
         changed = true;
-    }
-
-    // Debug network settings
-    auto parseIP = [](const char* s, uint8_t ip[4]) -> bool {
-        return sscanf(s, "%hhu.%hhu.%hhu.%hhu", &ip[0], &ip[1], &ip[2], &ip[3]) == 4;
-        };
-    if (payload[F("debugIp")].is<const char*>()) { 
-        changed |= parseIP(payload[F("debugIp")], c.debugIp); 
         needReboot = true;
     }
-    if (payload[F("debugGateway")].is<const char*>()) { 
-        changed |= parseIP(payload[F("debugGateway")], c.debugGateway); 
+
+    if (payload.getString(protocol::FieldId::WifiSSID, s)) {
+        strlcpy(c.wifiSSID, s.c_str(), sizeof(c.wifiSSID));
+        changed = true;
         needReboot = true;
     }
-    if (payload[F("debugNetmask")].is<const char*>()) { 
-        changed |= parseIP(payload[F("debugNetmask")], c.debugNetmask); 
-        needReboot = true; 
+    if (payload.getString(protocol::FieldId::WifiPass, s)) {
+        strlcpy(c.wifiPass, s.c_str(), sizeof(c.wifiPass));
+        changed = true;
+        needReboot = true;
+    }
+    if (payload.getString(protocol::FieldId::DebugSSID, s)) {
+        strlcpy(c.debugSSID, s.c_str(), sizeof(c.debugSSID));
+        changed = true;
+        needReboot = true;
+    }
+    if (payload.getString(protocol::FieldId::DebugPass, s)) {
+        strlcpy(c.debugPass, s.c_str(), sizeof(c.debugPass));
+        changed = true;
+        needReboot = true;
     }
 
-    // System log settings
-    if (payload[F("sysLogFileEnabled")].is<bool>()) {
-        c.sysLogFileEnabled = payload[F("sysLogFileEnabled")];
+    if (_driver) {
+        if (_driver->setConfig(payload, resp)) {
+            changed = true;
+        }
+    }
+
+    auto parseIP = [](const char* str, uint8_t ip[4]) -> bool {
+        return sscanf(str, "%hhu.%hhu.%hhu.%hhu", &ip[0], &ip[1], &ip[2], &ip[3]) == 4;
+    };
+    if (payload.getString(protocol::FieldId::DebugIp, s)) {
+        changed |= parseIP(s.c_str(), c.debugIp);
+        needReboot = true;
+    }
+    if (payload.getString(protocol::FieldId::DebugGateway, s)) {
+        changed |= parseIP(s.c_str(), c.debugGateway);
+        needReboot = true;
+    }
+    if (payload.getString(protocol::FieldId::DebugNetmask, s)) {
+        changed |= parseIP(s.c_str(), c.debugNetmask);
+        needReboot = true;
+    }
+
+    bool b = false;
+    if (payload.getBool(protocol::FieldId::SysLogFileEnabled, b)) {
+        c.sysLogFileEnabled = b;
         _log->setSysLogFileEnabled(c.sysLogFileEnabled);
         changed = true;
     }
-    if (payload[F("sysLogFileLevel")].is<unsigned int>()) {
-        c.sysLogFileLevel = payload[F("sysLogFileLevel")];
+    if (payload.getInt(protocol::FieldId::SysLogFileLevel, v)) {
+        c.sysLogFileLevel = (uint8_t)v;
         _log->setSysLogFileLevel(c.sysLogFileLevel);
         changed = true;
     }
 
     if (changed) {
         _cfg->save(c);
-        resp[F("status")] = F("ok");
-        resp[F("message")] = needReboot ? F("Config saved. Reboot required.") : F("Config saved.");
-        resp[F("needReboot")] = needReboot;
+        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Message, needReboot ? "Config saved. Reboot required." : "Config saved.");
+        resp.setBool(protocol::FieldId::NeedReboot, needReboot);
         LT_IM(CMD, "Config updated%s", needReboot ? " (reboot needed)" : "");
+    } else {
+        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Message, "No changes");
     }
-    else {
-        resp[F("status")] = F("ok");
-        resp[F("message")] = F("No changes");
-    }
-
-    _sendResponse(source, resp);
 }
 
-
 template <typename T>
-void CommandHandlerT<T>::_cmdGetLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdGetLog(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
     String logContent;
     if (_log->readSysLog(logContent, 4096)) {
-        resp[F("status")] = F("ok");
-        resp[F("log")] = logContent;
-        resp[F("logSize")] = _log->getSysLogSize();
+        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Log, logContent);
+        resp.setU32(protocol::FieldId::LogSize, (uint32_t)_log->getSysLogSize());
+    } else {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "No log available");
     }
-    else {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("No log available");
-    }
-    _sendResponse(source, resp);
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdClearSysLog(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdClearSysLog(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
     _log->clearSysLog();
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("Sys log cleared");
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "Sys log cleared");
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    const char* url = payload[F("url")];
-    if (!url) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing URL");
-        _sendResponse(source, resp);
+void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    String url;
+    if (!payload.getString(protocol::FieldId::Url, url) || url.length() == 0) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Missing URL");
         return;
     }
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("OTA started from URL");
-    _sendResponse(source, resp);
+
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "OTA started from URL");
 
     static int lastPct = -1;
     lastPct = -1;
 
-    _ota->startFromUrl(url,
+    _ota->startFromUrl(url.c_str(),
         [this, source](int progress, int total) {
             int pct = (total > 0) ? (progress * 100 / total) : 0;
-            // Only send log every 5% to avoid flooding WebSocket
             if (pct >= lastPct + 5 || pct == 100 || (pct == 0 && pct != lastPct)) {
                 lastPct = pct;
                 LT_IM(OTA, "OTA Progress: %d%%", pct);
@@ -534,70 +530,74 @@ void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const JsonDocument& pa
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdReboot(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdReboot(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("Rebooting...");
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "Rebooting...");
     LT_IM(CMD, "Rebooting...");
     delay(1000);
     ESP.restart();
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
     _cfg->reset();
     if (_identity) _identity->reset();
-    _resetSeq(); // xóa seq đã duyệt — thiết bị quay về unprovisioned
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("Factory reset. Rebooting...");
-    _sendResponse(source, resp);
+    _resetSeq();
+    if (_scanResultBuf) {
+        free(_scanResultBuf);
+        _scanResultBuf = nullptr;
+        _scanResultLen = 0;
+    }
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "Factory reset. Rebooting...");
     LT_IM(CMD, "Factory reset (config + identity)");
     delay(1000);
     ESP.restart();
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    bool en = payload[F("enabled")].as<bool>();
+void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
+    bool en = false;
+    payload.getBool(protocol::FieldId::Enabled, en);
     _log->setMqttLogEnabled(en);
-    resp[F("status")] = F("ok");
-    resp[F("enabled")] = en;
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setBool(protocol::FieldId::Enabled, en);
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
-    resp[F("status")] = F("ok");
-    resp[F("enabled")] = _log->isMqttLogEnabled();
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setBool(protocol::FieldId::Enabled, _log->isMqttLogEnabled());
 }
 
-
 template <typename T>
-void CommandHandlerT<T>::_cmdGetLogStats(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdGetLogStats(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
-    resp[F("status")] = F("ok");
-    resp[F("sysLogSize")] = _log->getSysLogSize();
-    resp[F("toggleLogSize")] = _log->getToggleLogSize();
-    resp[F("powerLogSize")] = _log->getPowerLogSize();
-    resp[F("totalBytes")] = _log->getTotalBytes();
-    resp[F("usedBytes")] = _log->getUsedBytes();
-    resp[F("timeSynced")] = _log->isTimeSynced();
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setU32(protocol::FieldId::SysLogSize, (uint32_t)_log->getSysLogSize());
+    resp.setU32(protocol::FieldId::ToggleLogSize, (uint32_t)_log->getToggleLogSize());
+    resp.setU32(protocol::FieldId::PowerLogSize, (uint32_t)_log->getPowerLogSize());
+    resp.setU32(protocol::FieldId::TotalBytes, (uint32_t)_log->getTotalBytes());
+    resp.setU32(protocol::FieldId::UsedBytes, (uint32_t)_log->getUsedBytes());
+    resp.setBool(protocol::FieldId::TimeSynced, _log->isTimeSynced());
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    if (!payload[F("size")].is<unsigned int>()) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing size");
-        _sendResponse(source, resp);
+void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    uint32_t size = 0;
+    if (!payload.getUint(protocol::FieldId::Size, size) || size == 0) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Missing size");
         return;
     }
-    size_t size = payload[F("size")].as<unsigned int>();
     bool isMqtt = (source == F("mqtt"));
 
     static int lastPct = -1;
@@ -605,209 +605,219 @@ void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const Jso
     bool ok = _ota->startFromStream(size,
         [this, source, isMqtt](int progress, int total) {
             int pct = (total > 0) ? (progress * 100 / total) : 0;
-            // Only send log every 5% to avoid flooding WebSocket
             if (pct >= lastPct + 5 || pct == 100 || (pct == 0 && pct != lastPct)) {
                 lastPct = pct;
                 LT_IM(OTA, "OTA Progress: %d%%", pct);
                 if (isMqtt) {
-                    JsonDocument progResp;
-                    progResp[F("cmd")] = F("otaProgress");
-                    progResp[F("status")] = F("ok");
-                    progResp[F("progress")] = progress;
-                    progResp[F("total")] = total;
-                    progResp[F("pct")] = pct;
-                    _sendResponse(source, progResp);
+                    protocol::BinaryWriter progWriter(protocol::CommandId::OtaProgress);
+                    progWriter.writeString(protocol::FieldId::Status, "ok", 2);
+                    progWriter.writeU32(protocol::FieldId::Progress, (uint32_t)progress);
+                    progWriter.writeU32(protocol::FieldId::Total, (uint32_t)total);
+                    progWriter.writeI32(protocol::FieldId::Pct, pct);
+                    _sendBinaryResponse(source, progWriter.data(), progWriter.size());
                 }
             }
         },
         [this, source](bool success, const char* msg) {
             LT_IM(OTA, "OTA upload %s: %s", success ? "success" : "failed", msg);
-            JsonDocument resultResp;
-            resultResp[F("cmd")] = F("otaResult");
-            resultResp[F("status")] = success ? F("ok") : F("error");
-            resultResp[F("message")] = msg;
-            _sendResponse(source, resultResp);
+            protocol::BinaryWriter resultWriter(protocol::CommandId::OtaResult);
+            resultWriter.writeString(protocol::FieldId::Status, success ? "ok" : "error", success ? 2 : 5);
+            resultWriter.writeString(protocol::FieldId::Message, msg, strlen(msg));
+            _sendBinaryResponse(source, resultWriter.data(), resultWriter.size());
         });
     if (ok) {
-        resp[F("status")] = F("ok");
-        resp[F("cmd")] = F("beginUploadFirmwareSuccess");
+        resp.setString(protocol::FieldId::Status, "ok");
         LT_IM(OTA, "stream started, size=%u", size);
-    }
-    else {
-        resp[F("status")] = F("error");
-        resp[F("cmd")] = F("beginUploadFirmwareFailed");
-        resp[F("message")] = F("OTA already running or update begin failed");
+    } else {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "OTA already running or update begin failed");
         LT_IM(OTA, "stream start failed");
     }
-    _sendResponse(source, resp);
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdUploadFirmwareEnd(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdUploadFirmwareEnd(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
     if (!_ota->isRunning()) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("No OTA in progress");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "No OTA in progress");
         return;
     }
     _ota->end();
+    resp.setString(protocol::FieldId::Status, "ok");
     LT_IM(OTA, "stream ended");
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdUploadFirmwareAbort(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdUploadFirmwareAbort(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
-    (void)resp;
     if (!_ota->isRunning()) {
         LT_IM(OTA, "abort requested but not running");
         return;
     }
     _ota->abort();
+    resp.setString(protocol::FieldId::Status, "ok");
     LT_IM(OTA, "aborted");
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     if (!_ota->isRunning()) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("No OTA in progress");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "No OTA in progress");
         return;
     }
-    const char* b64 = payload[F("data")] | "";
-    size_t b64Len = strlen(b64);
-    if (b64Len == 0) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing data");
-        _sendResponse(source, resp);
+    String b64;
+    if (!payload.getString(protocol::FieldId::Data, b64) || b64.length() == 0) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Missing data");
         return;
     }
+    size_t b64Len = b64.length();
     size_t decodedMax = (b64Len * 3) / 4 + 4;
     uint8_t* buf = new uint8_t[decodedMax];
     size_t olen = 0;
-    if (!crypto::base64Decode(b64, b64Len, buf, decodedMax, &olen)) {
+    if (!crypto::base64Decode(b64.c_str(), b64Len, buf, decodedMax, &olen)) {
         delete[] buf;
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Base64 decode failed");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Base64 decode failed");
         return;
     }
     bool ok = _ota->writeChunk(buf, olen);
     delete[] buf;
     if (!ok) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Write chunk failed");
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Write chunk failed");
+    } else {
+        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setU32(protocol::FieldId::Received, (uint32_t)olen);
     }
-    else {
-        resp[F("status")] = F("ok");
-        resp[F("received")] = (unsigned long)olen;
-    }
-    //_sendResponse(source, resp);
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    resp[F("status")] = F("ok");
+void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
+    resp.setString(protocol::FieldId::Status, "ok");
 
-    JsonVariantConst fields = payload[F("fields")];
-    bool all = fields.isNull() || (fields.is<const char*>() && strcmp(fields.as<const char*>(), "all") == 0);
+    bool all = true;
+    String fields;
+    if (payload.getString(protocol::FieldId::Fields, fields)) {
+        all = (fields == "all");
+    }
 
-    auto has = [&](const __FlashStringHelper* name) -> bool {
+    auto has = [&](const char* name) -> bool {
         if (all) return true;
-        for (auto f : fields.as<JsonArrayConst>()) {
-            if (f.is<const char*>() && strcmp_P(f.as<const char*>(), (PGM_P)name) == 0) return true;
-        }
-        return false;
+        return payload.arrayContainsString(protocol::FieldId::Fields, name);
     };
 
-    if (has(F("system"))) {
-        JsonObject sys = resp[F("system")].to<JsonObject>();
-        sys[F("chipId")] = chip::systemChipId();
-        sys[F("chipModel")] = chip::chipModelName();
-        sys[F("cpuFreq")] = ESP.getCpuFreqMHz();
-        sys[F("sdkVersion")] = ESP.getSdkVersion();
-        sys[F("buildTime")] = buildStr();
-        sys[F("buildUnixTime")] = buildUnixTime();
-        sys[F("uptime")] = millis() / 1000;
+    if (has("system")) {
+        auto sys = resp.beginObject(protocol::FieldId::System);
+        if (sys) {
+            sys->setU32(protocol::FieldId::ChipId, chip::systemChipId());
+            sys->setString(protocol::FieldId::ChipModel, chip::chipModelName());
+            sys->setU32(protocol::FieldId::CpuFreq, ESP.getCpuFreqMHz());
+            sys->setString(protocol::FieldId::SdkVersion, ESP.getSdkVersion());
+            sys->setString(protocol::FieldId::BuildTime, buildStr());
+            sys->setU32(protocol::FieldId::BuildUnixTime, buildUnixTime());
+            sys->setU32(protocol::FieldId::Uptime, millis() / 1000);
 
-        time_t raw = _log->getEpoch();
-        struct tm ti;
-        gmtime_r(&raw, &ti);
-        char buf[26];
-        snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d %02d:%02d:%02d"), ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, ti.tm_hour, ti.tm_min, ti.tm_sec);
-        sys[F("timeSys")] = String(buf);
-        sys[F("resetReason")] = chip::systemResetReason();
-        
+            time_t raw = _log ? _log->getEpoch() : 0;
+            struct tm ti;
+            gmtime_r(&raw, &ti);
+            char buf[26];
+            snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d %02d:%02d:%02d"), ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, ti.tm_hour, ti.tm_min, ti.tm_sec);
+            sys->setString(protocol::FieldId::TimeSys, buf);
+            sys->setString(protocol::FieldId::ResetReason, chip::systemResetReason());
+            resp.endObject(sys);
+        }
     }
 
-    if (has(F("memory"))) {
-        JsonObject mem = resp[F("memory")].to<JsonObject>();
-        mem[F("freeHeap")] = ESP.getFreeHeap();
-        mem[F("minEverFreeHeap")] = (unsigned long)chip::heapMinFree();
-        mem[F("maxAllocHeap")] = (unsigned long)chip::heapMaxAlloc();
+    if (has("memory")) {
+        auto mem = resp.beginObject(protocol::FieldId::Memory);
+        if (mem) {
+            mem->setU32(protocol::FieldId::FreeHeap, ESP.getFreeHeap());
+            mem->setU32(protocol::FieldId::MinEverFreeHeap, (uint32_t)chip::heapMinFree());
+            mem->setU32(protocol::FieldId::MaxAllocHeap, (uint32_t)chip::heapMaxAlloc());
+            resp.endObject(mem);
+        }
     }
 
-    if (has(F("tasks"))) {
-        JsonArray tasks = resp[F("tasks")].to<JsonArray>();
+    if (has("tasks")) {
         UBaseType_t numTasks = uxTaskGetNumberOfTasks();
         TaskStatus_t* taskArray = (TaskStatus_t*)pvPortMalloc(numTasks * sizeof(TaskStatus_t));
         if (taskArray) {
+            auto tasks = resp.beginArray(protocol::FieldId::Tasks);
             UBaseType_t count = uxTaskGetSystemState(taskArray, numTasks, nullptr);
             for (UBaseType_t i = 0; i < count; i++) {
-                JsonObject t = tasks.add<JsonObject>();
-                t[F("name")] = taskArray[i].pcTaskName;
-                t[F("priority")] = taskArray[i].uxCurrentPriority;
-                t[F("stackWaterMark")] = taskArray[i].usStackHighWaterMark;
+                auto t = tasks->addBeginObject();
+                t->setString(protocol::FieldId::Name, taskArray[i].pcTaskName);
+                t->setU32(protocol::FieldId::Priority, taskArray[i].uxCurrentPriority);
+                t->setU32(protocol::FieldId::StackWaterMark, taskArray[i].usStackHighWaterMark);
                 switch (taskArray[i].eCurrentState) {
-                case eRunning:   t[F("state")] = F("running"); break;
-                case eReady:     t[F("state")] = F("ready"); break;
-                case eBlocked:   t[F("state")] = F("blocked"); break;
-                case eSuspended: t[F("state")] = F("suspended"); break;
-                case eDeleted:   t[F("state")] = F("deleted"); break;
-                default:         t[F("state")] = F("other"); break;
+                case eRunning:   t->setString(protocol::FieldId::State, "running"); break;
+                case eReady:     t->setString(protocol::FieldId::State, "ready"); break;
+                case eBlocked:   t->setString(protocol::FieldId::State, "blocked"); break;
+                case eSuspended: t->setString(protocol::FieldId::State, "suspended"); break;
+                case eDeleted:   t->setString(protocol::FieldId::State, "deleted"); break;
+                default:         t->setString(protocol::FieldId::State, "other"); break;
                 }
+                tasks->endObject(t);
             }
             vPortFree(taskArray);
+            resp.endArray(tasks);
         }
     }
 
-    if (has(F("wifi"))) {
-        JsonObject w = resp[F("wifi")].to<JsonObject>();
-        w[F("rssi")] = WiFi.RSSI();
-        w[F("ssid")] = (WiFi.getMode() == WIFI_AP) ? WiFi.softAPSSID() : WiFi.SSID();
-        {
+    if (has("wifi")) {
+        auto w = resp.beginObject(protocol::FieldId::Wifi);
+        if (w) {
+            w->setI32(protocol::FieldId::Rssi, WiFi.RSSI());
+            w->setString(protocol::FieldId::Ssid, (WiFi.getMode() == WIFI_AP) ? WiFi.softAPSSID() : WiFi.SSID());
             IPAddress ip = (WiFi.getMode() == WIFI_AP) ? WiFi.softAPIP() : WiFi.localIP();
             char ipBuf[16];
             snprintf_P(ipBuf, sizeof(ipBuf), PSTR("%d.%d.%d.%d"), ip[0], ip[1], ip[2], ip[3]);
-            w[F("ip")] = (const char*)ipBuf;
+            w->setString(protocol::FieldId::Ip, ipBuf);
+            w->setString(protocol::FieldId::Mac, WiFi.macAddress());
+            w->setI32(protocol::FieldId::Channel, WiFi.channel());
+            switch (_cfg->get().connMode) {
+            case ConnMode::AP_WS:     w->setString(protocol::FieldId::ConnMode, "ap_ws"); break;
+            case ConnMode::STA_MQTT:  w->setString(protocol::FieldId::ConnMode, "sta_mqtt"); break;
+            case ConnMode::DEBUG_WS:  w->setString(protocol::FieldId::ConnMode, "debug_ws"); break;
+            }
+            w->setFloat(protocol::FieldId::Temperature, chip::readWifiTempC());
+            resp.endObject(w);
         }
-        w[F("mac")] = WiFi.macAddress();
-        w[F("channel")] = WiFi.channel();
-        switch (g_connMode) {
-        case ConnMode::AP_WS:     w[F("connMode")] = F("ap_ws"); break;
-        case ConnMode::STA_MQTT:  w[F("connMode")] = F("sta_mqtt"); break;
-        case ConnMode::DEBUG_WS:  w[F("connMode")] = F("debug_ws"); break;
+    }
+
+    if (has("storage")) {
+        auto s = resp.beginObject(protocol::FieldId::Storage);
+        if (s) {
+            s->setU32(protocol::FieldId::FlashSize, ESP.getFlashChipSize());
+            s->setU32(protocol::FieldId::FsTotal, (uint32_t)compat::fsTotalBytes());
+            const char* modeStr = "UNKNOWN";
+            switch (chip::getFlashChipMode()) {
+                case 0: modeStr = "QIO"; break;
+                case 1: modeStr = "QOUT"; break;
+                case 2: modeStr = "DIO"; break;
+                case 3: modeStr = "DOUT"; break;
+            }
+            s->setString(protocol::FieldId::FlashMode, modeStr);
+            s->setU32(protocol::FieldId::FlashSpeed, chip::getFlashChipSpeed());
+            resp.endObject(s);
         }
-        w[F("temperature")] = chip::readWifiTempC();
     }
 
-    if (has(F("storage"))) {
-        JsonObject s = resp[F("storage")].to<JsonObject>();
-        s[F("flashSize")] = ESP.getFlashChipSize();
-        s[F("fsTotal")] = (unsigned long)compat::fsTotalBytes();
-        s[F("fsUsed")] = (unsigned long)compat::fsUsedBytes();
-        s[F("flashMode")] = chip::getFlashChipMode();
-        s[F("flashSpeed")] = chip::getFlashChipSpeed();
+    if (has("pump")) {
+        if (_driver) {
+            _driver->getSysInfo(resp);
+        }
     }
 
-    if (has(F("pump"))) {
-        if (_driver) _driver->getSysInfo(resp);
-    }
-
-    _sendResponse(source, resp);
-
-    if (payload[F("stream")].is<bool>() && payload[F("stream")].as<bool>()) {
+    bool stream = false;
+    if (payload.getBool(protocol::FieldId::Stream, stream) && stream) {
         startStream(STREAM_SYSINFO, source, STREAM_DURATION_MS);
     }
 }
@@ -815,55 +825,70 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const JsonDocum
 template <typename T>
 void CommandHandlerT<T>::_onScanDone() {
     _scanPending = false;
-
-    _scanResultDoc.clear();
-    _scanResultDoc[F("cmd")] = F("scanWifi");
+    _scanResultLen = 0;
 
     int16_t count = compat::scanComplete();
     if (count >= 0) {
         chip::ScanResult results[40];
         int n = chip::scanGetResults(results, 40);
-        JsonArray nets = _scanResultDoc[F("networks")].to<JsonArray>();
+        
+        protocol::BinaryWriter writer(protocol::CommandId::GetScanWifiData);
+        writer.writeString(protocol::FieldId::Status, "ok", 2);
+        
+        auto nets = writer.beginArray(protocol::FieldId::Networks);
         for (int i = 0; i < n && i < count; i++) {
-            JsonObject obj = nets.add<JsonObject>();
-            obj[F("name")] = results[i].ssid;
-            obj[F("rssi")] = results[i].rssi;
+            auto item = writer.beginObject(protocol::FieldId::None);
+            writer.writeString(protocol::FieldId::Name, results[i].ssid);
+            writer.writeI32(protocol::FieldId::Rssi, results[i].rssi);
             char bssid[18];
             snprintf_P(bssid, sizeof(bssid), PSTR("%02X:%02X:%02X:%02X:%02X:%02X"),
                 results[i].bssid[0], results[i].bssid[1], results[i].bssid[2],
                 results[i].bssid[3], results[i].bssid[4], results[i].bssid[5]);
-            obj[F("bssid")] = bssid;
-            obj[F("isEncrypt")] = results[i].isEncrypt;
+            writer.writeString(protocol::FieldId::Bssid, bssid);
+            writer.writeBool(protocol::FieldId::IsEncrypt, results[i].isEncrypt);
+            item.end();
         }
-        _scanResultDoc[F("status")] = F("ok");
-    }
-    else {
-        _scanResultDoc[F("status")] = F("error");
-        _scanResultDoc[F("message")] = F("Scan failed");
+        nets.end();
+
+        if (_scanResultBuf) free(_scanResultBuf);
+        _scanResultBuf = (uint8_t*)malloc(writer.size());
+        if (_scanResultBuf) {
+            memcpy(_scanResultBuf, writer.data(), writer.size());
+            _scanResultLen = writer.size();
+        }
+    } else {
+        protocol::BinaryWriter writer(protocol::CommandId::GetScanWifiData);
+        writer.writeString(protocol::FieldId::Status, "error", 5);
+        writer.writeString(protocol::FieldId::Message, "Scan failed", 11);
+
+        if (_scanResultBuf) free(_scanResultBuf);
+        _scanResultBuf = (uint8_t*)malloc(writer.size());
+        if (_scanResultBuf) {
+            memcpy(_scanResultBuf, writer.data(), writer.size());
+            _scanResultLen = writer.size();
+        }
     }
 
     _scanResultReady = true;
     compat::scanDelete();
 
-    JsonDocument notify;
-    notify[F("cmd")] = F("scanWifi");
-    notify[F("status")] = F("completed");
-    _sendResponse(_scanSource, notify);
+    // Async notify scan completion
+    protocol::BinaryWriter notifyWriter(protocol::CommandId::ScanWifi);
+    notifyWriter.writeString(protocol::FieldId::Status, "completed", 9);
+    _sendBinaryResponse(_scanSource, notifyWriter.data(), notifyWriter.size());
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdScanWifi(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)payload;
 
     if (_scanPending) {
-        // Watchdog: a scan that never completes must not block retries forever.
         if (millis() - _scanStartMs >= kScanTimeoutMs) {
             LT_IM(CMD, "Scan watchdog: previous scan timed out, allowing restart");
             _scanPending = false;
         } else {
-            resp[F("status")] = F("error");
-            resp[F("message")] = F("Scan already in progress");
-            _sendResponse(source, resp);
+            resp.setString(protocol::FieldId::Status, "error");
+            resp.setString(protocol::FieldId::Message, "Scan already in progress");
             return;
         }
     }
@@ -874,10 +899,9 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
 
     LT_IM(CMD, "Starting async WiFi scan...");
 
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("Scan started");
-    resp[F("wifiDrop")] = false;
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "Scan started");
+    resp.setBool(protocol::FieldId::WifiDrop, false);
 
     compat::scanAsync([this]() {
         this->_onScanDone();
@@ -885,187 +909,156 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const JsonDocument& 
 }
 
 template <typename T>
-void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const JsonDocument& payload, JsonDocument& resp) {
+void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
     (void)payload;
 
     if (_scanPending) {
-        // Watchdog: report failure and release the slot so the app can retry.
         if (millis() - _scanStartMs >= kScanTimeoutMs) {
             LT_IM(CMD, "Scan watchdog: timeout while waiting for scan results");
             _scanPending = false;
-            resp[F("status")] = F("error");
-            resp[F("message")] = F("Scan failed");
-            _sendResponse(source, resp);
+            resp.setString(protocol::FieldId::Status, "error");
+            resp.setString(protocol::FieldId::Message, "Scan failed");
             return;
         }
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Scan still in progress");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Scan still in progress");
         return;
     }
 
-    if (!_scanResultReady) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("No scan data available");
-        _sendResponse(source, resp);
-        return;
-    }
-
-    _scanResultReady = false;
-
-    // Merge kết quả scan vào resp (đã có cmd + reqId từ _handleCommand) —
-    // app match response theo reqId, thiếu reqId → timeout 20s.
-    for (JsonPair kv : _scanResultDoc.as<JsonObject>()) {
-        resp[kv.key()] = kv.value();
-    }
-    _scanResultDoc.clear();
-
-    _sendResponse(source, resp);
+    resp.setString(protocol::FieldId::Status, "error");
+    resp.setString(protocol::FieldId::Message, "No scan data available");
 }
 
-// ── Pairing: app chọn WiFi nhà gửi qua → lưu → reboot sang STA_MQTT ──
-// Chỉ chấp nhận khi đang AP_WS (chặn từ MQTT/STA — bảo mật).
 template <typename T>
-void CommandHandlerT<T>::_cmdPair(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    if (g_connMode != ConnMode::AP_WS) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Pairing only allowed in AP mode");
-        _sendResponse(source, resp);
+void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
+    if (_cfg->get().connMode != ConnMode::AP_WS) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Pairing only allowed in AP mode");
         return;
     }
 
-    const char* ssid = payload[F("wifiSsid")];
-    if (!ssid || strlen(ssid) == 0) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing or invalid 'wifiSsid'");
-        _sendResponse(source, resp);
+    String ssid;
+    if (!payload.getString(protocol::FieldId::WifiSSID, ssid) || ssid.length() == 0) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Missing or invalid 'wifiSsid'");
         return;
     }
 
     if (!_identity) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Identity unavailable");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Identity unavailable");
         return;
     }
 
-    // controlKey do APP sinh — thiết bị lưu lại để phase 2 ký envelope.
-    // getConfig KHÔNG trả controlKey nữa: ai nối AP open cũng chỉ đọc được
-    // thông tin công khai (deviceId/apSSID), không lấy được khóa.
-    const char* ck = payload[F("controlKey")].is<const char*>() ? payload[F("controlKey")].as<const char*>() : "";
-    if (strlen(ck) == 0 || !_identity->setControlKeyHex(ck)) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Missing or invalid 'controlKey' (need 64 hex chars)");
-        _sendResponse(source, resp);
+    String ck;
+    payload.getString(protocol::FieldId::ControlKey, ck);
+    if (ck.length() == 0 || !_identity->setControlKeyHex(ck.c_str())) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Missing or invalid 'controlKey' (need 64 hex chars)");
         return;
     }
-    _resetSeq(); // controlKey mới → chuỗi seq bắt đầu lại
+    _resetSeq();
 
     T& c = _cfg->get();
-    strlcpy(c.wifiSSID, ssid, sizeof(c.wifiSSID));
-    const char* pass = payload[F("wifiPass")].is<const char*>() ? payload[F("wifiPass")].as<const char*>() : "";
-    strlcpy(c.wifiPass, pass, sizeof(c.wifiPass));
+    strlcpy(c.wifiSSID, ssid.c_str(), sizeof(c.wifiSSID));
+    String pass;
+    payload.getString(protocol::FieldId::WifiPass, pass);
+    strlcpy(c.wifiPass, pass.c_str(), sizeof(c.wifiPass));
 
-    // MQTT broker config
-    if (payload[F("mqttServer")].is<const char*>() && strlen(payload[F("mqttServer")].as<const char*>()) > 0) {
-        strlcpy(c.mqttServer, payload[F("mqttServer")].as<const char*>(), sizeof(c.mqttServer));
+    String s;
+    if (payload.getString(protocol::FieldId::MqttServer, s) && s.length() > 0) {
+        strlcpy(c.mqttServer, s.c_str(), sizeof(c.mqttServer));
     }
-    if (payload[F("mqttPort")].is<unsigned int>()) {
-        c.mqttPort = payload[F("mqttPort")].as<unsigned int>();
+    uint32_t u = 0;
+    if (payload.getUint(protocol::FieldId::MqttPort, u)) {
+        c.mqttPort = (uint16_t)u;
     }
-    if (payload[F("mqttUser")].is<const char*>() && strlen(payload[F("mqttUser")].as<const char*>()) > 0) {
-        strlcpy(c.mqttUser, payload[F("mqttUser")].as<const char*>(), sizeof(c.mqttUser));
+    if (payload.getString(protocol::FieldId::MqttUser, s) && s.length() > 0) {
+        strlcpy(c.mqttUser, s.c_str(), sizeof(c.mqttUser));
     }
-    if (payload[F("mqttPass")].is<const char*>() && strlen(payload[F("mqttPass")].as<const char*>()) > 0) {
-        _cfg->setPassPlain(payload[F("mqttPass")].as<const char*>());
+    if (payload.getString(protocol::FieldId::MqttPass, s) && s.length() > 0) {
+        _cfg->setPassPlain(s.c_str());
     }
 
     c.connMode = ConnMode::STA_MQTT;
     _cfg->save(c);
 
-    resp[F("status")] = F("ok");
-    resp[F("message")] = F("Pairing saved. Rebooting...");
+    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Message, "Pairing saved. Rebooting...");
     if (_identity) {
-        resp[F("deviceId")] = _identity->deviceId();
-    } else {
-        resp[F("deviceId")] = F("");
+        resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
     }
-    resp[F("pairingState")] = (_identity && _identity->isProvisioned()) ? F("provisioned") : F("unprovisioned");
-    _sendResponse(source, resp);
 
-    LT_IM(CMD, "Pairing: ssid=%s connMode=STA_MQTT, rebooting", ssid);
+    LT_IM(CMD, "Pairing: ssid=%s connMode=STA_MQTT, rebooting", ssid.c_str());
     delay(1200);
     ESP.restart();
 }
 
-// ── Provision (factory): inject/đổi controlKey ──
-// Chỉ chấp nhận khi đang AP_WS (proximity). Hex 64 ký tự; bỏ trống = giữ nguyên.
 template <typename T>
-void CommandHandlerT<T>::_cmdProvision(const String& source, const JsonDocument& payload, JsonDocument& resp) {
-    if (g_connMode != ConnMode::AP_WS) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Provision only allowed in AP mode");
-        _sendResponse(source, resp);
+void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
+    if (_cfg->get().connMode != ConnMode::AP_WS) {
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Provision only allowed in AP mode");
         return;
     }
     if (!_identity) {
-        resp[F("status")] = F("error");
-        resp[F("message")] = F("Identity unavailable");
-        _sendResponse(source, resp);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Identity unavailable");
         return;
     }
 
-    if (payload[F("controlKey")].is<const char*>()) {
-        if (!_identity->setControlKeyHex(payload[F("controlKey")].as<const char*>())) {
-            resp[F("status")] = F("error");
-            resp[F("message")] = F("Invalid controlKey (need 64 hex chars)");
-            _sendResponse(source, resp);
+    String ck;
+    if (payload.getString(protocol::FieldId::ControlKey, ck) && ck.length() > 0) {
+        if (!_identity->setControlKeyHex(ck.c_str())) {
+            resp.setString(protocol::FieldId::Status, "error");
+            resp.setString(protocol::FieldId::Message, "Invalid controlKey (need 64 hex chars)");
             return;
         }
-        _resetSeq(); // controlKey đổi → chuỗi seq bắt đầu lại
+        _resetSeq();
     }
 
-    resp[F("status")] = F("ok");
+    resp.setString(protocol::FieldId::Status, "ok");
     if (_identity) {
-        resp[F("deviceId")] = _identity->deviceId();
-    } else {
-        resp[F("deviceId")] = F("");
+        resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
+        String curKey;
+        if (_identity->controlKeyHex(curKey)) resp.setString(protocol::FieldId::ControlKey, curKey);
     }
-    resp[F("pairingState")] = (_identity && _identity->isProvisioned()) ? F("provisioned") : F("unprovisioned");
-    String ck;
-    if (_identity->controlKeyHex(ck)) resp[F("controlKey")] = ck;
     LT_IM(CMD, "Provision: deviceId=%s state=%s", _identity->deviceId(), _identity->isProvisioned() ? "provisioned" : "unprovisioned");
-    _sendResponse(source, resp);
 }
 
 template <typename T>
-void CommandHandlerT<T>::_handleFileCommand(const String& source, const String& cmd, const JsonDocument& payload, const String& reqId) {
-    String path = payload[F("path")] | String(F("/"));
-
-    String json;
-    if (cmd == F("listDir")) {
-        size_t offset = payload[F("offset")] | (unsigned int)0;
-        size_t limit = payload[F("limit")] | (unsigned int)0;
-        json = FileBrowser::listDir(path, offset, limit);
-    }
-    else if (cmd == F("fileInfo")) {
-        json = FileBrowser::fileInfo(path);
-    }
-    else if (cmd == F("deleteItem")) {
-        json = FileBrowser::deleteItem(path);
-    }
-    else if (cmd == F("fsInfo")) {
-        json = FileBrowser::fsInfo();
-    }
-    else if (cmd == F("downloadFile") || cmd == F("readFile")) {
-        size_t offset = payload[F("offset")] | (unsigned int)0;
-        size_t limit = payload[F("limit")] | (unsigned int)(cmd == F("downloadFile") ? 1024 : 4096);
-        bool encode = payload[F("encode")] | (cmd == F("downloadFile"));
-        json = FileBrowser::readFile(path, offset, limit, encode);
+void CommandHandlerT<T>::_handleFileCommand(const String& source, protocol::CommandId cmdId, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    (void)source;
+    String path;
+    if (!payload.getString(protocol::FieldId::Path, path) || path.length() == 0) {
+        path = "/";
     }
 
-    if (json.length() > 1 && json[0] == '{') {
-        json = String(F("{\"cmd\":\"")) + cmd + F("\"") + (reqId.length() > 0 ? String(F(",\"reqId\":\"")) + reqId + F("\"") : String("")) + F(",") + json.substring(1);
+    uint32_t offset = 0;
+    payload.getUint(protocol::FieldId::Offset, offset);
+
+    uint32_t limit = 0;
+    payload.getUint(protocol::FieldId::Limit, limit);
+
+    bool encode = false;
+    payload.getBool(protocol::FieldId::Encode, encode);
+
+    if (cmdId == protocol::CommandId::ListDir) {
+        FileBrowser::listDir(path, offset, limit, resp);
+    } else if (cmdId == protocol::CommandId::FileInfo) {
+        FileBrowser::fileInfo(path, resp);
+    } else if (cmdId == protocol::CommandId::DeleteItem) {
+        FileBrowser::deleteItem(path, resp);
+    } else if (cmdId == protocol::CommandId::FsInfo) {
+        FileBrowser::fsInfo(resp);
+    } else if (cmdId == protocol::CommandId::DownloadFile || cmdId == protocol::CommandId::ReadFile) {
+        if (limit == 0) limit = (cmdId == protocol::CommandId::DownloadFile) ? 1024 : 4096;
+        if (cmdId == protocol::CommandId::DownloadFile) encode = true;
+        FileBrowser::readFile(path, offset, limit, encode, resp);
     }
-    _sendResponse(source, json);
 }

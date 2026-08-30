@@ -23,18 +23,18 @@ void SwitchDriver::loop(uint32_t nowMs) {
     _switch.handle();
 }
 
-bool SwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
+bool SwitchDriver::handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
-        if (!payload[F("state")].is<bool>()) {
-            resp[F("status")] = F("error");
-            resp[F("message")] = F("Missing or invalid 'state' field");
+        bool on = false;
+        if (!payload.getBool(protocol::FieldId::State, on)) {
+            resp.setString(protocol::FieldId::Status, "error");
+            resp.setString(protocol::FieldId::Message, "Missing or invalid 'state' field");
             return true;
         }
-        bool on = payload[F("state")].as<bool>();
         setRelay(on);
         _persistRelayState();
-        resp[F("status")] = F("ok");
-        resp[F("state")] = on ? F("on") : F("off");
+        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::State, on ? "on" : "off");
         LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;
@@ -42,21 +42,22 @@ bool SwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonD
     return false;
 }
 
-void SwitchDriver::getStatus(JsonDocument& resp) {
-    resp[F("relay")] = _switch.getState();
-    resp[F("onDuration")] = _switch.getState() ? (uint32_t)(_switch.getOnDuration() / 1000) : 0;
+void SwitchDriver::getStatus(protocol::CommandResponse& resp) {
+    resp.setBool(protocol::FieldId::Relay, _switch.getState());
+    resp.setU32(protocol::FieldId::OnDuration, _switch.getState() ? (uint32_t)(_switch.getOnDuration() / 1000) : 0);
 }
 
-void SwitchDriver::getConfig(JsonDocument& resp) {
-    resp[F("relayStartMode")] = (int)_cfg->relayStartMode;
+void SwitchDriver::getConfig(protocol::CommandResponse& resp) {
+    resp.setI32(protocol::FieldId::RelayStartMode, (int)_cfg->relayStartMode);
 }
 
-bool SwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
+bool SwitchDriver::setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)resp;
     bool changed = false;
 
-    if (payload[F("relayStartMode")].is<int>()) {
-        _cfg->relayStartMode = (RelayStartMode)payload[F("relayStartMode")].as<int>();
+    int32_t v = 0;
+    if (payload.getInt(protocol::FieldId::RelayStartMode, v)) {
+        _cfg->relayStartMode = (RelayStartMode)v;
         changed = true;
     }
     return changed;

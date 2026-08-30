@@ -30,12 +30,12 @@ public:
 
     void begin(DeviceConfig& cfg, ConfigSaveFn saveFn) override;
     void loop(uint32_t nowMs) override;
-    bool handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) override;
-    void getStatus(JsonDocument& resp) override;
-    void getConfig(JsonDocument& resp) override;
-    bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
+    bool handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
+    void getStatus(protocol::CommandResponse& resp) override;
+    void getConfig(protocol::CommandResponse& resp) override;
+    bool setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
     void setServices(const DriverServices& svc) override;
-    void handleTargetStatus(const JsonDocument& doc) override;
+    void handleTargetStatus(uint8_t cmdId, const protocol::CommandRequest& doc) override;
 
 private:
     RemoteSwitchConfig* _cfg;
@@ -86,9 +86,8 @@ private:
     void sendRelayCommand(bool on);
     void sendToggleCommand() { sendRelayCommand(!_targetOn); }
     void requestStatusStream();
-    bool buildEnvelope(const char* cmd, const JsonDocument& payload, JsonDocument& envelope);
     void subscribeTargetTopic();
-    void updateTargetError(const JsonDocument& doc);
+    void updateTargetError(const protocol::CommandRequest& doc);
 
     // Callbacks for button
     void _onButtonClick();

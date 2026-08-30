@@ -39,7 +39,6 @@ class PumpCommandDataSource(
     init {
         scope.launch(dispatcher) {
             channel.incoming.collect { raw ->
-                Log.d(TAG, "incoming payload=\n$raw")
                 handleIncoming(raw)
             }
         }
@@ -172,7 +171,7 @@ class PumpCommandDataSource(
     suspend fun sendRawJson(rawJson: String): Boolean {
         Log.d(TAG, "sendRawJson payload=${rawJson.take(200)}")
         val sent = withContext(dispatcher) {
-            channel.send(rawJson)
+            channel.send(rawJson.toByteArray(Charsets.UTF_8))
         }
         if (!sent) {
             _events.tryEmit(PumpCommandEvent.Failure("Cannot send raw JSON"))
@@ -181,10 +180,10 @@ class PumpCommandDataSource(
     }
 
     private suspend fun sendJson(json: JSONObject) {
-        val payload = json.toString()
-        Log.d(TAG, "sendJson payload=${payload.take(200)}")
+        val rawStr = json.toString()
+        Log.d(TAG, "sendJson payload length=${rawStr.length} cmd=${json.optString("cmd")}")
         val sent = withContext(dispatcher) {
-            channel.send(payload)
+            channel.send(rawStr.toByteArray(Charsets.UTF_8))
         }
         if (!sent) {
             _events.tryEmit(
@@ -197,9 +196,11 @@ class PumpCommandDataSource(
 
     // ── Parse incoming ──
 
-    private fun handleIncoming(raw: String) {
+    private fun handleIncoming(raw: ByteArray) {
         try {
-            val json = JSONObject(raw)
+            val json = com.nndai.myhome.protocol.BinaryProtocolParser.parse(raw) 
+                ?: JSONObject(String(raw, Charsets.UTF_8))
+                
             val cmd = json.optString("cmd", "")
             Log.d(TAG, "handleIncoming cmd=$cmd")
 
@@ -228,9 +229,10 @@ class PumpCommandDataSource(
                 }
             }
         } catch (ex: JSONException) {
-            Log.d(TAG, "handleIncoming() raw string message: $raw")
-            if (raw.isNotBlank()) {
-                _events.tryEmit(PumpCommandEvent.LogMessage(raw))
+            val rawStr = String(raw, Charsets.UTF_8)
+            Log.d(TAG, "handleIncoming() raw string message: $rawStr")
+            if (rawStr.isNotBlank()) {
+                _events.tryEmit(PumpCommandEvent.LogMessage(rawStr))
             }
         }
     }

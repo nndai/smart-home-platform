@@ -35,6 +35,10 @@ void MqttClient::setCallback(MessageCallback cb) {
     _callback = cb;
 }
 
+void MqttClient::setBinaryCallback(BinaryMessageCallback cb) {
+    _binaryCallback = cb;
+}
+
 bool MqttClient::connect() {
     if (isConnected()) return true;
 
@@ -76,6 +80,13 @@ bool MqttClient::publish(const String& topic, const String& payload, bool retain
     return _mqtt.publish(topic.c_str(), payload.c_str(), retained);
 }
 
+bool MqttClient::publishBinary(const String& topic, const uint8_t* payload, size_t length, bool retained) {
+    if (!isConnected()) {
+        return false;
+    }
+    return _mqtt.publish(topic.c_str(), payload, length, retained);
+}
+
 bool MqttClient::subscribe(const String& topic) {
     if (!isConnected()) {
         return false;
@@ -102,6 +113,15 @@ bool MqttClient::isConnected() {
 
 void MqttClient::_onMessage(char* topic, uint8_t* payload, unsigned int len) {
     if (!s_instance || !topic) return;
+    
+    // Check for binary protocol magic bytes
+    if (len >= 3 && payload[0] == 0xB7 && payload[len - 1] == 0xA5) {
+        if (s_instance->_binaryCallback) {
+            s_instance->_binaryCallback(String(topic), payload, len);
+        }
+        return;
+    }
+
     String msg;
     if (payload && len > 0) {
         msg.concat((const char*)payload, len);
