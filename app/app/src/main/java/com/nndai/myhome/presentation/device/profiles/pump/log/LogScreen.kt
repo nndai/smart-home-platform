@@ -1,4 +1,4 @@
-﻿package com.nndai.myhome.presentation.device.profiles.pump.log
+package com.nndai.myhome.presentation.device.profiles.pump.log
 
 import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
@@ -103,6 +103,8 @@ fun LogScreen(
         }
     }
 
+    val isBinaryMode by viewModel.isBinaryMode.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -171,10 +173,12 @@ fun LogScreen(
             LiveLogsContent(
                 isEnabled = isEnabled,
                 logs = logs,
+                isBinaryMode = isBinaryMode,
                 bottomPadding = bottomPadding,
                 onEnableChanged = { viewModel.setLogEnabled(it) },
                 onClearLogs = { viewModel.clearLogs() },
-                onSendRawJson = { viewModel.sendRawJson(it) }
+                onBinaryModeChanged = { viewModel.setBinaryMode(it) },
+                onSendRaw = { viewModel.sendRaw(it) }
             )
         } else {
             // Mode 1: File Log (/logs/sys/)
@@ -195,10 +199,12 @@ fun LogScreen(
 private fun LiveLogsContent(
     isEnabled: Boolean,
     logs: List<String>,
+    isBinaryMode: Boolean,
     bottomPadding: Dp,
     onEnableChanged: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
-    onSendRawJson: (String) -> Unit
+    onBinaryModeChanged: (Boolean) -> Unit,
+    onSendRaw: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
 
@@ -293,61 +299,111 @@ private fun LiveLogsContent(
             }
         }
 
-        // Raw JSON Command Input Row
-        Row(
+        // Raw Command Protocol Selector + Input Row
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            var rawInput by remember { mutableStateOf("") }
+            // Mode selector pills
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Raw Protocol:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
 
-            OutlinedTextField(
-                value = rawInput,
-                onValueChange = { rawInput = it },
-                modifier = Modifier.weight(1f),
-                placeholder = {
+                // Toggle Button 1: Binary
+                Surface(
+                    onClick = { onBinaryModeChanged(true) },
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = if (isBinaryMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isBinaryMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
                     Text(
-                        text = stringResource(R.string.log_raw_json_hint),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        text = stringResource(R.string.log_format_binary),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isBinaryMode) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                shape = MaterialTheme.shapes.small,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
+                }
+
+                // Toggle Button 2: JSON
+                Surface(
+                    onClick = { onBinaryModeChanged(false) },
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = if (!isBinaryMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (!isBinaryMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
+                    Text(
+                        text = stringResource(R.string.log_format_json),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (!isBinaryMode) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            // Input TextField and Send Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                var rawInput by remember { mutableStateOf("") }
+
+                OutlinedTextField(
+                    value = rawInput,
+                    onValueChange = { rawInput = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            text = if (isBinaryMode) stringResource(R.string.log_raw_binary_hint) else stringResource(R.string.log_raw_json_hint),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    shape = MaterialTheme.shapes.small,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (rawInput.isNotBlank()) {
+                                onSendRaw(rawInput)
+                                rawInput = ""
+                            }
+                        }
+                    )
+                )
+
+                Button(
+                    onClick = {
                         if (rawInput.isNotBlank()) {
-                            onSendRawJson(rawInput)
+                            onSendRaw(rawInput)
                             rawInput = ""
                         }
-                    }
-                )
-            )
-
-            Button(
-                onClick = {
-                    if (rawInput.isNotBlank()) {
-                        onSendRawJson(rawInput)
-                        rawInput = ""
-                    }
-                },
-                modifier = Modifier.height(50.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(R.string.log_send),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.log_send), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    },
+                    modifier = Modifier.height(50.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(R.string.log_send),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.log_send), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 

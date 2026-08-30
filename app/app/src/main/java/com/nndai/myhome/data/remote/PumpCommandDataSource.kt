@@ -165,18 +165,69 @@ class PumpCommandDataSource(
                 put("payload", payload)
             }
         }
-        sendJson(json)
+        sendBinary(json)
+    }
+
+    suspend fun sendRaw(rawInput: String, useBinary: Boolean = true): Boolean {
+        Log.d(TAG, "sendRaw payload=${rawInput.take(200)} useBinary=$useBinary")
+        val bytesToSend: ByteArray = if (useBinary) {
+            try {
+                val json = JSONObject(rawInput)
+                com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
+            } catch (e: Exception) {
+                // If input is already raw hex string like "B7 01 00 00 A5"
+                val hexClean = rawInput.replace(" ", "").replace("0x", "")
+                if (hexClean.matches(Regex("^[0-9a-fA-F]+$")) && hexClean.length % 2 == 0) {
+                    hexToByteArray(hexClean)
+                } else {
+                    Log.e(TAG, "sendRaw: cannot parse JSON to binary: ${e.message}")
+                    _events.tryEmit(PumpCommandEvent.Failure("Invalid JSON for Binary mode: ${e.message}"))
+                    return false
+                }
+            }
+        } else {
+            rawInput.toByteArray(Charsets.UTF_8)
+        }
+
+        val sent = withContext(dispatcher) {
+            channel.send(bytesToSend)
+        }
+        if (!sent) {
+            _events.tryEmit(PumpCommandEvent.Failure("Cannot send raw command"))
+        }
+        return sent
     }
 
     suspend fun sendRawJson(rawJson: String): Boolean {
-        Log.d(TAG, "sendRawJson payload=${rawJson.take(200)}")
+        return sendRaw(rawJson, useBinary = false)
+    }
+
+    private suspend fun sendBinary(json: JSONObject) {
+        val cmdStr = json.optString("cmd", "")
+        val binaryBytes = try {
+            com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to serialize binary frame for cmd=$cmdStr: ${e.message}", e)
+            null
+        }
+
         val sent = withContext(dispatcher) {
-            channel.send(rawJson.toByteArray(Charsets.UTF_8))
+            if (binaryBytes != null && binaryBytes.size >= 3) {
+                Log.d(TAG, "sendBinary payload length=${binaryBytes.size} cmd=$cmdStr")
+                channel.send(binaryBytes)
+            } else {
+                val rawStr = json.toString()
+                Log.d(TAG, "Fallback sendJson payload length=${rawStr.length} cmd=$cmdStr")
+                channel.send(rawStr.toByteArray(Charsets.UTF_8))
+            }
         }
         if (!sent) {
-            _events.tryEmit(PumpCommandEvent.Failure("Cannot send raw JSON"))
+            _events.tryEmit(
+                PumpCommandEvent.Failure(
+                    "Cannot send command: $cmdStr"
+                )
+            )
         }
-        return sent
     }
 
     private suspend fun sendJson(json: JSONObject) {
@@ -192,6 +243,17 @@ class PumpCommandDataSource(
                 )
             )
         }
+    }
+
+    private fun hexToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
 
     // ── Parse incoming ──

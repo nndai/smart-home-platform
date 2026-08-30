@@ -25,7 +25,7 @@ class MqttDeviceChannel(
     private val connectionManager: MqttConnectionManager,
     private val handshakeManager: DeviceHandshakeManager,
     val deviceId: String,
-    private val envelopeProvider: (String) -> String?,
+    private val envelope: DeviceCommandEnvelope,
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : DeviceChannel {
@@ -96,10 +96,15 @@ class MqttDeviceChannel(
         val isBinary = raw.size >= 3 && raw[0] == 0xB7.toByte() && raw[raw.size - 1] == 0xA5.toByte()
         
         val payloadToSend = if (isBinary) {
-            raw
+            val signed = envelope.signBinary(deviceId, raw)
+            if (signed == null) {
+                Log.w(TAG, "send() failed: cannot sign binary command for $deviceId")
+                return false
+            }
+            signed
         } else {
             val rawStr = String(raw, Charsets.UTF_8)
-            val signedPayloadStr = envelopeProvider(rawStr) ?: run {
+            val signedPayloadStr = envelope.sign(deviceId, rawStr) ?: run {
                 Log.w(TAG, "send() failed: cannot sign command for $deviceId")
                 return false
             }

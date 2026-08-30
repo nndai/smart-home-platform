@@ -347,9 +347,13 @@ class PumpRepository(
         remote.getLogMqtt()
     }
 
+    suspend fun sendRaw(rawInput: String, useBinary: Boolean = true): Boolean {
+        Log.d(TAG, "sendRaw($rawInput, useBinary=$useBinary)")
+        return remote.sendRaw(rawInput, useBinary)
+    }
+
     suspend fun sendRawJson(rawJson: String): Boolean {
-        Log.d(TAG, "sendRawJson($rawJson)")
-        return remote.sendRawJson(rawJson)
+        return sendRaw(rawJson, useBinary = false)
     }
 
     fun reconnect() {

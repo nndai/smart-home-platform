@@ -71,6 +71,50 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         }.toString()
     }
 
+    fun signJson(deviceId: String, json: org.json.JSONObject): org.json.JSONObject? {
+        if (deviceId.isBlank()) return null
+        val keyHex = keyStore.get(deviceId) ?: run {
+            Log.w(TAG, "signJson(): no controlKey for $deviceId")
+            return null
+        }
+        val keyBytes = hexToBytes(keyHex) ?: run {
+            Log.e(TAG, "signJson(): bad controlKey hex length for $deviceId. Hex: '$keyHex', len: ${keyHex.length}")
+            return null
+        }
+
+        val cmd = json.optString("cmd", "")
+        if (cmd.isBlank()) {
+            Log.e(TAG, "signJson(): no cmd field")
+            return null
+        }
+
+        val src = keyStore.appSenderId()
+        val seq = keyStore.nextSeq(deviceId)
+        val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
+        val canonical = "$seq|$ts|$cmd||$src"
+        val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
+
+        val result = org.json.JSONObject(json.toString())
+        result.put("seq", seq)
+        result.put("ts", ts)
+        result.put("src", src)
+        result.put("hmac", hmacHex)
+        return result
+    }
+
+    fun signBinary(deviceId: String, rawBinary: ByteArray): ByteArray? {
+        if (deviceId.isBlank() || rawBinary.size < 3) return null
+        val parsedJson = com.nndai.myhome.protocol.BinaryProtocolParser.parse(rawBinary) ?: run {
+            Log.w(TAG, "signBinary(): cannot parse binary frame")
+            return null
+        }
+        if (parsedJson.has("hmac")) {
+            return rawBinary
+        }
+        val signedJson = signJson(deviceId, parsedJson) ?: return null
+        return com.nndai.myhome.protocol.BinaryProtocolParser.serialize(signedJson)
+    }
+
     private fun hmacSha256Hex(key: ByteArray, data: String): String? {
         return runCatching {
             val mac = Mac.getInstance("HmacSHA256")

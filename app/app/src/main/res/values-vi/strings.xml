@@ -163,7 +163,10 @@
     <string name="log_clear_logs">Xóa log</string>
     <string name="log_listening">Đang nghe...</string>
     <string name="log_off">Tắt</string>
-    <string name="log_raw_json_hint">Nhập raw JSON</string>
+    <string name="log_raw_json_hint">Nhập raw JSON (VD: {\"cmd\":\"getStatus\"})</string>
+    <string name="log_raw_binary_hint">Nhập JSON hoặc Hex (VD: {\"cmd\":\"getStatus\"})</string>
+    <string name="log_format_binary">Binary</string>
+    <string name="log_format_json">JSON</string>
     <string name="log_send">Gửi</string>
     <string name="log_mode_live">Trực tiếp</string>
     <string name="log_mode_file">File nhật ký (/logs/sys/)</string>

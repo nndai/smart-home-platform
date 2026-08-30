@@ -218,7 +218,7 @@ object PumpRepositoryProvider {
             connectionManager = provideMqttConnectionManager(),
             handshakeManager = provideDeviceHandshakeManager(),
             deviceId = targetDeviceId,
-            envelopeProvider = { raw -> envelope.sign(targetDeviceId, raw) },
+            envelope = envelope,
             scope = appScope
         )
         val dataSource = PumpCommandDataSource(mqttChannel, appScope)

@@ -152,22 +152,22 @@ class DeviceHandshakeManager(
 
         Log.d(
             TAG,
-            "initiateHandshakeForDevice(): Sending getStatus to $deviceId (attempt ${attempts + 1}, silent=$isSilentProbe)"
+            "initiateHandshakeForDevice(): Sending binary getStatus probe to $deviceId (attempt ${attempts + 1}, silent=$isSilentProbe)"
         )
 
         val rawCmd = JSONObject().apply {
             put("cmd", "getStatus")
-        }.toString()
-
-        val signedCmd = envelope.sign(deviceId, rawCmd)
-        if (signedCmd == null) {
-            Log.w(TAG, "initiateHandshakeForDevice(): Cannot sign command for $deviceId (no controlKey)")
+        }
+        val rawBinary = com.nndai.myhome.protocol.BinaryProtocolParser.serialize(rawCmd)
+        val signedBinary = envelope.signBinary(deviceId, rawBinary)
+        if (signedBinary == null) {
+            Log.w(TAG, "initiateHandshakeForDevice(): Cannot sign binary command for $deviceId (no controlKey)")
             stateFlow.value = DeviceHealthStatus.Offline(System.currentTimeMillis(), "Missing controlKey")
             return
         }
 
         val topic = "devices/$deviceId/cmd"
-        val success = connectionManager.publish(topic, signedCmd)
+        val success = connectionManager.publish(topic, signedBinary)
         if (!success) {
             Log.w(TAG, "initiateHandshakeForDevice(): Failed to publish handshake to $topic")
             handleHandshakeFailure(deviceId)

@@ -20,6 +20,15 @@ object BinaryProtocolParser {
         val jsonCopy = JSONObject(json.toString())
         jsonCopy.remove("cmd")
         
+        // If there is a nested "payload" JSONObject, hoist its keys into the root object
+        if (jsonCopy.has("payload") && jsonCopy.get("payload") is JSONObject) {
+            val payloadObj = jsonCopy.getJSONObject("payload")
+            payloadObj.keys().forEach { k ->
+                jsonCopy.put(k, payloadObj.get(k))
+            }
+            jsonCopy.remove("payload")
+        }
+        
         writeObject(contentWriter, BinaryFieldIds.NONE, jsonCopy)
         
         val contentBytes = contentWriter.toByteArray()

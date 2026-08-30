@@ -235,8 +235,10 @@ class WebSocketDeviceChannel(
             val startTime = System.currentTimeMillis()
             val timeoutMs = 10_000L
 
-            Log.d(TAG, "startHandshake() sending getStatus probe")
-            webSocket?.send(HANDSHAKE_COMMAND)
+            Log.d(TAG, "startHandshake() sending binary getStatus probe")
+            val getStatusJson = JSONObject().apply { put("cmd", "getStatus") }
+            val binaryFrame = com.nndai.myhome.protocol.BinaryProtocolParser.serialize(getStatusJson)
+            webSocket?.send(okio.ByteString.of(*binaryFrame))
 
             while (isActive && webSocket != null && !handshakeComplete) {
                 val elapsed = System.currentTimeMillis() - startTime

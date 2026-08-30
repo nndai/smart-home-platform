@@ -163,7 +163,10 @@
     <string name="log_clear_logs">Clear logs</string>
     <string name="log_listening">Listening...</string>
     <string name="log_off">Off</string>
-    <string name="log_raw_json_hint">Enter raw JSON</string>
+    <string name="log_raw_json_hint">Enter raw JSON (e.g. {\"cmd\":\"getStatus\"})</string>
+    <string name="log_raw_binary_hint">JSON or Hex (e.g. {\"cmd\":\"getStatus\"})</string>
+    <string name="log_format_binary">Binary</string>
+    <string name="log_format_json">JSON</string>
     <string name="log_send">Send</string>
     <string name="log_mode_live">Live</string>
     <string name="log_mode_file">File Log (/logs/sys/)</string>
