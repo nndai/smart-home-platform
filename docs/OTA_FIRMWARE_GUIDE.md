@@ -82,7 +82,6 @@ Publish payload sau vào topic `devices/{deviceId}/cmd`:
 ```json
 {
   "reqId": "ota-001",
-  "seq": 100,
   "ts": 1788069563,
   "cmd": "otaUrl",
   "payload": {

@@ -74,18 +74,10 @@ private:
 
     // ── Envelope lệnh qua MQTT (docs §3.2): chống giả mạo + replay ──
     bool _verifyEnvelope(protocol::CommandId cmdId, const protocol::CommandRequest& req);
-    void _resetSeq();
 
-    // Replay protection per sender
-    static constexpr uint32_t ENVELOPE_TS_WINDOW_S = 60;    // |now - ts| <= 60s
-    static constexpr uint8_t MAX_SEQ_ENTRIES = 6;           // app + vài remote switch
+    // Replay protection via timestamp drift window
+    static constexpr uint32_t ENVELOPE_TS_WINDOW_S = 300;   // |now - ts| <= 300s (5 min window)
     static constexpr unsigned long kScanTimeoutMs = 20000;
-    struct SeqEntry {
-        char src[24];
-        uint32_t seq;
-    };
-    SeqEntry _seqTable[MAX_SEQ_ENTRIES];
-    uint8_t _seqCount = 0;
 
     void _cmdGetStatus(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp);
     void _cmdGetConfig(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp);

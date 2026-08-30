@@ -114,13 +114,11 @@ inline bool hmacSha256HexKey(const char* keyHex, const char* data, size_t dataLe
 }
 
 /**
- * Builds the canonical string for MQTT envelope HMAC signing: "seq|ts|cmd|payload|src"
+ * Builds the canonical string for MQTT envelope HMAC signing: "ts|cmd|payload|src"
  */
-inline String buildCanonical(uint32_t seq, uint32_t ts, const char* cmd, const String& payloadStr, const char* src = "") {
+inline String buildCanonical(uint32_t ts, const char* cmd, const String& payloadStr, const char* src = "") {
     String canonical;
     canonical.reserve(32 + payloadStr.length() + (src ? strlen(src) : 0));
-    canonical += String(seq);
-    canonical += '|';
     canonical += String(ts);
     canonical += '|';
     if (cmd) canonical += cmd;

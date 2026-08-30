@@ -20,7 +20,7 @@ RemotePumpLN882H/
 └── docs/
 ```
 
-**Nguyên tắc**: 1 source tree dùng chung ~90% (DeviceIdentity, MQTT+TLS, envelope seq/hmac, Pairing Portal, OTA, capability registry). Không tách "n folder device model" thành n project — sẽ nhân bản toàn bộ phần dùng chung.
+**Nguyên tắc**: 1 source tree dùng chung ~90% (DeviceIdentity, MQTT+TLS, envelope ts/hmac, Pairing Portal, OTA, capability registry). Không tách "n folder device model" thành n project — sẽ nhân bản toàn bộ phần dùng chung.
 
 ## 2. Mental model — 1 source, N binary
 

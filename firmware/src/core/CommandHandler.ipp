@@ -31,7 +31,6 @@ void CommandHandlerT<T>::begin(ConfigManagerT<T>* cfg, LogManager* log,
     _ota = ota;
     _identity = identity;
     _profile = profile ? profile : "unknown";
-    _seqCount = 0;
 }
 
 template <typename T>
@@ -52,15 +51,13 @@ bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protoc
         return false;
     }
 
-    uint32_t seq = 0;
     uint32_t ts = 0;
     String hmacHex;
     String src;
 
-    if (!req.getUint(protocol::FieldId::Seq, seq) ||
-        !req.getUint(protocol::FieldId::Ts, ts) ||
+    if (!req.getUint(protocol::FieldId::Ts, ts) ||
         !req.getString(protocol::FieldId::Hmac, hmacHex)) {
-        LT_EM(CMD, "Envelope: missing seq/ts/hmac");
+        LT_EM(CMD, "Envelope: missing ts/hmac");
         return false;
     }
 
@@ -90,7 +87,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protoc
     }
 
     const char* cmdStr = protocol::commandIdToString(static_cast<uint8_t>(cmdId));
-    const String canonical = crypto::buildCanonical(seq, ts, cmdStr, "", src.c_str());
+    const String canonical = crypto::buildCanonical(ts, cmdStr, "", src.c_str());
 
     char expectedHex[65];
     if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
@@ -102,39 +99,7 @@ bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protoc
         return false;
     }
 
-    SeqEntry* entry = nullptr;
-    for (uint8_t i = 0; i < _seqCount; i++) {
-        if (strcmp(_seqTable[i].src, src.c_str()) == 0) {
-            entry = &_seqTable[i];
-            break;
-        }
-    }
-    if (!entry) {
-        if (_seqCount >= MAX_SEQ_ENTRIES) {
-            LT_EM(CMD, "Envelope: too many senders (max %u)", (unsigned)MAX_SEQ_ENTRIES);
-            return false;
-        }
-        if (src.length() >= sizeof(entry->src)) {
-            LT_EM(CMD, "Envelope: src too long");
-            return false;
-        }
-        entry = &_seqTable[_seqCount++];
-        strlcpy(entry->src, src.c_str(), sizeof(entry->src));
-        entry->seq = 0;
-    }
-
-    if (seq <= entry->seq) {
-        LT_EM(CMD, "Envelope: stale seq %u (last %u) from '%s'", (unsigned)seq, (unsigned)entry->seq, src.c_str());
-        return false;
-    }
-
-    entry->seq = seq;
     return true;
-}
-
-template <typename T>
-void CommandHandlerT<T>::_resetSeq() {
-    _seqCount = 0;
 }
 
 template <typename T>
@@ -546,7 +511,6 @@ void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const protocol::
     (void)payload;
     _cfg->reset();
     if (_identity) _identity->reset();
-    _resetSeq();
     if (_scanResultBuf) {
         free(_scanResultBuf);
         _scanResultBuf = nullptr;
@@ -959,7 +923,6 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
         resp.setString(protocol::FieldId::Message, "Missing or invalid 'controlKey' (need 64 hex chars)");
         return;
     }
-    _resetSeq();
 
     T& c = _cfg->get();
     strlcpy(c.wifiSSID, ssid.c_str(), sizeof(c.wifiSSID));
@@ -1016,7 +979,6 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::Com
             resp.setString(protocol::FieldId::Message, "Invalid controlKey (need 64 hex chars)");
             return;
         }
-        _resetSeq();
     }
 
     resp.setString(protocol::FieldId::Status, "ok");

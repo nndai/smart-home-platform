@@ -252,6 +252,14 @@ class BridgeManager:
         elif self.protocol == 'mqtt' and self.mqtt and self.is_connected:
             try:
                 if isinstance(data, str):
+                    try:
+                        msg_obj = json.loads(data)
+                        if isinstance(msg_obj, dict) and "seq" in msg_obj:
+                            incoming_seq = int(msg_obj["seq"])
+                            if incoming_seq > self.seq:
+                                self.seq = incoming_seq
+                    except Exception:
+                        pass
                     self.mqtt.publish(self.mqtt_topic_pub, data)
                 else:
                     import base64
@@ -264,11 +272,8 @@ class BridgeManager:
 
                     if self.control_key and len(self.control_key) == 64:
                         ts = int(time.time()) + (7 * 3600)  # Local time UTC+7
-                        if self.seq == 0:
-                            self.seq = ts
-                        else:
-                            self.seq += 1
-                        src = self.sender_id or "web-debug"
+                        self.seq = max(self.seq, ts) + 1
+                        src = "web-bridge"
                         canonical = f"{self.seq}|{ts}|otaChunk|{payload_compact}|{src}"
                         key_bytes = bytes.fromhex(self.control_key)
                         sig = hmac.new(key_bytes, canonical.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -346,7 +351,7 @@ class BridgeManager:
                 chunk_end = min(offset + chunk_size, target_bytes, total)
                 self.send(data_bytes[offset:chunk_end])
                 offset = chunk_end
-                time.sleep(0.1)
+                time.sleep(0.4)
                 # Không broadcast bridgeProgress 100% từ bridge
                 # (chờ MCU ack mới báo 100%)
                 if offset < total:
@@ -364,21 +369,22 @@ class BridgeManager:
 
             milestone_pct = batch_idx * 5
             curr_pct = int((offset / total) * 100)
-            print(f"[BRIDGE] Đã gửi {curr_pct}%, chờ MCU ack (milestone {milestone_pct}%)...")
-            self._ota_ack.clear()
-            if not self._ota_ack.wait(timeout=60):
-                print(f"[BRIDGE] Timeout! MCU không xác nhận milestone {milestone_pct}%")
-                asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
-                    "cmd": "otaError",
-                    "message": f"MCU không phản hồi tại {milestone_pct}% (timeout 60s)"
-                })), self.loop)
-                self.uploading = False
-                return
+            # print(f"[BRIDGE] Đã gửi {curr_pct}%, chờ MCU ack (milestone {milestone_pct}%)...")
+            # self._ota_ack.clear()
+            # if not self._ota_ack.wait(timeout=60):
+            #     print(f"[BRIDGE] Timeout! MCU không xác nhận milestone {milestone_pct}%")
+            #     asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
+            #         "cmd": "otaError",
+            #         "message": f"MCU không phản hồi tại {milestone_pct}% (timeout 60s)"
+            #     })), self.loop)
+            #     self.uploading = False
+            #     return
 
         if self.uploading and offset >= total:
-            print(f"[BRIDGE] Đã gửi hết {total} bytes, chờ ack cuối...")
-            self._ota_ack.clear()
-            self._ota_ack.wait(timeout=60)
+            # print(f"[BRIDGE] Đã gửi hết {total} bytes, chờ ack cuối...")
+            # self._ota_ack.clear()
+            # self._ota_ack.wait(timeout=60)
+            time.sleep(10)
             print("[BRIDGE] Upload MQTT hoàn tất")
             asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
                 "cmd": "bridgeProgress",

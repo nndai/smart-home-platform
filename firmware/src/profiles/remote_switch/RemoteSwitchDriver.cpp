@@ -220,22 +220,17 @@ void RemoteSwitchDriver::subscribeTargetTopic() {
 void RemoteSwitchDriver::sendRelayCommand(bool on) {
     if (_cfg->targetId[0] == '\0') return;
 
-    uint32_t seq = _targetSeq++;
-    if (_services.log && _services.log->isTimeSynced()) {
-        seq = _services.log->getEpoch();
-    }
     uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
     const char* src = _services.deviceId ? _services.deviceId : "";
 
     char hmacHex[65] = {0};
     if (_cfg->targetKey[0] != '\0') {
-        const String canonical = crypto::buildCanonical(seq, ts, "setRelay", "", src);
+        const String canonical = crypto::buildCanonical(ts, "setRelay", "", src);
         crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex);
     }
 
     protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
     writer.writeBool(protocol::FieldId::State, on);
-    writer.writeU32(protocol::FieldId::Seq, seq);
     writer.writeU32(protocol::FieldId::Ts, ts);
     if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
     if (hmacHex[0] != '\0') writer.writeString(protocol::FieldId::Hmac, hmacHex);
@@ -252,22 +247,17 @@ void RemoteSwitchDriver::sendRelayCommand(bool on) {
 void RemoteSwitchDriver::requestStatusStream() {
     if (_cfg->targetId[0] == '\0') return;
 
-    uint32_t seq = _targetSeq++;
-    if (_services.log && _services.log->isTimeSynced()) {
-        seq = _services.log->getEpoch();
-    }
     uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
     const char* src = _services.deviceId ? _services.deviceId : "";
 
     char hmacHex[65] = {0};
     if (_cfg->targetKey[0] != '\0') {
-        const String canonical = crypto::buildCanonical(seq, ts, "getStatus", "", src);
+        const String canonical = crypto::buildCanonical(ts, "getStatus", "", src);
         crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex);
     }
 
     protocol::BinaryWriter writer(protocol::CommandId::GetStatus);
     writer.writeBool(protocol::FieldId::Stream, true);
-    writer.writeU32(protocol::FieldId::Seq, seq);
     writer.writeU32(protocol::FieldId::Ts, ts);
     if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
     if (hmacHex[0] != '\0') writer.writeString(protocol::FieldId::Hmac, hmacHex);

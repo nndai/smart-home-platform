@@ -68,7 +68,6 @@ Mỗi trường dữ liệu được mã hóa header siêu nhỏ gọn:
 ```cpp
 protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
 writer.writeBool(protocol::FieldId::State, on);
-writer.writeU32(protocol::FieldId::Seq, seq);
 writer.writeU32(protocol::FieldId::Ts, ts);
 
 // Gửi đi luôn!

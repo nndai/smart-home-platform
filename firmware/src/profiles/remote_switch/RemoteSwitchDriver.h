@@ -75,7 +75,6 @@ private:
     bool _targetOn = false;
     bool _targetError = false;
     char _targetPumpStateStr[16] = ""; // "RUNNING OK" / "DRY RUN" / ... (chặt: chỉ xanh khi RUNNING OK)
-    uint32_t _targetSeq = 0;
 
     void updateLeds(uint32_t nowMs);
     void updateConnectLeds(uint32_t nowMs);

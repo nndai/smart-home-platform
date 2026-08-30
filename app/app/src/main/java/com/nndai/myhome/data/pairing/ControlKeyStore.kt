@@ -56,7 +56,6 @@ class ControlKeyStore(context: Context) {
         prefs.edit()
             .remove("enc_$deviceId")
             .remove("iv_$deviceId")
-            .remove("seq_$deviceId")
             .remove(deviceId)
             .apply()
     }
@@ -66,11 +65,6 @@ class ControlKeyStore(context: Context) {
      * Called when the session ends (logout / token revoked) so a different
      * account signing in on this device cannot reuse the previous account's
      * keys — critical for shared VIEWER accounts.
-     *
-     * Deliberately KEEPS seq_* counters and app_sender_id: seq is tied to the
-     * stable sender id for replay protection; wiping it while keeping the same
-     * sender id would make the device reject commands (seq below floor) until
-     * the counter catches up. Seq alone is useless without the key.
      */
     fun clearUserSecrets() {
         val editor = prefs.edit()
@@ -110,19 +104,7 @@ class ControlKeyStore(context: Context) {
         }
     }
 
-    // ── Seq counter cho envelope lệnh (persist theo từng thiết bị; thiết bị giữ
-    //    floor seq riêng cho mỗi sender qua field "src" của envelope) ──
-    fun getSeq(deviceId: String): Long = prefs.getLong("seq_$deviceId", 0L)
-
-    fun nextSeq(deviceId: String): Long {
-        val next = getSeq(deviceId) + 1
-        prefs.edit().putLong("seq_$deviceId", next).apply()
-        return next
-    }
-
     // ── Sender ID ổn định của app (field "src" trong envelope) ──
-    // Phải ổn định qua mọi lần mở app: thiết bị track floor seq riêng cho từng
-    // sender; nếu src đổi mỗi lần launch, cửa sổ replay của app sẽ reset.
     fun appSenderId(): String {
         prefs.getString(KEY_APP_SENDER, null)?.let { return it }
         val id = "app-" + generateHex(8)
