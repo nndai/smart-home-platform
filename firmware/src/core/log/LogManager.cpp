@@ -76,6 +76,7 @@ void LogManager::clearPowerLog() { _powerLog.clear(); }
 // ── Time delegates ──
 bool LogManager::isTimeSynced() const { return _time.isTimeSynced(); }
 unsigned long LogManager::getEpoch() const { return _time.getEpoch(); }
+String LogManager::dateTimeStr() const { return _time.dateTimeStr(); }
 
 // ── Data delegates ──
 const LogManager::DataFile& LogManager::getData() const { return _data.getData(); }

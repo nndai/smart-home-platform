@@ -10,6 +10,7 @@ public:
     unsigned long getEpoch() const;
     String ts() const;
     String dateStr() const;
+    String dateTimeStr() const;
 private:
     bool _timeSynced = false;
     unsigned long _epoch = 0;

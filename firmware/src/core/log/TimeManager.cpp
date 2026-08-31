@@ -53,3 +53,14 @@ String TimeManager::dateStr() const {
     }
     return F("nosync");
 }
+
+String TimeManager::dateTimeStr() const {
+    time_t raw = getEpoch();
+    struct tm ti;
+    gmtime_r(&raw, &ti);
+    char buf[26];
+    snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d %02d:%02d:%02d"),
+             ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900,
+             ti.tm_hour, ti.tm_min, ti.tm_sec);
+    return String(buf);
+}

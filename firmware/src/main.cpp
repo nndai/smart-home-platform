@@ -355,7 +355,7 @@ uint32_t taskNtpUpdate_cb() {
     if (ntpClient.isTimeSet()) {
         logManager.setTime(ntpClient.getEpochTime());
         if (!isLogTime) {
-            LT_I("NTP time set: %s", ntpClient.getFormattedTime().c_str());
+            LT_I("NTP time set: %s", logManager.dateTimeStr().c_str());
             isLogTime = true;
         }
     }

@@ -47,29 +47,29 @@
 // saving ~4KB-5KB of static DRAM.
 // MCU khác (ESP32...): Serial.printf.
 #if defined(ARDUINO_ARCH_ESP8266)
-#include <osapi.h>
+#include "compat/log_capture.h"
 
 #define LT_I(fmt, ...)                               \
 	do {                                            \
-		os_printf_plus(PSTR("[I] " fmt "\n"), ##__VA_ARGS__); \
+		logPrintf_P("[I] ", PSTR(fmt), ##__VA_ARGS__); \
 	} while (0)
 
 #define LT_E(fmt, ...)                               \
 	do {                                            \
-		os_printf_plus(PSTR("[E] " fmt "\n"), ##__VA_ARGS__); \
+		logPrintf_P("[E] ", PSTR(fmt), ##__VA_ARGS__); \
 	} while (0)
 
 #define LT_IM(module, fmt, ...)                      \
 	do {                                            \
 		if (LT_DEBUG_##module) {                    \
-			os_printf_plus(PSTR("[I][" #module "] " fmt "\n"), ##__VA_ARGS__); \
+			logPrintf_P("[I][" #module "] ", PSTR(fmt), ##__VA_ARGS__); \
 		}                                           \
 	} while (0)
 
 #define LT_EM(module, fmt, ...)                      \
 	do {                                            \
 		if (LT_DEBUG_##module) {                    \
-			os_printf_plus(PSTR("[E][" #module "] " fmt "\n"), ##__VA_ARGS__); \
+			logPrintf_P("[E][" #module "] ", PSTR(fmt), ##__VA_ARGS__); \
 		}                                           \
 	} while (0)
 

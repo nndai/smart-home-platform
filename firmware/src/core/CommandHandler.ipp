@@ -687,12 +687,7 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol:
             sys->setU32(protocol::FieldId::BuildUnixTime, buildUnixTime());
             sys->setU32(protocol::FieldId::Uptime, millis() / 1000);
 
-            time_t raw = _log ? _log->getEpoch() : 0;
-            struct tm ti;
-            gmtime_r(&raw, &ti);
-            char buf[26];
-            snprintf_P(buf, sizeof(buf), PSTR("%02d-%02d-%04d %02d:%02d:%02d"), ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900, ti.tm_hour, ti.tm_min, ti.tm_sec);
-            sys->setString(protocol::FieldId::TimeSys, buf);
+            sys->setString(protocol::FieldId::TimeSys, _log ? _log->dateTimeStr() : String(F("01-01-1970 00:00:00")));
             sys->setString(protocol::FieldId::ResetReason, chip::systemResetReason());
             resp.endObject(sys);
         }
