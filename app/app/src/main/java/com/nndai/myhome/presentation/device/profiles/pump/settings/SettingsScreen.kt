@@ -817,21 +817,20 @@ private fun PumpProtectionCard(
                 )
             }
 
-            // Protection Thresholds (Power in W, Overload in mA)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactTextField(
-                    value = threshOff, onValueChange = onThreshOffChange,
-                    label = stringResource(R.string.ps_label_off_threshold_w), isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("threshOff", displayNameOffThreshold, threshOff) }
-                )
-                CompactTextField(
-                    value = threshOverload, onValueChange = onThreshOverloadChange,
-                    label = stringResource(R.string.ps_label_overload_ma), isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("threshOverload", displayNameOverload, threshOverload) }
-                )
-            }
-
+            // Protection Thresholds & Timeouts
             if (pumpMode) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactTextField(
+                        value = threshOverload, onValueChange = onThreshOverloadChange,
+                        label = stringResource(R.string.ps_label_overload_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOverload", displayNameOverload, threshOverload) }
+                    )
+                    CompactTextField(
+                        value = threshOff, onValueChange = onThreshOffChange,
+                        label = stringResource(R.string.ps_label_off_threshold_w), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOff", displayNameOffThreshold, threshOff) }
+                    )
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactTextField(
                         value = threshDry, onValueChange = onThreshDryChange,
@@ -844,26 +843,33 @@ private fun PumpProtectionCard(
                         onFocusLost = { onFieldFocusLost("threshRunning", displayNameRunning, threshRunning) }
                     )
                 }
-            }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-            // Timeouts
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (pumpMode) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactTextField(
                         value = dryTimeout, onValueChange = onDryTimeoutChange,
                         label = stringResource(R.string.ps_label_dry_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
                         onFocusLost = { onFieldFocusLost("dryTimeout", displayNameDryTimeout, dryTimeout) }
                     )
+                    CompactTextField(
+                        value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
+                        label = stringResource(R.string.ps_label_overload_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("overloadTimeout", displayNameOverloadTimeout, overloadTimeout) }
+                    )
                 }
-                CompactTextField(
-                    value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
-                    label = stringResource(R.string.ps_label_overload_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("overloadTimeout", displayNameOverloadTimeout, overloadTimeout) }
-                )
-                if (!pumpMode) {
-                    Spacer(modifier = Modifier.weight(1f))
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactTextField(
+                        value = threshOverload, onValueChange = onThreshOverloadChange,
+                        label = stringResource(R.string.ps_label_overload_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOverload", displayNameOverload, threshOverload) }
+                    )
+                    CompactTextField(
+                        value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
+                        label = stringResource(R.string.ps_label_overload_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("overloadTimeout", displayNameOverloadTimeout, overloadTimeout) }
+                    )
                 }
             }
 
