@@ -61,7 +61,7 @@ private:
     TargetVisualState _visualState = TargetVisualState::OFF;
 
     // ── Timing (millis, chống wrap bằng so sánh unsigned hiệu số) ──
-    static constexpr uint32_t WAIT_RESPONSE_MS   = 5000;   // timeout chờ phản hồi setRelay
+    static constexpr uint32_t WAIT_RESPONSE_MS   = 15000;  // timeout chờ phản hồi setRelay / pump vào RUNNING OK
     static constexpr uint32_t ERROR_AUTOOFF_MS   = 60000;  // error không thao tác → tắt đèn
     static constexpr uint32_t STATUS_TIMEOUT_MS  = 70000;  // 1p10s không nhận status → lỗi connect
     static constexpr uint32_t CONNECT_BLINK_ON   = 300;    // cụm nháy đỏ (wifi/mqtt/ntp)

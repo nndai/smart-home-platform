@@ -337,7 +337,7 @@ uint32_t taskMqttLoop_cb() {
         logLostConnection = false;
     }
 
-    return otaManager.isRunning() ? 10 : 20;
+    return otaManager.isRunning() ? 10 : 30;
 }
 
 // ── Task: NTP Update ──

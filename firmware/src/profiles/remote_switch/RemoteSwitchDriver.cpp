@@ -156,58 +156,36 @@ void RemoteSwitchDriver::enterVisualState(TargetVisualState state, uint32_t nowM
     }
 }
 
-// Cập nhật cặp 2 theo status vừa nhận từ target.
-// Chặt: xanh sáng mãi chỉ khi relay on VÀ pumpStateStr == "RUNNING OK".
+// Cập nhật cặp LED 2 theo status nhận từ target:
+// - Có lỗi (_targetError: DRY_RUN, CRITICAL_CURRENT, OVERLOAD) -> ĐỎ nháy (bất kể relay ON hay OFF)
+// - Relay ON và RUNNING OK (hoặc switch ON) -> XANH sáng liên tục (ON_OK)
+// - Relay ON nhưng pumpState chưa RUNNING OK (đang OFF / khởi động) -> XANH nháy (WAITING, tiếp tục chờ)
+// - Relay OFF và không lỗi -> TẮT cả 2 đèn (OFF)
 void RemoteSwitchDriver::updateVisualFromStatus(uint32_t nowMs) {
-    switch (_visualState) {
-    case TargetVisualState::WAITING:
-        // Chỉ rời WAITING khi có kết luận rõ ràng
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        else if (_targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        else if (isTargetRunningOk()) {
+    if (_targetError) {
+        enterVisualState(TargetVisualState::ERROR, nowMs);
+    } else if (!_targetOn) {
+        enterVisualState(TargetVisualState::OFF, nowMs);
+    } else {
+        if (isTargetRunningOk()) {
             enterVisualState(TargetVisualState::ON_OK, nowMs);
+        } else {
+            enterVisualState(TargetVisualState::WAITING, nowMs);
         }
-        // relay on nhưng chưa RUNNING OK → tiếp tục nháy xanh chờ
-        break;
-
-    case TargetVisualState::ON_OK:
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        else if (_targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        break;
-
-    case TargetVisualState::ERROR:
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        // target vẫn lỗi → giữ ERROR; timer 60s tự tắt vẫn chạy
-        break;
-
-    case TargetVisualState::OFF:
-    default:
-        if (_targetOn && _targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        else if (_targetOn && isTargetRunningOk()) {
-            enterVisualState(TargetVisualState::ON_OK, nowMs);
-        }
-        break;
     }
 }
 
 bool RemoteSwitchDriver::isTargetRunningOk() const {
-    if (strcmp_P(_cfg->targetType, PSTR("switch")) == 0) {
+    if (!_targetOn || _targetError) {
+        return false;
+    }
+    // Nếu target là switch thuần (hoặc không có trường pumpState)
+    if (strcmp_P(_cfg->targetType, PSTR("switch")) == 0 ||
+        (strcmp_P(_cfg->targetType, PSTR("pump")) != 0 && _targetPumpStateStr[0] == '\0')) {
         return _targetOn;
     }
-    // pump: chỉ coi là OK khi relay on + state RUNNING OK
-    return _targetOn && strcmp_P(_targetPumpStateStr, PSTR("RUNNING OK")) == 0;
+    // Target là pump: chỉ coi là OK khi relay ON + pumpState là "RUNNING OK"
+    return _targetOn && (strcmp_P(_targetPumpStateStr, PSTR("RUNNING OK")) == 0);
 }
 
 // Subscribe tới topic trạng thái của target (core ghi nhớ + re-subscribe khi reconnect)
@@ -273,16 +251,30 @@ void RemoteSwitchDriver::handleTargetStatus(uint8_t cmdId, const protocol::Comma
     // Mọi message trên devices/{targetId}/up đều chứng minh target còn sống
     _lastStatusRxMs = millis();
 
-    // Reply của target đối với setRelay chuyển tiếp: {state: "on" | "off"}
+    // Reply của target đối với setRelay chuyển tiếp: {status: "ok"|"error", state: "on"|"off"}
     if (cmdId == static_cast<uint8_t>(protocol::CommandId::SetRelay)) {
+        String status;
+        if (doc.getString(protocol::FieldId::Status, status) && status == "error") {
+            _targetError = true;
+            enterVisualState(TargetVisualState::ERROR, millis());
+            return;
+        }
+
         String st;
         if (doc.getString(protocol::FieldId::State, st)) {
             if (st == "on") {
                 _targetOn = true;
-                // Ack "on" chưa khẳng định RUNNING OK → giữ WAITING chờ status
+                _targetError = false;
+                if (isTargetRunningOk()) {
+                    enterVisualState(TargetVisualState::ON_OK, millis());
+                } else {
+                    enterVisualState(TargetVisualState::WAITING, millis());
+                }
             } else if (st == "off") {
                 _targetOn = false;
-                enterVisualState(TargetVisualState::OFF, millis());
+                if (!_targetError) {
+                    enterVisualState(TargetVisualState::OFF, millis());
+                }
             }
         }
         return;
@@ -317,12 +309,12 @@ void RemoteSwitchDriver::handleTargetStatus(uint8_t cmdId, const protocol::Comma
 }
 
 void RemoteSwitchDriver::updateTargetError(const protocol::CommandRequest& doc) {
-    // Lưu state pump để xác định điều kiện "chặt" RUNNING OK
+    // Lưu state pump để xác định điều kiện lỗi hoặc khỏe mạnh
     String pumpStateStr;
     if (doc.getString(protocol::FieldId::PumpStateStr, pumpStateStr)) {
         strlcpy(_targetPumpStateStr, pumpStateStr.c_str(), sizeof(_targetPumpStateStr));
     } else {
-        int32_t s = 0;
+        int32_t s = -1;
         if (doc.getInt(protocol::FieldId::PumpState, s)) {
             switch (s) {
             case 0: strlcpy(_targetPumpStateStr, "OFF", sizeof(_targetPumpStateStr)); break;
@@ -333,20 +325,22 @@ void RemoteSwitchDriver::updateTargetError(const protocol::CommandRequest& doc) 
             case 5: strlcpy(_targetPumpStateStr, "OVERLOAD", sizeof(_targetPumpStateStr)); break;
             default: _targetPumpStateStr[0] = '\0'; break;
             }
-        } else {
-            _targetPumpStateStr[0] = '\0';
         }
     }
 
     _targetError = false;
 
-    // Pump errors — top level getStatus fields (pumpStateStr / pumpState enum int)
-    if (strcmp_P(_targetPumpStateStr, PSTR("DRY RUN")) == 0 || strcmp_P(_targetPumpStateStr, PSTR("OVERLOAD")) == 0 || strcmp_P(_targetPumpStateStr, PSTR("CRITICAL CURRENT")) == 0) {
+    // Pump errors: DRY RUN, OVERLOAD, CRITICAL CURRENT
+    if (strcmp_P(_targetPumpStateStr, PSTR("DRY RUN")) == 0 ||
+        strcmp_P(_targetPumpStateStr, PSTR("OVERLOAD")) == 0 ||
+        strcmp_P(_targetPumpStateStr, PSTR("CRITICAL CURRENT")) == 0) {
         _targetError = true;
     }
-    int32_t s = 0;
+    int32_t s = -1;
     if (doc.getInt(protocol::FieldId::PumpState, s)) {
-        if (s == 3 || s == 4 || s == 5) _targetError = true; // PumpState::DRY_RUN / CRITICAL_CURRENT / OVERLOAD
+        if (s == 3 || s == 4 || s == 5) {
+            _targetError = true; // PumpState::DRY_RUN / CRITICAL_CURRENT / OVERLOAD
+        }
     }
 }
 
@@ -462,6 +456,10 @@ void RemoteSwitchDriver::_onButtonClick() {
     // Nút bị khóa khi đang chờ phản hồi (long-press menu vẫn hoạt động)
     if (_visualState == TargetVisualState::WAITING) return;
 
+    if (_visualState == TargetVisualState::ERROR) {
+        _targetError = false;
+    }
+
     sendToggleCommand();
     // Bơm/switch chuyển sang tự báo 2s → status về ngay, không phải chờ 60s
     requestStatusStream();
@@ -475,8 +473,8 @@ void RemoteSwitchDriver::_onButtonClick() {
 
     // Notify app so its UI updates (same shape as setRelay response)
     protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
-    writer.writeString(protocol::FieldId::Status, "ok", 2);
-    writer.writeString(protocol::FieldId::State, on ? "on" : "off", on ? 2 : 3);
+    writer.writeString(protocol::FieldId::Status, F("ok"));
+    writer.writeString(protocol::FieldId::State, on ? F("on") : F("off"));
     if (_services.sendBinaryResponse) {
         _services.sendBinaryResponse(writer.data(), writer.size());
     }
