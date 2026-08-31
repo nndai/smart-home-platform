@@ -45,12 +45,12 @@ class WebSocketDeviceChannel(
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
-    private val _incoming = MutableSharedFlow<String>(
+    private val _incoming = MutableSharedFlow<ByteArray>(
         replay = 0,
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val incoming: SharedFlow<String> = _incoming.asSharedFlow()
+    override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
 
     private var webSocket: WebSocket? = null
     private var connectJob: Job? = null
@@ -85,7 +85,12 @@ class WebSocketDeviceChannel(
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             Log.v(TAG, "onMessage payload=${text.take(200)}")
-            handleIncoming(text)
+            handleIncoming(text.toByteArray(Charsets.UTF_8))
+        }
+
+        override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
+            Log.v(TAG, "onMessage binary payload length=${bytes.size}")
+            handleIncoming(bytes.toByteArray())
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -149,11 +154,11 @@ class WebSocketDeviceChannel(
         _state.value = ConnectionState.Disconnected("stopped")
     }
 
-    override suspend fun send(raw: String): Boolean {
+    override suspend fun send(raw: ByteArray): Boolean {
         val ws = webSocket ?: return false
         return withContext(dispatcher) {
             runCatching {
-                ws.send(raw)
+                ws.send(okio.ByteString.of(*raw))
             }.getOrElse {
                 Log.e(TAG, "send() failed", it)
                 false
@@ -230,8 +235,10 @@ class WebSocketDeviceChannel(
             val startTime = System.currentTimeMillis()
             val timeoutMs = 10_000L
 
-            Log.d(TAG, "startHandshake() sending getStatus probe")
-            webSocket?.send(HANDSHAKE_COMMAND)
+            Log.d(TAG, "startHandshake() sending binary getStatus probe")
+            val getStatusJson = JSONObject().apply { put("cmd", "getStatus") }
+            val binaryFrame = com.nndai.myhome.protocol.BinaryProtocolParser.serialize(getStatusJson)
+            webSocket?.send(okio.ByteString.of(*binaryFrame))
 
             while (isActive && webSocket != null && !handshakeComplete) {
                 val elapsed = System.currentTimeMillis() - startTime
@@ -253,14 +260,17 @@ class WebSocketDeviceChannel(
         handshakeJob = null
     }
 
-    private fun handleIncoming(payload: String) {
+    private fun handleIncoming(payload: ByteArray) {
         lastDeviceRxTime = System.currentTimeMillis()
 
         if (!handshakeComplete) {
+            val isBinary = payload.size >= 2 && payload[0] == 0xB7.toByte() && payload[1] == 0x01.toByte()
+            val payloadStr = if (!isBinary) String(payload, Charsets.UTF_8) else null
+
             val cmd = runCatching {
-                JSONObject(payload).optString("cmd")
+                payloadStr?.let { JSONObject(it).optString("cmd") }
             }.getOrNull()
-            if (cmd == "getStatus") {
+            if (cmd == "getStatus" || (isBinary && payload.size >= 3 && payload[2] == 0x05.toByte())) {
                 Log.d(TAG, "handleIncoming() handshake confirmed — device alive via WebSocket")
                 handshakeComplete = true
                 cancelHandshake()

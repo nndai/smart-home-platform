@@ -89,10 +89,19 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
         logs.clear()
     }
 
-    fun sendRawJson(rawJson: String) {
-        if (rawJson.isBlank()) return
-        viewModelScope.launch {
-            repository.sendRawJson(rawJson.trim())
+    fun sendRaw(rawInput: String) {
+        val trimmed = rawInput.trim()
+        if (trimmed.isBlank()) return
+        if (logs.size >= 2000) {
+            logs.removeAt(0)
         }
+        logs.add("[TX] $trimmed")
+        viewModelScope.launch {
+            repository.sendRaw(trimmed)
+        }
+    }
+
+    fun sendRawJson(rawJson: String) {
+        sendRaw(rawJson)
     }
 }

@@ -1,8 +1,9 @@
-package com.nndai.myhome.presentation.device.profiles.remoteswitch
+﻿package com.nndai.myhome.presentation.device.profiles.remoteswitch
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nndai.myhome.R
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.data.model.ConnectionState
 import com.nndai.myhome.data.model.Device
@@ -93,22 +94,22 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
                         _isToggling.value = false
                         if (event.success) {
                             _messages.tryEmit(
-                                if (event.message == "on") "Đã bật thiết bị mục tiêu"
-                                else "Đã tắt thiết bị mục tiêu"
+                                if (event.message == "on") getString(R.string.rs_msg_target_on)
+                                else getString(R.string.rs_msg_target_off)
                             )
                         } else {
-                            _messages.tryEmit(event.message ?: "Không thể cập nhật relay mục tiêu")
+                            _messages.tryEmit(event.message ?: getString(R.string.rs_msg_relay_failed))
                         }
                     }
                     "setConfig" -> {
                         _isSettingTarget.value = false
                         _isClearingTarget.value = false
                         if (event.success) {
-                            _messages.tryEmit("Cập nhật cấu hình thành công")
+                            _messages.tryEmit(getString(R.string.rs_msg_config_saved))
                             repository.refreshStatus(stream = true)
                             repository.refreshConfig()
                         } else {
-                            _messages.tryEmit(event.message ?: "Cập nhật cấu hình thất bại")
+                            _messages.tryEmit(event.message ?: getString(R.string.rs_msg_config_failed))
                         }
                     }
                 }
@@ -144,19 +145,19 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
     fun setTarget(targetDevice: Device) {
         val activeDeviceId = PumpRepositoryProvider.getActiveDeviceId()
         if (activeDeviceId.isBlank()) {
-            _messages.tryEmit("Lỗi: Không xác định được Remote Switch hiện tại")
+            _messages.tryEmit(getString(R.string.rs_msg_unknown_switch))
             return
         }
 
         val targetKeyHex = keyStore.get(targetDevice.device_id)
         if (targetKeyHex.isNullOrBlank()) {
-            _messages.tryEmit("Không tìm thấy khóa bảo mật của thiết bị mục tiêu (${targetDevice.name})")
+            _messages.tryEmit(getString(R.string.rs_msg_no_target_key, targetDevice.name))
             return
         }
 
         val remoteKeyHex = keyStore.get(activeDeviceId)
         if (remoteKeyHex.isNullOrBlank()) {
-            _messages.tryEmit("Không tìm thấy khóa bảo mật của Remote Switch trên máy này")
+            _messages.tryEmit(getString(R.string.rs_msg_no_local_key))
             return
         }
 
@@ -167,7 +168,7 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
                 val encryptedTargetKey = ControlKeyCrypto.encryptTargetKey(targetKeyHex, remoteKeyHex)
                 if (encryptedTargetKey == null) {
                     _isSettingTarget.value = false
-                    _messages.tryEmit("Lỗi mã hóa khóa mục tiêu E2E")
+                    _messages.tryEmit(getString(R.string.rs_msg_encrypt_failed))
                     return@launch
                 }
 
@@ -178,7 +179,7 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
                 )
             } catch (e: Exception) {
                 _isSettingTarget.value = false
-                _messages.tryEmit("Lỗi gửi cấu hình: ${e.message}")
+                _messages.tryEmit(getString(R.string.rs_msg_send_failed_prefix, e.message ?: ""))
             }
         }
     }
@@ -193,7 +194,7 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
                 repository.clearRemoteSwitchTarget()
             } catch (e: Exception) {
                 _isClearingTarget.value = false
-                _messages.tryEmit("Lỗi xóa mục tiêu: ${e.message}")
+                _messages.tryEmit(getString(R.string.rs_msg_clear_failed_prefix, e.message ?: ""))
             }
         }
     }
@@ -210,7 +211,7 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
                 delay(8000L)
                 if (_isToggling.value) {
                     _isToggling.value = false
-                    _messages.tryEmit("Hết thời gian chờ phản hồi từ thiết bị mục tiêu")
+                    _messages.tryEmit(getString(R.string.rs_msg_timeout))
                 }
             }
 
@@ -219,7 +220,7 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
             }.onFailure {
                 toggleTimeoutJob?.cancel()
                 _isToggling.value = false
-                _messages.tryEmit("Không thể gửi lệnh điều khiển")
+                _messages.tryEmit(getString(R.string.rs_msg_command_failed))
             }
         }
     }
@@ -250,6 +251,12 @@ class RemoteSwitchViewModel(application: Application) : AndroidViewModel(applica
         pingJob?.cancel()
         pingJob = null
     }
+
+    private fun getString(resId: Int): String =
+        getApplication<Application>().getString(resId)
+
+    private fun getString(resId: Int, arg: String): String =
+        getApplication<Application>().getString(resId, arg)
 
     companion object {
         private const val PING_INTERVAL_MS = 60_000L

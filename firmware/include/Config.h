@@ -56,11 +56,11 @@
 // ── MQTT ──
 #define DEFAULT_MQTT_PORT          1883
 #define DEFAULT_MQTT_TOPIC         "pump"
-#define MQTT_SOCKET_TIMEOUT_SEC    7
+#define MQTT_SOCKET_TIMEOUT_SEC    5
 #define MQTT_RECONNECT_INTERVAL_MS 5000  // khoảng cách giữa 2 lần thử kết nối lại
 
 #if defined(ARDUINO_ARCH_ESP8266)
-#define MQTT_BUFFER_SIZE           3072
+#define MQTT_BUFFER_SIZE           (3*1024)
 #else
 #define MQTT_BUFFER_SIZE           5000
 #endif
@@ -80,15 +80,12 @@
 #define DEFAULT_OTA_URL_LN882H    "http://192.168.137.1:8090/firmware.uf2"
 #define DEFAULT_OTA_URL_ESP8266   "http://192.168.137.1:8090/firmware.bin"
 #define OTA_WIFI_TIMEOUT_MS       60000   // chờ kết nối WiFi tối đa 60s
-#define OTA_CHUNK_SIZE            1400    // buffer đọc HTTP khi tải firmware
+#define OTA_CHUNK_SIZE            1000    // buffer đọc HTTP khi tải firmware
 
 
 // ── Log Sizes ──
 #if defined(ARDUINO_ARCH_ESP8266) || defined(ARDUINO_ARCH_ESP32)
 // ESP chips: Nhiều flash hơn -> x4 giới hạn log
-#ifndef SYSLOG_QUEUE_SIZE
-#define SYSLOG_QUEUE_SIZE (128 * 4)
-#endif
 #ifndef SYSLOG_MAX_FILE_SIZE
 #define SYSLOG_MAX_FILE_SIZE (40 * 1024)
 #endif
@@ -106,9 +103,7 @@
 #endif
 #else
 // LN882H (LibreTiny): Giữ nguyên giới hạn nhỏ do LittleFS bé
-#ifndef SYSLOG_QUEUE_SIZE
-#define SYSLOG_QUEUE_SIZE 128
-#endif
+
 #ifndef SYSLOG_MAX_FILE_SIZE
 #define SYSLOG_MAX_FILE_SIZE (10 * 1024)
 #endif
@@ -123,6 +118,16 @@
 #endif
 #ifndef POWERLOG_MAX_FOLDER
 #define POWERLOG_MAX_FOLDER (200 * 1024)
+#endif
+#endif
+
+#if defined(ARDUINO_ARCH_ESP8266)
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 20
+#endif
+#else
+#ifndef SYSLOG_QUEUE_SIZE
+#define SYSLOG_QUEUE_SIZE 64
 #endif
 #endif
 

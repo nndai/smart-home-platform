@@ -1,10 +1,15 @@
 #include "profiles/pump/PumpDriver.h"
+#include "protocol/BinaryProtocol.h"
+#include "protocol/BinaryWriter.h"
+#include "protocol/BinaryCommandIds.h"
+#include "protocol/BinaryFieldIds.h"
 
 void PumpDriver::setServices(const DriverServices& svc) {
     _log = svc.log;
     _saveConfig = svc.saveConfig;
     _resetConfig = svc.resetConfig;
     _sendResponse = svc.sendResponse;
+    _sendBinaryResponse = svc.sendBinaryResponse;
     _publishStatus = svc.publishStatus;
 
     _menuSteps[0] = { "Reset WiFi", [this]() { _menuResetWiFi(); } };
@@ -68,222 +73,228 @@ void PumpDriver::loop(uint32_t nowMs) {
         _energyTick();
     }
     float current = _current.getCurrent();
-    _pump.update(current);
+    float power = _current.getActivePower();
+    _pump.update(current, power);
 }
 
-bool PumpDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
-    if (strcmp(cmd, "setRelay") == 0) {
-        if (!payload["state"].is<bool>()) {
-            resp["status"] = "error";
-            resp["message"] = "Missing or invalid 'state' field";
+bool PumpDriver::handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
+        bool on = false;
+        if (!payload.getBool(protocol::FieldId::State, on)) {
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Missing or invalid 'state' field"));
             return true;
         }
-        bool on = payload["state"].as<bool>();
         setRelay(on);
-        resp["status"] = "ok";
-        resp["state"] = on ? "on" : "off";
-        LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::State, on ? F("on") : F("off"));
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;
     }
-    if (strcmp(cmd, "calibrate") == 0) {
+    if (strcmp_P(cmd, PSTR("calibrate")) == 0) {
         _handleCalibrate(payload, resp);
         return true;
     }
-    if (strcmp(cmd, "resetCalibration") == 0) {
+    if (strcmp_P(cmd, PSTR("resetCalibration")) == 0) {
         _current.resetCalibration();
         _cfg->cCal = _current.getCurrentMultiplier();
         _cfg->vCal = _current.getVoltageMultiplier();
         _cfg->pCal = _current.getPowerMultiplier();
         if (_saveFn) _saveFn();
-        resp["status"] = "ok";
-        resp["message"] = "Calibration reset to HW defaults";
-        resp["cCal"] = _cfg->cCal;
-        resp["vCal"] = _cfg->vCal;
-        resp["pCal"] = _cfg->pCal;
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Calibration reset to HW defaults"));
+        resp.setDouble(protocol::FieldId::CCal, _cfg->cCal);
+        resp.setDouble(protocol::FieldId::VCal, _cfg->vCal);
+        resp.setDouble(protocol::FieldId::PCal, _cfg->pCal);
         LT_IM(CMD, "Calibration reset");
         return true;
     }
-    if (strcmp(cmd, "clearPumpFault") == 0) {
+    if (strcmp_P(cmd, PSTR("clearPumpFault")) == 0) {
         _pump.clearPumpFault();
-        resp["status"] = "ok";
-        resp["message"] = "Pump fault cleared";
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Pump fault cleared"));
         LT_IM(CMD, "Clear pump fault");
         return true;
     }
     return false;
 }
 
-void PumpDriver::getStatus(JsonDocument& resp) {
+void PumpDriver::getStatus(protocol::CommandResponse& resp) {
     BL0937SensorData blData = _current.readAll();
 
-    resp["relay"] = _pump.isOn();
-    resp["current"] = blData.current;
-    resp["power"] = blData.power;
-    resp["voltage"] = blData.voltage;
-    resp["dailyEnergy"] = blData.dailyEnergy;
-    resp["hourlyEnergy"] = blData.hourlyEnergy;
-    resp["apparent"] = blData.apparent;
-    resp["pf"] = blData.pf;
-    resp["temperature"] = _temp.readCelsius();
-    resp["pumpMode"] = _cfg->pumpMode;
+    resp.setBool(protocol::FieldId::Relay, _pump.isOn());
+    resp.setU32(protocol::FieldId::OnDuration, _pump.isOn() ? (uint32_t)(_pump.getOnDuration() / 1000) : 0);
+    resp.setFloat(protocol::FieldId::Current, blData.current);
+    resp.setFloat(protocol::FieldId::Power, blData.power);
+    resp.setFloat(protocol::FieldId::Voltage, blData.voltage);
+    resp.setFloat(protocol::FieldId::DailyEnergy, blData.dailyEnergy);
+    resp.setFloat(protocol::FieldId::HourlyEnergy, blData.hourlyEnergy);
+    resp.setFloat(protocol::FieldId::Apparent, blData.apparent);
+    resp.setFloat(protocol::FieldId::Pf, blData.pf);
+    resp.setFloat(protocol::FieldId::Temperature, _temp.readCelsius());
+    resp.setBool(protocol::FieldId::PumpMode, _cfg->pumpMode);
     switch (_pump.getState()) {
     case PumpState::OFF:
-        resp["pumpStateStr"] = "OFF";
-        resp["pumpState"] = (int)PumpState::OFF;
+        resp.setString(protocol::FieldId::PumpStateStr, F("OFF"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::OFF);
         break;
     case PumpState::RUNNING_OK:
-        resp["pumpStateStr"] = "RUNNING OK";
-        resp["pumpState"] = (int)PumpState::RUNNING_OK;
+        resp.setString(protocol::FieldId::PumpStateStr, F("RUNNING OK"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::RUNNING_OK);
         break;
     case PumpState::DRY_RUN:
-        resp["pumpStateStr"] = "DRY RUN";
-        resp["pumpState"] = (int)PumpState::DRY_RUN;
+        resp.setString(protocol::FieldId::PumpStateStr, F("DRY RUN"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::DRY_RUN);
         break;
     case PumpState::HIGH_CURRENT:
-        resp["pumpStateStr"] = "HIGH CURRENT";
-        resp["pumpState"] = (int)PumpState::HIGH_CURRENT;
+        resp.setString(protocol::FieldId::PumpStateStr, F("HIGH CURRENT"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::HIGH_CURRENT);
         break;
     case PumpState::CRITICAL_CURRENT:
-        resp["pumpStateStr"] = "CRITICAL CURRENT";
-        resp["pumpState"] = (int)PumpState::CRITICAL_CURRENT;
+        resp.setString(protocol::FieldId::PumpStateStr, F("CRITICAL CURRENT"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::CRITICAL_CURRENT);
         break;
     case PumpState::OVERLOAD:
-        resp["pumpStateStr"] = "OVERLOAD";
-        resp["pumpState"] = (int)PumpState::OVERLOAD;
+        resp.setString(protocol::FieldId::PumpStateStr, F("OVERLOAD"));
+        resp.setI32(protocol::FieldId::PumpState, (int)PumpState::OVERLOAD);
         break;
     }
 }
 
-void PumpDriver::getConfig(JsonDocument& resp) {
-    resp["relayStartMode"] = (int)_cfg->relayStartMode;
-    resp["pumpMode"] = _cfg->pumpMode;
-    resp["threshOff"] = _cfg->threshOff;
-    resp["threshNoWater"] = _cfg->threshNoWater;
-    resp["threshRunning"] = _cfg->threshRunning;
-    resp["threshOverload"] = _cfg->threshOverload;
-    resp["dryTimeout"] = _cfg->dryTimeout;
-    resp["overloadTimeout"] = _cfg->overloadTimeout;
-    resp["cCal"] = _cfg->cCal;
-    resp["vCal"] = _cfg->vCal;
-    resp["pCal"] = _cfg->pCal;
+void PumpDriver::getConfig(protocol::CommandResponse& resp) {
+    resp.setI32(protocol::FieldId::RelayStartMode, (int)_cfg->relayStartMode);
+    resp.setBool(protocol::FieldId::PumpMode, _cfg->pumpMode);
+    resp.setU32(protocol::FieldId::ThreshOff, _cfg->threshOff);
+    resp.setU32(protocol::FieldId::ThreshNoWater, _cfg->threshNoWater);
+    resp.setU32(protocol::FieldId::ThreshRunning, _cfg->threshRunning);
+    resp.setU32(protocol::FieldId::ThreshOverload, _cfg->threshOverload);
+    resp.setU32(protocol::FieldId::DryTimeout, _cfg->dryTimeout);
+    resp.setU32(protocol::FieldId::OverloadTimeout, _cfg->overloadTimeout);
+    resp.setDouble(protocol::FieldId::CCal, _cfg->cCal);
+    resp.setDouble(protocol::FieldId::VCal, _cfg->vCal);
+    resp.setDouble(protocol::FieldId::PCal, _cfg->pCal);
 }
 
-bool PumpDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
+bool PumpDriver::setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)resp;
     bool changed = false;
 
-    if (payload["relayStartMode"].is<unsigned int>()) {
-        int v = payload["relayStartMode"].as<int>();
-        if (v >= 0 && v <= 2) {
-            _cfg->relayStartMode = (RelayStartMode)v;
+    uint32_t uv = 0;
+    if (payload.getUint(protocol::FieldId::RelayStartMode, uv)) {
+        if (uv <= 2) {
+            _cfg->relayStartMode = (RelayStartMode)uv;
             changed = true;
         }
     }
-    if (payload["pumpMode"].is<bool>()) {
-        _cfg->pumpMode = payload["pumpMode"].as<bool>();
+    bool bv = false;
+    if (payload.getBool(protocol::FieldId::PumpMode, bv)) {
+        _cfg->pumpMode = bv;
         _pump.setPumpMode(_cfg->pumpMode);
         changed = true;
     }
-    if (payload["dryTimeout"].is<unsigned int>()) {
-        _cfg->dryTimeout = payload["dryTimeout"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::DryTimeout, uv)) {
+        _cfg->dryTimeout = uv;
         _pump.setTimeouts(_cfg->dryTimeout, _cfg->overloadTimeout);
         changed = true;
     }
-    if (payload["overloadTimeout"].is<unsigned int>()) {
-        _cfg->overloadTimeout = payload["overloadTimeout"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::OverloadTimeout, uv)) {
+        _cfg->overloadTimeout = uv;
         _pump.setTimeouts(_cfg->dryTimeout, _cfg->overloadTimeout);
         changed = true;
     }
-    if (payload["threshOff"].is<unsigned int>()) {
-        _cfg->threshOff = payload["threshOff"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::ThreshOff, uv)) {
+        _cfg->threshOff = uv;
         _pump.setThresholds(_cfg->threshOff, _cfg->threshNoWater, _cfg->threshRunning, _cfg->threshOverload);
         changed = true;
     }
-    if (payload["threshNoWater"].is<unsigned int>()) {
-        _cfg->threshNoWater = payload["threshNoWater"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::ThreshNoWater, uv)) {
+        _cfg->threshNoWater = uv;
         _pump.setThresholds(_cfg->threshOff, _cfg->threshNoWater, _cfg->threshRunning, _cfg->threshOverload);
         changed = true;
     }
-    if (payload["threshRunning"].is<unsigned int>()) {
-        _cfg->threshRunning = payload["threshRunning"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::ThreshRunning, uv)) {
+        _cfg->threshRunning = uv;
         _pump.setThresholds(_cfg->threshOff, _cfg->threshNoWater, _cfg->threshRunning, _cfg->threshOverload);
         changed = true;
     }
-    if (payload["threshOverload"].is<unsigned int>()) {
-        _cfg->threshOverload = payload["threshOverload"].as<unsigned int>();
+    if (payload.getUint(protocol::FieldId::ThreshOverload, uv)) {
+        _cfg->threshOverload = uv;
         _pump.setThresholds(_cfg->threshOff, _cfg->threshNoWater, _cfg->threshRunning, _cfg->threshOverload);
         changed = true;
     }
-    if (payload["cCal"].is<double>()) {
-        _cfg->cCal = payload["cCal"].as<double>();
+    double dv = 0;
+    if (payload.getDouble(protocol::FieldId::CCal, dv)) {
+        _cfg->cCal = dv;
         _current.setCurrentMultiplier(_cfg->cCal);
         changed = true;
     }
-    if (payload["vCal"].is<double>()) {
-        _cfg->vCal = payload["vCal"].as<double>();
+    if (payload.getDouble(protocol::FieldId::VCal, dv)) {
+        _cfg->vCal = dv;
         _current.setVoltageMultiplier(_cfg->vCal);
         changed = true;
     }
-    if (payload["pCal"].is<double>()) {
-        _cfg->pCal = payload["pCal"].as<double>();
+    if (payload.getDouble(protocol::FieldId::PCal, dv)) {
+        _cfg->pCal = dv;
         _current.setPowerMultiplier(_cfg->pCal);
         changed = true;
     }
     return changed;
 }
 
-void PumpDriver::getSysInfo(JsonDocument& resp) {
-    JsonObject p = resp["pump"].to<JsonObject>();
-    p["relay"] = _pump.isOn();
-    p["voltage"] = _current.getVoltage();
-    p["current"] = _current.getCurrent();
-    p["power"] = _current.getActivePower();
-    p["apparent"] = _current.getApparentPower();
-    p["dailyEnergy"] = _current.getDailyEnergy();
-    p["hourlyEnergy"] = _current.getHourlyEnergy();
-    p["temperature"] = _temp.readCelsius();
+void PumpDriver::getSysInfo(protocol::CommandResponse& resp) {
+    protocol::CommandResponse* p = resp.beginObject(protocol::FieldId::Pump);
+    if (!p) return;
+    p->setBool(protocol::FieldId::Relay, _pump.isOn());
+    p->setU32(protocol::FieldId::OnDuration, _pump.isOn() ? (uint32_t)(_pump.getOnDuration() / 1000) : 0);
+    p->setFloat(protocol::FieldId::Voltage, _current.getVoltage());
+    p->setFloat(protocol::FieldId::Current, _current.getCurrent());
+    p->setFloat(protocol::FieldId::Power, _current.getActivePower());
+    p->setFloat(protocol::FieldId::Apparent, _current.getApparentPower());
+    p->setFloat(protocol::FieldId::DailyEnergy, _current.getDailyEnergy());
+    p->setFloat(protocol::FieldId::HourlyEnergy, _current.getHourlyEnergy());
+    p->setFloat(protocol::FieldId::Temperature, _temp.readCelsius());
     switch (_pump.getState()) {
     case PumpState::OFF:
-        p["pumpState"] = "off";
+        p->setString(protocol::FieldId::PumpState, F("off"));
         break;
     case PumpState::RUNNING_OK:
-        p["pumpState"] = "running";
+        p->setString(protocol::FieldId::PumpState, F("running"));
         break;
     case PumpState::DRY_RUN:
-        p["pumpState"] = "dry_run";
+        p->setString(protocol::FieldId::PumpState, F("dry_run"));
         break;
     case PumpState::HIGH_CURRENT:
-        p["pumpState"] = "high_current";
+        p->setString(protocol::FieldId::PumpState, F("high_current"));
         break;
     case PumpState::CRITICAL_CURRENT:
-        p["pumpState"] = "critical_current";
+        p->setString(protocol::FieldId::PumpState, F("critical_current"));
         break;
     case PumpState::OVERLOAD:
-        p["pumpState"] = "overload";
+        p->setString(protocol::FieldId::PumpState, F("overload"));
         break;
     }
+    resp.endObject(p);
 }
 
-void PumpDriver::_handleCalibrate(const JsonDocument& payload, JsonDocument& resp) {
+void PumpDriver::_handleCalibrate(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     bool didCalib = false;
 
-    if (payload["current"].is<double>()) {
-        double expected = payload["current"].as<double>();
-        _current.calibrateCurrent(expected);
-        LT_IM(CMD, "Calibrated current to %.2fA", expected);
+    double ev = 0;
+    if (payload.getDouble(protocol::FieldId::Current, ev)) {
+        _current.calibrateCurrent(ev);
+        LT_IM(CMD, "Calibrated current to %.2fA", ev);
         didCalib = true;
     }
-    if (payload["voltage"].is<float>()) {
-        float expected = payload["voltage"].as<float>();
-        _current.calibrateVoltage(expected);
-        LT_IM(CMD, "Calibrated voltage to %.1f V", expected);
+    float ef = 0;
+    if (payload.getFloat(protocol::FieldId::Voltage, ef)) {
+        _current.calibrateVoltage(ef);
+        LT_IM(CMD, "Calibrated voltage to %.1f V", ef);
         didCalib = true;
     }
-    if (payload["power"].is<float>()) {
-        float expected = payload["power"].as<float>();
-        _current.calibratePower(expected);
-        LT_IM(CMD, "Calibrated power to %.1f W", expected);
+    float ep = 0;
+    if (payload.getFloat(protocol::FieldId::Power, ep)) {
+        _current.calibratePower(ep);
+        LT_IM(CMD, "Calibrated power to %.1f W", ep);
         didCalib = true;
     }
 
@@ -292,12 +303,12 @@ void PumpDriver::_handleCalibrate(const JsonDocument& payload, JsonDocument& res
         _cfg->vCal = _current.getVoltageMultiplier();
         _cfg->pCal = _current.getPowerMultiplier();
         if (_saveFn) _saveFn();
-        resp["status"] = "ok";
-        resp["message"] = "Calibrated";
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Calibrated"));
     }
-    resp["cCal"] = _current.getCurrentMultiplier();
-    resp["vCal"] = _current.getVoltageMultiplier();
-    resp["pCal"] = _current.getPowerMultiplier();
+    resp.setDouble(protocol::FieldId::CCal, _current.getCurrentMultiplier());
+    resp.setDouble(protocol::FieldId::VCal, _current.getVoltageMultiplier());
+    resp.setDouble(protocol::FieldId::PCal, _current.getPowerMultiplier());
 }
 
 void PumpDriver::_onPumpState(PumpState state, float current, bool isOn, const char* msg) {
@@ -379,14 +390,11 @@ void PumpDriver::_onButtonClick() {
     setRelay(on);
     if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_BUTTON, on);
 
-    JsonDocument resp;
-    resp["cmd"] = "setRelay";
-    resp["status"] = "ok";
-    resp["state"] = on ? "on" : "off";
-    String json;
-    serializeJson(resp, json);
-    if (_sendResponse) {
-        _sendResponse(json);
+    protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
+    writer.writeString(protocol::FieldId::Status, "ok", 2);
+    writer.writeString(protocol::FieldId::State, on ? "on" : "off", on ? 2 : 3);
+    if (_sendBinaryResponse) {
+        _sendBinaryResponse(writer.data(), writer.size());
     }
 }
 

@@ -23,6 +23,9 @@ public:
         _client.addHeader(header, value);
     }
     int GET() { return _client.GET(); }
+    int sendRequest(const char* type) { return _client.sendRequest(type); }
+    void collectHeaders(const char* headerKeys[], const size_t headerKeysCount) { _client.collectHeaders(headerKeys, headerKeysCount); }
+    String header(const char* name) { return _client.header(name); }
     void end() { _client.end(); }
     int getSize() { return _client.getSize(); }
     WiFiClient* getStreamPtr() { return _client.getStreamPtr(); }

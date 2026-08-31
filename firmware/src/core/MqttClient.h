@@ -9,16 +9,16 @@
 
 class MqttClient {
 public:
-    using MessageCallback = std::function<void(const String& topic, const String& payload)>;
+    using BinaryCallback = std::function<void(const String& topic, const uint8_t* payload, size_t length)>;
 
     MqttClient();
     bool begin(const char* server, uint16_t port,
                const char* user, const char* pass,
                const char* clientId, const char* topic);
-    void setCallback(MessageCallback cb);
+    void setCallback(BinaryCallback cb);
     bool connect();
     void disconnect();
-    bool publish(const String& topic, const String& payload, bool retained = false);
+    bool publishBinary(const String& topic, const uint8_t* payload, size_t length, bool retained = false);
     bool subscribe(const String& topic);
     bool loop();
     bool isConnected();
@@ -35,12 +35,12 @@ private:
     bool _useTls = false;
     PubSubClient _mqtt;
     String _server;
-    uint16_t _port;
+    uint16_t _port = 0;
     String _user;
     String _pass;
     String _clientId;
     String _topic;
-    MessageCallback _callback;
+    BinaryCallback _callback;
     unsigned long _lastReconnect = 0;
 
     static void _onMessage(char* topic, uint8_t* payload, unsigned int len);

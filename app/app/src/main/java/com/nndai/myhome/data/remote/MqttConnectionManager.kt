@@ -58,12 +58,12 @@ class MqttConnectionManager(
     private val _transportState = MutableStateFlow<MqttTransportState>(MqttTransportState.Idle)
     val transportState: StateFlow<MqttTransportState> = _transportState.asStateFlow()
 
-    private val _incomingMessages = MutableSharedFlow<Pair<String, String>>(
+    private val _incomingMessages = MutableSharedFlow<Pair<String, ByteArray>>(
         replay = 0,
         extraBufferCapacity = 128,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val incomingMessages: SharedFlow<Pair<String, String>> = _incomingMessages.asSharedFlow()
+    val incomingMessages: SharedFlow<Pair<String, ByteArray>> = _incomingMessages.asSharedFlow()
 
     @Volatile
     private var client: MqttClient? = null
@@ -93,7 +93,7 @@ class MqttConnectionManager(
 
         override fun messageArrived(topic: String?, message: MqttMessage?) {
             if (topic == null || message == null) return
-            val payload = message.payload?.toString(Charsets.UTF_8) ?: return
+            val payload = message.payload ?: return
             _incomingMessages.tryEmit(Pair(topic, payload))
         }
 
@@ -190,9 +190,9 @@ class MqttConnectionManager(
     }
 
     /**
-     * Publishes a string payload to the target topic with QoS 1.
+     * Publishes a raw byte array payload to the target topic with QoS 1.
      */
-    suspend fun publish(topic: String, payload: String): Boolean {
+    suspend fun publish(topic: String, payload: ByteArray): Boolean {
         val currentClient = client ?: run {
             Log.w(TAG, "publish() failed: client is null")
             return false
@@ -203,15 +203,21 @@ class MqttConnectionManager(
         }
         return withContext(dispatcher) {
             runCatching {
-                val bytes = payload.toByteArray(Charsets.UTF_8)
-                currentClient.publish(topic, bytes, 1, false)
-                Log.d(TAG, "publish() OK to $topic payload=${payload.take(150)}")
+                currentClient.publish(topic, payload, 1, false)
+                Log.d(TAG, "publish() OK to $topic payload length=${payload.size}")
                 true
             }.getOrElse { e ->
                 Log.e(TAG, "publish() failed to $topic: ${e.message}")
                 false
             }
         }
+    }
+
+    /**
+     * Publishes a string payload to the target topic with QoS 1.
+     */
+    suspend fun publish(topic: String, payload: String): Boolean {
+        return publish(topic, payload.toByteArray(Charsets.UTF_8))
     }
 
     private suspend fun runConnectionLoop() {

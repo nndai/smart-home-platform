@@ -57,6 +57,13 @@ namespace chip {
     size_t heapMaxAlloc() {
         return (size_t)lt_heap_get_max_alloc();
     }
+
+    uint32_t getFlashChipSpeed() {
+        return 0;
+    }
+    uint8_t getFlashChipMode() {
+        return ESP.getFlashChipMode();
+    }
 }
 
 // ── MCU khác: ESP8266 vs ESP32 ──
@@ -77,7 +84,7 @@ namespace chip {
         analogWrite(pin, val);
     }
 
-    String chipModelName() { return "ESP8266"; }
+    String chipModelName() { return F("ESP8266"); }
 
     uint32_t systemChipId() { return ESP.getChipId(); }
 
@@ -87,6 +94,13 @@ namespace chip {
 
     size_t heapMinFree() { return ESP.getFreeHeap(); }
     size_t heapMaxAlloc() { return ESP.getMaxFreeBlockSize(); }
+
+    uint32_t getFlashChipSpeed() {
+        return ESP.getFlashChipSpeed();
+    }
+    uint8_t getFlashChipMode() {
+        return ESP.getFlashChipMode();
+    }
 }
 
 #else
@@ -155,6 +169,13 @@ namespace chip {
     }
     size_t psramMinFree() {
         return ESP.getMinFreePsram();
+    }
+
+    uint32_t getFlashChipSpeed() {
+        return ESP.getFlashChipSpeed();
+    }
+    uint8_t getFlashChipMode() {
+        return ESP.getFlashChipMode();
     }
 }
 #endif

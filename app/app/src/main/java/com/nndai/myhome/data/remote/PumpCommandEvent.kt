@@ -58,17 +58,43 @@ sealed interface PumpCommandEvent {
         val reqId: String? = null
     ) : PumpCommandEvent
 
-    /** Kết quả đọc nội dung file. */
+    /** Kết quả đọc nội dung file dạng binary byte array. */
     data class ReadFileResult(
         val path: String,
-        val data: String,
+        val data: ByteArray,
         val offset: Long,
         val size: Long,
         val more: Boolean,
         val success: Boolean,
         val message: String? = null,
         val reqId: String? = null
-    ) : PumpCommandEvent
+    ) : PumpCommandEvent {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as ReadFileResult
+            return path == other.path &&
+                    data.contentEquals(other.data) &&
+                    offset == other.offset &&
+                    size == other.size &&
+                    more == other.more &&
+                    success == other.success &&
+                    message == other.message &&
+                    reqId == other.reqId
+        }
+
+        override fun hashCode(): Int {
+            var result = path.hashCode()
+            result = 31 * result + data.contentHashCode()
+            result = 31 * result + offset.hashCode()
+            result = 31 * result + size.hashCode()
+            result = 31 * result + more.hashCode()
+            result = 31 * result + success.hashCode()
+            result = 31 * result + (message?.hashCode() ?: 0)
+            result = 31 * result + (reqId?.hashCode() ?: 0)
+            return result
+        }
+    }
 
     /** Lỗi gửi/nhận. */
     data class Failure(val message: String) : PumpCommandEvent

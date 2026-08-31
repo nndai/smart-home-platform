@@ -27,6 +27,17 @@ public:
     // → sinh controlKey mới và lưu.
     void setEncSeed(const char* seed);
 
+    // Lấy con trỏ trực tiếp tới 32 bytes controlKey trong RAM (không cấp phát)
+    const uint8_t* controlKey() const { return _hasControlKey ? _controlKey : nullptr; }
+    bool getControlKey(uint8_t out[32]) const {
+        if (!_hasControlKey || !out) return false;
+        memcpy(out, _controlKey, KEY_LEN);
+        return true;
+    }
+
+    // Ghi đè controlKey dạng raw byte 32B
+    bool setControlKey(const uint8_t key[32]);
+
     // Giải mã về RAM (không bao giờ lưu plaintext xuống flash).
     bool controlKeyHex(String& out) const;
 

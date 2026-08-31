@@ -61,6 +61,16 @@ object PumpRepositoryProvider {
     @Volatile
     private var deviceHandshakeManager: com.nndai.myhome.data.remote.DeviceHandshakeManager? = null
 
+    @Volatile
+    private var deviceShareRepository: com.nndai.myhome.data.repository.DeviceShareRepository? = null
+
+    /**
+     * DeviceManagerRepository instance registered by the UI layer so the
+     * session listener can reset its in-memory state on sign-out.
+     */
+    @Volatile
+    var deviceManagerRepository: com.nndai.myhome.data.repository.DeviceManagerRepository? = null
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var appContext: Context? = null
 
@@ -119,10 +129,20 @@ object PumpRepositoryProvider {
         }
     }
 
+    /** Stateless repository for device sharing (invites + member management). */
+    fun provideDeviceShareRepository(): com.nndai.myhome.data.repository.DeviceShareRepository {
+        return deviceShareRepository ?: synchronized(this) {
+            deviceShareRepository
+                ?: com.nndai.myhome.data.repository.DeviceShareRepository().also { deviceShareRepository = it }
+        }
+    }
+
     private fun startBackgroundCredentialSync() {
         appScope.launch {
+            var wasAuthenticated = false
             SupabaseConfig.client.auth.sessionStatus.collect { status ->
                 if (status is SessionStatus.Authenticated) {
+                    wasAuthenticated = true
                     Log.d(TAG, "startBackgroundCredentialSync(): Session authenticated. Syncing credentials...")
                     while (true) {
                         val repo = provideCredentialRepository()
@@ -142,6 +162,26 @@ object PumpRepositoryProvider {
                             }
                         }
                     }
+                } else if (status is SessionStatus.NotAuthenticated &&
+                           status.isSignOut && wasAuthenticated) {
+                    // Real sign-out transition (user logout): purge user-scoped
+                    // secrets + cached device list so another account on this
+                    // device cannot reuse the previous one's control keys.
+                    // Device logs are stored separately and kept.
+                    wasAuthenticated = false
+                    runCatching {
+                        val ctx = appContext ?: return@runCatching
+                        com.nndai.myhome.data.pairing.ControlKeyStore(ctx).clearUserSecrets()
+                        deviceManagerRepository?.clearLocalState()
+                            ?: com.nndai.myhome.data.local.LocalDeviceCache(ctx).clearCache()
+                        Log.d(TAG, "Session ended: cleared control keys + device cache.")
+                    }
+                } else {
+                    // Initializing / RefreshFailure / transient states: NOT a
+                    // sign-out. Purging here would wipe freshly synced keys
+                    // right after login. Unauthorized leftovers are pruned by
+                    // the next successful control-key sync anyway.
+                    Log.d(TAG, "startBackgroundCredentialSync(): Non-signout session state ($status) — keeping local secrets.")
                 }
             }
         }
@@ -178,7 +218,7 @@ object PumpRepositoryProvider {
             connectionManager = provideMqttConnectionManager(),
             handshakeManager = provideDeviceHandshakeManager(),
             deviceId = targetDeviceId,
-            envelopeProvider = { raw -> envelope.sign(targetDeviceId, raw) },
+            envelope = envelope,
             scope = appScope
         )
         val dataSource = PumpCommandDataSource(mqttChannel, appScope)

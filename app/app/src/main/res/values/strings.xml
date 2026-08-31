@@ -87,6 +87,7 @@
     <string name="metric_energy">Energy</string>
     <string name="metric_temperature">Temperature</string>
     <string name="metric_rssi">RSSI</string>
+    <string name="metric_on_duration">ON Duration</string>
 
     <!-- Dashboard - Control Section -->
     <string name="pump_control">PUMP CONTROL</string>
@@ -162,7 +163,10 @@
     <string name="log_clear_logs">Clear logs</string>
     <string name="log_listening">Listening...</string>
     <string name="log_off">Off</string>
-    <string name="log_raw_json_hint">Enter raw JSON (e.g. {"cmd":"getStatus"})</string>
+    <string name="log_raw_json_hint">Enter raw JSON (e.g. {\"cmd\":\"getStatus\"})</string>
+    <string name="log_raw_binary_hint">JSON or Hex (e.g. {\"cmd\":\"getStatus\"})</string>
+    <string name="log_format_binary">Binary</string>
+    <string name="log_format_json">JSON</string>
     <string name="log_send">Send</string>
     <string name="log_mode_live">Live</string>
     <string name="log_mode_file">File Log (/logs/sys/)</string>
@@ -208,7 +212,7 @@
     <string name="settings_label_dry_run">Dry Run</string>
     <string name="settings_label_running">Running</string>
     <string name="settings_label_overload">Overload</string>
-    <string name="settings_protection_thresholds">Protection Thresholds (mA)</string>
+    <string name="settings_protection_thresholds">Protection Thresholds (W / mA)</string>
     <string name="settings_timeouts">Timeouts (ms)</string>
     <string name="settings_relay_startup_mode">Relay Startup Mode</string>
     <string name="settings_relay_off">OFF</string>
@@ -225,9 +229,9 @@
     <string name="settings_label_power">Power</string>
     <string name="settings_label_dry_run_timeout">Dry Run Timeout</string>
     <string name="settings_label_overload_timeout">Overload Timeout</string>
-    <string name="settings_display_off_threshold">Off Threshold (mA)</string>
-    <string name="settings_display_dry_threshold">Dry Run Threshold (mA)</string>
-    <string name="settings_display_running_threshold">Running Threshold (mA)</string>
+    <string name="settings_display_off_threshold">Off Threshold (W)</string>
+    <string name="settings_display_dry_threshold">Dry Run Threshold (W)</string>
+    <string name="settings_display_running_threshold">Running Threshold (W)</string>
     <string name="settings_display_overload_threshold">Overload Threshold (mA)</string>
     <string name="settings_display_dry_timeout">Dry Run Timeout (ms)</string>
     <string name="settings_display_overload_timeout">Overload Timeout (ms)</string>
@@ -252,7 +256,7 @@
     <string name="settings_wifi_pass_length">WiFi password must be 8-64 characters</string>
     <string name="settings_ap_pass_length">AP password must be 8-64 characters</string>
     <string name="settings_debug_pass_length">Debug password must be 8-64 characters</string>
-    <string name="settings_threshold_order">Thresholds must follow: Off &lt; Dry Run &lt; Running &lt; Overload</string>
+    <string name="settings_threshold_order">Power thresholds must follow: Off &lt; Dry Run &lt; Running</string>
     <string name="settings_timeout_positive">Timeout must be greater than 0</string>
     <string name="settings_enter_real_values">Please enter at least one real value</string>
     <string name="settings_confirm_save_title">Confirm Save %s</string>
@@ -307,4 +311,361 @@
     <string name="conn_disconnected">Disconnected - Tap to retry</string>
     <string name="conn_failed">Connection failed - Tap to retry</string>
     <string name="conn_idle">Idle</string>
+
+    <!-- Common Actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_share">Share</string>
+    <string name="action_done">Done</string>
+    <string name="processing">Processing...</string>
+    <string name="confirm_default">Confirm</string>
+    <string name="confirm_type_word">Type \'%1$s\' to confirm</string>
+
+    <!-- Roles -->
+    <string name="role_owner">Owner</string>
+    <string name="role_admin">Admin</string>
+    <string name="role_member">Member</string>
+    <string name="role_viewer">Viewer</string>
+
+    <!-- Device Sharing: Members Management -->
+    <string name="members_title">Members</string>
+    <string name="share_button">Share</string>
+    <string name="share_section_members">Members (%1$d)</string>
+    <string name="share_section_invites">Active codes (%1$d)</string>
+    <string name="share_no_active_codes">No active share codes</string>
+    <string name="member_options_desc">Member options</string>
+    <string name="member_me_suffix">" (You)"</string>
+    <string name="member_change_role">Change role</string>
+    <string name="member_remove">Remove from device</string>
+    <string name="member_remove_title">Remove member</string>
+    <string name="member_remove_message">Remove \'%1$s\' from this device? They will lose all access.</string>
+    <string name="role_change_title">Change role</string>
+    <string name="msg_role_updated">Role updated</string>
+    <string name="msg_member_removed">Member removed</string>
+    <string name="msg_invite_revoked">Share code revoked</string>
+
+    <!-- Device Sharing: Invite Codes -->
+    <string name="share_create_title">Create share code</string>
+    <string name="share_ready_title">Share code ready</string>
+    <string name="share_pick_role_hint">Choose a role for the invitee:</string>
+    <string name="share_role_desc">• Admin: control + invite others\n• Member: control the device\n• Viewer: view status only</string>
+    <string name="share_code_hint">Send this code to your family member. The code is single-use and stays valid until revoked.</string>
+    <string name="share_intent_text">Share code for device \"%1$s\": %2$s\nOpen My Home app → Enter share code to add this device.</string>
+    <string name="share_intent_chooser">Share code</string>
+    <string name="invite_single_use">Role: %1$s • single-use</string>
+    <string name="invite_revoke">Revoke</string>
+    <string name="revoke_invite_title">Revoke code</string>
+    <string name="revoke_invite_message">Revoke code %1$s? Anyone who has not used it will no longer be able to join.</string>
+
+    <!-- Device Sharing: Redeem -->
+    <string name="redeem_entry">Enter share code</string>
+    <string name="redeem_title">Enter share code</string>
+    <string name="redeem_hint">Enter the code provided by the device owner:</string>
+    <string name="redeem_label">Share code</string>
+    <string name="redeem_error_length">Code must be 18 characters</string>
+    <string name="redeem_action">Add device</string>
+    <string name="redeem_success_title">Device added:</string>
+    <string name="redeem_success_role">Your role: %1$s</string>
+
+    <!-- Device Management: Menu / Dialogs -->
+    <string name="menu_members">Members</string>
+    <string name="menu_rename">Rename</string>
+    <string name="menu_delete_device">Delete device</string>
+    <string name="menu_leave_device">Leave device</string>
+    <string name="device_options_desc">Device options</string>
+    <string name="rename_title">Rename device</string>
+    <string name="rename_hint">Enter a new name for this device:</string>
+    <string name="rename_label">Device name</string>
+    <string name="rename_error_empty">Name must not be empty</string>
+    <string name="delete_device_title">Delete device</string>
+    <string name="delete_device_message">Delete \'%1$s\' (%2$s) from your account?\n\nThe device will be unlinked and its data removed.</string>
+    <string name="delete_device_action">Delete device</string>
+    <string name="leave_device_title">Leave device</string>
+    <string name="leave_device_message">You will lose all access to \'%1$s\' (%2$s).</string>
+    <string name="leave_device_action">Leave device</string>
+    <string name="viewer_banner">View-only mode — you cannot control or configure this device</string>
+
+    <!-- Device Management: Status Messages -->
+    <string name="msg_devices_synced">Device list synced</string>
+    <string name="msg_sync_failed">Sync failed</string>
+    <string name="msg_renamed">Device renamed successfully</string>
+    <string name="msg_rename_failed">Rename failed</string>
+    <string name="msg_device_deleted">Device deleted successfully</string>
+    <string name="msg_delete_failed">Failed to delete device</string>
+    <string name="leave_success">Left the device</string>
+    <string name="leave_failed">Could not leave device</string>
+
+    <!-- Role descriptions (share dialog) -->
+    <string name="role_label_admin">Admin</string>
+    <string name="role_label_member">Member</string>
+    <string name="role_label_viewer">Viewer</string>
+
+    <!-- Login Screen -->
+    <string name="login_title">Welcome back</string>
+    <string name="login_subtitle">Sign in to control your smart home</string>
+    <string name="login_email_action">Sign In with Email</string>
+    <string name="login_label_email">Email Address</string>
+    <string name="login_label_password">Password</string>
+    <string name="login_show_password_desc">Show password</string>
+    <string name="login_hide_password_desc">Hide password</string>
+    <string name="login_submit">Sign In</string>
+    <string name="login_or_divider">or sign in with</string>
+    <string name="login_google">Continue with Google</string>
+
+    <!-- Toggle History Screen -->
+    <string name="toggle_history_title">On / Off History</string>
+    <string name="toggle_history_today">Today: %1$s</string>
+    <string name="toggle_history_pick_date_desc">Pick date</string>
+    <string name="toggle_history_sync_desc">Sync</string>
+    <string name="toggle_history_total_label">Total count</string>
+    <string name="toggle_history_on_label">ON</string>
+    <string name="toggle_history_off_label">OFF</string>
+    <string name="toggle_history_empty">No on/off events on this day</string>
+    <string name="toggle_history_sync_hint">Tap the sync button to load the latest data from the device.</string>
+    <string name="toggle_history_select_title">Select history date</string>
+    <string name="toggle_history_today_suffix">" (Today)"</string>
+    <string name="toggle_source_button">Physical button</string>
+    <string name="toggle_source_online">App / Web</string>
+    <string name="toggle_source_schedule">Schedule</string>
+    <string name="toggle_source_unknown">Other</string>
+    <string name="profile_coming_soon">Coming soon for %1$s</string>    <string name="toggle_source_prefix">Source: %1$s</string>
+    <string name="history_month_log_label">Month %1$s: %2$s</string>
+
+    <!-- Common Settings Cards (Network / WiFi / System) -->
+    <string name="cs_network_mode">Network Connection Mode</string>
+    <string name="cs_ap_hotspot">AP Hotspot</string>
+    <string name="cs_wifi_info">WiFi Information</string>
+    <string name="cs_label_wifi_ssid">WiFi Network Name</string>
+    <string name="cs_scanning">Scanning...</string>
+    <string name="cs_scan">Scan</string>
+    <string name="cs_label_wifi_password">WiFi Password</string>
+    <string name="cs_open_network">Open Network (No Password)</string>
+    <string name="cs_ap_desc">In this mode, the device broadcasts its own WiFi network (myhome-&lt;model&gt;-xxxx) for direct WebSocket control.</string>
+    <string name="cs_debug_wifi_info">Debug WiFi Information</string>
+    <string name="cs_label_debug_ssid">Debug WiFi Name (SSID)</string>
+    <string name="cs_label_debug_password">Debug WiFi Password</string>
+    <string name="cs_save_network">Save network config</string>
+    <string name="cs_saving_config">Saving configuration...</string>
+    <string name="cs_syslog_flash">Write system log to Flash</string>
+    <string name="cs_syslog_file">Save log file (/logs/sys/)</string>
+    <string name="cs_syslog_on">System log file is ENABLED</string>
+    <string name="cs_syslog_off">System log file is DISABLED</string>
+    <string name="cs_log_level_label">Log Level</string>
+    <string name="cs_system_actions">System Actions</string>
+    <string name="cs_rebooting">Rebooting...</string>
+    <string name="cs_reboot">Reboot</string>
+    <string name="cs_factory_reset">Factory Reset</string>
+    <string name="cs_pick_wifi_title">Choose a WiFi network</string>
+    <string name="cs_wifi_scan_progress">Scanning nearby WiFi networks...</string>
+    <string name="cs_wifi_none_found">No WiFi networks found. Try again.</string>
+    <string name="cs_confirm_network_title">Save network settings?</string>
+    <string name="cs_confirm_network_msg">The following changes will be applied:\n%1$s\nThe device may need to reboot.</string>
+    <string name="cs_msg_no_changes">No changes to save</string>
+
+    <!-- Remote Switch Dashboard -->
+    <string name="rs_target_unset">Not set</string>
+    <string name="rs_device_on">DEVICE ON</string>
+    <string name="rs_device_off">DEVICE OFF</string>
+    <string name="rs_tap_toggle_hint">Tap to toggle the target device</string>
+    <string name="rs_clear_link_title">Unlink target?</string>
+    <string name="rs_clear_link_message">Remote Switch will disconnect from \'%1$s\'. The physical button will no longer control this device until you link it again.</string>
+    <string name="rs_clear_target_action">Clear target</string>
+    <string name="rs_fault_warning_title">Target device fault warning</string>
+    <string name="rs_fault_warning_desc">Target device reports a protection fault (Dry Run / Overload). Relay was switched off automatically for safety.</string>
+    <string name="rs_change_target">Change target</string>
+    <string name="rs_unlinked_title">No target device linked</string>
+    <string name="rs_unlinked_desc">Remote Switch needs to be linked to a pump or switch so it can safely toggle it remotely.</string>
+    <string name="rs_pick_now">Choose target device now</string>
+    <string name="rs_hw_guide_title">Physical button &amp; LED guide</string>
+    <string name="rs_hw_toggle_title">Toggle target</string>
+    <string name="rs_hw_toggle_subtitle">Send toggle command to the pump/switch target</string>
+    <string name="rs_hw_status_title">Get status</string>
+    <string name="rs_hw_status_subtitle">Instantly refresh target status via MQTT</string>
+    <string name="rs_hw_hold_badge">Hold 5s</string>
+    <string name="rs_hw_menu_title">Config menu</string>
+    <string name="rs_hw_menu_subtitle">Step 1: Reset WiFi • Step 2: Debug Mode • Step 3: Factory Reset</string>
+    <string name="rs_sheet_pick_title">Pick a target device to control</string>
+    <string name="rs_sheet_scope_desc">Only devices owned by your account are listed. Control keys are end-to-end encrypted (AES-256-GCM) before being sent over MQTT.</string>
+    <string name="rs_no_devices">No available devices found</string>
+    <string name="rs_pair_hint">Make sure you have paired a pump or switch to your account.</string>
+    <string name="rs_key_ok">Key OK</string>
+
+    <!-- Remote Switch ViewModel Messages -->
+    <string name="rs_msg_target_on">Target device turned ON</string>
+    <string name="rs_msg_target_off">Target device turned OFF</string>
+    <string name="rs_msg_relay_failed">Failed to update target relay</string>
+    <string name="rs_msg_config_saved">Configuration updated successfully</string>
+    <string name="rs_msg_config_failed">Failed to update configuration</string>
+    <string name="rs_msg_unknown_switch">Error: current Remote Switch not identified</string>
+    <string name="rs_msg_no_target_key">Target device security key not found (%1$s)</string>
+    <string name="rs_msg_no_local_key">Remote Switch security key not found on this phone</string>
+    <string name="rs_msg_encrypt_failed">Failed to encrypt target key (E2E)</string>
+    <string name="rs_msg_send_failed_prefix">Failed to send config: %1$s</string>
+    <string name="rs_msg_clear_failed_prefix">Failed to clear target: %1$s</string>
+    <string name="rs_msg_timeout">Timed out waiting for the target device response</string>
+    <string name="rs_msg_command_failed">Could not send control command</string>
+
+    <!-- Remote Switch Settings -->
+    <string name="rss_unlink_title">Unlink target</string>
+    <string name="rss_unlink_message">Are you sure you want to unlink this switch from its target device?</string>
+    <string name="rss_unlink_action">Unlink</string>
+    <string name="rss_syslog_on_title">Enable SysLog</string>
+    <string name="rss_syslog_off_title">Disable SysLog</string>
+    <string name="rss_syslog_on_msg">Enable writing system logs to flash file (may reduce flash lifetime)?</string>
+    <string name="rss_syslog_off_msg">Disable system log file?</string>
+    <string name="rss_agree">Agree</string>
+    <string name="rss_loglevel_trace">TRACE (most)</string>
+    <string name="rss_loglevel_debug">DEBUG (verbose)</string>
+    <string name="rss_loglevel_info">INFO</string>
+    <string name="rss_loglevel_warn">WARN</string>
+    <string name="rss_loglevel_error">ERROR</string>
+    <string name="rss_loglevel_fatal">FATAL (critical)</string>
+    <string name="rss_loglevel_custom">Level %1$s</string>
+    <string name="rss_loglevel_change_title">Change Log Level</string>
+    <string name="rss_loglevel_change_msg">Change log level to %1$s?</string>
+    <string name="rss_reboot_title">Reboot device</string>
+    <string name="rss_reboot_pending_msg">Configuration changed and requires a reboot to apply. Reboot now?</string>
+    <string name="rss_reboot_ask_msg">Do you want to reboot this switch?</string>
+    <string name="rss_saving_config">Saving configuration...</string>
+    <string name="rss_rebooting">Rebooting...</string>
+    <string name="rss_factory_title">Factory reset</string>
+    <string name="rss_factory_message">This will erase ALL WiFi info, target config and encryption keys on the switch. The device returns to factory state.</string>
+    <string name="rss_factory_action">Factory reset</string>
+    <string name="rs_sheet_scope_desc_short">Only devices owned by your account are listed. Control keys are end-to-end encrypted (E2E AES-256-GCM) for safety.</string>
+    <string name="rss_target_config_title">Target Device Configuration</string>
+    <string name="rss_device_type">Device type: %1$s</string>
+    <string name="rs_profile_pump">Pump</string>
+    <string name="rs_profile_fan">Fan</string>
+    <string name="rs_profile_switch">Light switch</string>
+    <string name="rss_no_target_linked">No target device is linked to this switch yet.</string>
+    <string name="rss_picking_target">Saving target...</string>
+    <string name="rss_pick_target">Choose target device</string>
+
+    <!-- CommonSettingsViewModel Messages -->
+    <string name="cs_msg_saved">Settings saved</string>
+    <string name="cs_msg_save_failed">Save failed</string>
+    <string name="cs_msg_rebooting_device">Device is rebooting...</string>
+    <string name="cs_msg_factory_resetting">Factory reset in progress...</string>
+    <string name="cs_msg_no_wifi_found">No WiFi networks found</string>
+    <string name="cs_msg_wifi_scan_failed">WiFi scan failed</string>
+    <string name="cs_msg_wifi_scan_timeout">WiFi scan timed out</string>
+    <string name="cs_msg_save_timeout">Save config response timed out</string>
+    <string name="cs_msg_reboot_sent">Reboot command sent</string>
+
+    <!-- Pairing Flow Screen -->
+    <string name="pair_scanning_ble">Opening device scanner...</string>
+    <string name="pair_scanning_ble_detail">Accept the Android system pop-up shown on screen to connect</string>
+    <string name="pair_finding_devices">Searching for MyHome devices...</string>
+    <string name="pair_finding_detail">Accept the system notification/pop-up to connect the device</string>
+    <string name="pair_connecting_device">Connecting MyHome device...</string>
+    <string name="pair_connecting_detail">Press \'Connect / Allow\' on the Android system pop-up</string>
+    <string name="pair_reading_config">Connecting...</string>
+    <string name="pair_reading_config_detail">Reading device configuration</string>
+    <string name="pair_scan_wifi">Scanning nearby WiFi...</string>
+    <string name="pair_scan_wifi_detail">Device is scanning surrounding networks</string>
+    <string name="pair_wait_wifi">Waiting for device scan to finish...</string>
+    <string name="pair_wait_wifi_detail">Device temporarily left your WiFi to scan; connection will recover in a few seconds</string>
+    <string name="pair_configuring">Configuring device...</string>
+    <string name="pair_configuring_detail">Device will reboot after saving configuration</string>
+    <string name="pair_saving_account">Saving device to account...</string>
+    <string name="pair_saving_detail">Waiting for phone to reconnect to home WiFi</string>
+    <string name="pair_scan_nearby_title">Scan nearby devices</string>
+    <string name="pair_scan_nearby_desc">The app looks for myhome devices on nearby WiFi</string>
+    <string name="pair_permission_needed">App needs WiFi scan permission to find devices</string>
+    <string name="pair_grant_and_scan">Grant permission &amp; scan</string>
+    <string name="pair_scan_wifi_list">Scan WiFi list</string>
+    <string name="pair_system_popup_action">Find &amp; connect via System Popup</string>
+    <string name="pair_devices_found">Devices found</string>
+    <string name="pair_devices_count">%1$d myhome device(s)</string>
+    <string name="pair_scanning_or_empty">Scanning...</string>
+    <string name="pair_none_in_list">No devices found in the list</string>
+    <string name="pair_channel_blocked_hint">Your phone may be blocked from home Wi-Fi channels. Tap below to open a System Popup scanning all 14 channels:</string>
+    <string name="pair_popup_action">Find &amp; connect with System Popup 🚀</string>
+    <string name="pair_pick_home_wifi">Choose home WiFi</string>
+    <string name="pair_networks_found">Device found %1$d networks — pick yours</string>
+    <string name="pair_rescan_desc">Rescan</string>
+    <string name="pair_no_networks">Device found no networks — try again</string>
+    <string name="pair_rescan">Rescan</string>
+    <string name="pair_label_wifi_password">WiFi Password</string>
+    <string name="pair_connecting">Connecting...</string>
+    <string name="pair_connect">Connect</string>
+    <string name="pair_offline_saved">Paired, not yet saved to account</string>
+    <string name="pair_success">Pairing successful</string>
+    <string name="pair_offline_desc">Device is rebooting and connecting to your home WiFi. Account info could not be sent (offline) — it will sync automatically once you are back online.</string>
+    <string name="pair_success_desc">Device is rebooting and connecting to your home WiFi. You will see it in the device list.</string>
+    <string name="pair_failed_title">Something went wrong</string>
+    <string name="pair_retry">Retry</string>
+    <string name="pair_go_back">Go back</string>
+    <string name="pair_profile_pump">Pump</string>
+    <string name="pair_profile_switch">Switch</string>
+    <string name="pair_profile_fan">Fan</string>
+    <string name="pair_profile_lamp">Lamp</string>
+
+    <!-- Pump Settings Screen extras -->
+    <string name="ps_syslog_on_msg">Enable writing system logs to flash file?</string>
+    <string name="ps_syslog_off_msg">Disable system log file?</string>
+    <string name="ps_factory_message">This will erase ALL WiFi config, calibration and settings on the device. It returns to its original state.</string>
+    <string name="ps_device_mode_section">Device Operating Mode</string>
+    <string name="ps_pump_mode_protect_desc">Dry-run &amp; overcurrent protection</string>
+    <string name="ps_manual_switch_label">PLAIN SWITCH</string>
+    <string name="ps_pure_toggle_desc">Pure on/off toggling</string>
+    <string name="ps_thresholds_timeouts_section">Protection Thresholds &amp; Timeouts</string>
+    <string name="ps_label_off_threshold_w">Off Threshold (W)</string>
+    <string name="ps_label_overload_ma">Overload (mA)</string>
+    <string name="ps_label_dry_w">Dry Run (W)</string>
+    <string name="ps_label_running_w">Normal Running (W)</string>
+    <string name="ps_label_dry_timeout_ms">Dry Run Timeout (ms)</string>
+    <string name="ps_label_overload_timeout_ms">Overload Timeout (ms)</string>
+    <string name="ps_label_display_name_off">Off Threshold</string>
+    <string name="ps_label_display_name_overload">Overload</string>
+    <string name="ps_label_display_name_dry">Dry Run</string>
+    <string name="ps_label_display_name_running">Normal Running</string>
+    <string name="ps_label_display_name_dry_timeout">Dry Run Timeout</string>
+    <string name="ps_label_display_name_overload_timeout">Overload Timeout</string>
+    <string name="ps_label_current_a">Current (A)</string>
+    <string name="ps_label_voltage_v">Voltage (V)</string>
+    <string name="ps_label_power_w">Power (W)</string>
+    <string name="ps_calibrate_action">Calibrate</string>
+    <string name="ps_ssid_required">Enter a WiFi name</string>
+    <string name="settings_wifi_ssid_empty">WiFi name cannot be empty</string>
+    <string name="ps_save_config_title">Save configuration</string>
+
+    <!-- SettingsViewModel Messages -->
+    <string name="svm_msg_saved">Config saved</string>
+    <string name="svm_msg_save_failed">Save failed</string>
+    <string name="svm_msg_rebooting">Device rebooting...</string>
+    <string name="svm_msg_calib_updated">Calibration updated</string>
+    <string name="svm_msg_calib_failed">Calibration failed</string>
+    <string name="svm_msg_factory_started">Factory reset initiated, device rebooting...</string>
+    <string name="svm_msg_no_wifi">No Wi-Fi networks found</string>
+    <string name="svm_msg_wifi_scan_failed">WiFi scan failed</string>
+    <string name="svm_msg_scan_request_failed">Failed to request Wi-Fi scan</string>
+    <string name="svm_msg_wifi_scan_timeout">WiFi scan timed out (1 min)</string>
+    <string name="svm_msg_no_changes">No changes to save</string>
+    <string name="svm_msg_send_config_failed">Failed to send config</string>
+    <string name="svm_msg_save_timeout">Save config timed out (10s)</string>
+    <string name="svm_msg_reboot_cmd_failed">Failed to send reboot command</string>
+    <string name="svm_msg_reboot_sent_timeout">Reboot command sent (10s timeout reached)</string>
+    <string name="svm_msg_factory_cmd_failed">Failed to send factory reset command</string>
+    <string name="svm_msg_calib_req_timeout">Calibration request timed out (10s)</string>
+    <string name="svm_msg_calib_send_failed">Failed to send calibration command</string>
+    <string name="svm_msg_reset_calib_timeout">Reset calibration timed out (10s)</string>
+    <string name="svm_msg_reset_calib_failed">Failed to send reset calibration command</string>
+
+    <!-- Misc accessibility / labels -->
+    <string name="info_label_value">Value</string>
+    <string name="desc_encrypted">Encrypted</string>
+    <string name="desc_toggle_relay">Toggle relay</string>
+    <string name="desc_selected">Selected</string>
+    <string name="desc_back">Back</string>
+
+    <!-- Pairing: manual WiFi entry -->
+    <string name="pair_manual_title">Manual entry</string>
+    <string name="pair_ssid_label">WiFi name</string>
+    <string name="pair_pick_from_scan">Or pick from scanned networks:</string>
+    <string name="pair_ssid_required_hint">Enter a WiFi name to enable Connect</string>
+    <string name="pair_open_network_note">Open network — no password needed</string>
+    <string name="pair_pass_required_hint">Enter the password (8-64 characters)</string>
 </resources>
+

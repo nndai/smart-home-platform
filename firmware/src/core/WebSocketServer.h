@@ -15,7 +15,9 @@ public:
     void stop();
     void handle();
     void broadcast(const String& message);
+    void broadcastBinary(const uint8_t* payload, size_t length);
     bool send(const String& clientId, const String& message);
+    bool sendBinary(const String& clientId, const uint8_t* payload, size_t length);
     int clientCount();
     void setCallback(MessageCallback cb);
     void setBinaryCallback(BinaryCallback cb);

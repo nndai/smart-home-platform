@@ -44,8 +44,8 @@ class FileBrowser {
     this._send(JSON.stringify({ cmd: 'listDir', payload: { path } }));
   }
 
-  cmdReadFile(path, offset, limit, encode) {
-    this._send(JSON.stringify({ cmd: 'readFile', payload: { path, offset, limit, encode } }));
+  cmdReadFile(path, offset, limit) {
+    this._send(JSON.stringify({ cmd: 'readFile', payload: { path, offset: offset || 0, limit: limit || 1024 } }));
   }
 
   cmdDelete(path) {
@@ -90,78 +90,47 @@ class FileBrowser {
 
     const path = data.path;
     const offset = data.offset || 0;
-    let chunkData = data.data || '';
+    let rawChunk = data.data || '';
     const more = data.more || false;
     const size = data.size || 0;
-    const encode = data.encode || false;
 
-    if (this._downloadState) {
-      this._onDownloadChunk({ path, offset, data: chunkData, more, encode, size });
-      return;
+    let chunkBytes;
+    let chunkText;
+    if (rawChunk instanceof Uint8Array) {
+      chunkBytes = rawChunk;
+      chunkText = new TextDecoder('utf-8').decode(rawChunk);
+    } else if (typeof rawChunk === 'string') {
+      chunkText = rawChunk;
+      chunkBytes = new TextEncoder().encode(rawChunk);
+    } else {
+      chunkBytes = new Uint8Array(0);
+      chunkText = '';
     }
 
-    let chunkBytesLength = 0;
-    if (encode) {
-      chunkBytesLength = limitFromSize(chunkData, true);
-      if (typeof chunkData === 'string' && chunkData.length > 0) {
-        try {
-          const raw = atob(chunkData);
-          const bytes = new Uint8Array(raw.length);
-          for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-          chunkData = new TextDecoder('utf-8').decode(bytes);
-        } catch (e) {
-          console.error('Base64 decode error:', e);
-        }
+    const chunkBytesLength = chunkBytes.length;
+
+    if (this._downloadState) {
+      this._downloadState.chunks.push(chunkBytes);
+      this._downloadState.nextOffset = offset + chunkBytesLength;
+      if (more) {
+        this.cmdReadFile(this._downloadState.path, this._downloadState.nextOffset, 1024);
+      } else {
+        this._finishDownload();
       }
-    } else {
-      chunkBytesLength = new TextEncoder().encode(chunkData).length;
+      return;
     }
 
     // Plain text (open/view) flow
     if (this._viewing && this._viewing.path === path && offset > 0) {
-      this._viewing.data += chunkData;
+      this._viewing.data += chunkText;
       this._viewing.offset = offset;
       this._viewing.nextOffset = offset + chunkBytesLength;
       this._viewing.more = more;
       this._viewing.loading = false;
-      this._appendFileContent(chunkData);
+      this._appendFileContent(chunkText);
     } else {
-      this._viewing = { path, data: chunkData, size, offset, more, loading: false, nextOffset: offset + chunkBytesLength };
-      this._renderFile(chunkData);
-    }
-  }
-
-  _onDownloadChunk({ path, offset, data, more, encode, size }) {
-    if (!this._downloadState) return;
-
-    if (encode) {
-      // Decode base64 chunk
-      try {
-        const raw = atob(data);
-        const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        this._downloadState.chunks.push(bytes);
-      } catch (e) {
-        this._abortDownload('Base64 decode error');
-        return;
-      }
-    } else {
-      // Text data encoded as UTF-8
-      const bytes = new TextEncoder().encode(data);
-      this._downloadState.chunks.push(bytes);
-    }
-
-    this._downloadState.nextOffset = offset + (encode ? limitFromSize(data, true) : data.length);
-
-    if (more) {
-      this.cmdReadFile(
-        this._downloadState.path,
-        this._downloadState.nextOffset,
-        1024,
-        encode
-      );
-    } else {
-      this._finishDownload();
+      this._viewing = { path, data: chunkText, size, offset, more, loading: false, nextOffset: offset + chunkBytesLength };
+      this._renderFile(chunkText);
     }
   }
 
@@ -273,7 +242,7 @@ class FileBrowser {
     if (!this._selectedEntry) return;
     this._showSpinnerForSelected();
     const path = this._path.replace(/\/$/, '') + '/' + this._selectedEntry.name;
-    this.cmdReadFile(path, 0, 1024, true);
+    this.cmdReadFile(path, 0, 1024);
   }
 
   goBack() {
@@ -315,7 +284,7 @@ class FileBrowser {
       chunks: [],
       nextOffset: 0,
     };
-    this.cmdReadFile(path, 0, 1024, true);
+    this.cmdReadFile(path, 0, 1024);
   }
 
   // ── Rendering ──
@@ -455,7 +424,7 @@ class FileBrowser {
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
       this._viewing.loading = true;
       const nextOffset = this._viewing.nextOffset || 0;
-      this.cmdReadFile(this._viewing.path, nextOffset, 1024, true);
+      this.cmdReadFile(this._viewing.path, nextOffset, 1024);
     }
   }
 
@@ -471,12 +440,4 @@ class FileBrowser {
       backBtn.querySelector('span').textContent = isViewing ? 'Back' : 'Up';
     }
   }
-}
-
-// Helper: approximate original byte length from base64 string
-function limitFromSize(b64, encoded) {
-  if (!encoded) return b64.length;
-  // base64: 4 chars = 3 bytes; strip padding
-  const padding = (b64.match(/=+$/) || [''])[0].length;
-  return Math.floor(b64.length * 3 / 4) - padding;
 }

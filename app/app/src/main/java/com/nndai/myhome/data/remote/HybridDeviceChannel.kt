@@ -39,12 +39,12 @@ class HybridDeviceChannel(
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
-    private val _incoming = MutableSharedFlow<String>(
+    private val _incoming = MutableSharedFlow<ByteArray>(
         replay = 0,
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val incoming: SharedFlow<String> = _incoming.asSharedFlow()
+    override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
 
     /** Kênh đã thắng cuộc (handshake hoàn tất). null = chưa có ai thắng. */
     @Volatile
@@ -93,7 +93,7 @@ class HybridDeviceChannel(
         _state.value = ConnectionState.Disconnected("stopped")
     }
 
-    override suspend fun send(raw: String): Boolean {
+    override suspend fun send(raw: ByteArray): Boolean {
         val active = activeEntry ?: return false
         return active.channel.send(raw)
     }

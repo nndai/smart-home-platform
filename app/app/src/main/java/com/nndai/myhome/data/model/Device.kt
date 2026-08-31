@@ -17,12 +17,17 @@ data class Device(
     val control_key: String? = null // Base64 encoded from Supabase
 ) {
     /**
-     * Checks if this device ownership has been transferred to a new user account.
+     * Checks if this device ownership has been transferred away from the
+     * current account (old owner after a re-pair overwrite).
+     *
+     * Legitimate shared members (ADMIN/MEMBER/VIEWER with a role row) are NOT
+     * transferred even though owner_id points to someone else. The plain
+     * owner_id comparison is only a fallback for legacy rows without role.
      */
     fun isTransferred(currentUserId: String?): Boolean {
         if (role?.equals("TRANSFERRED", ignoreCase = true) == true) return true
-        if (owner_id != null && currentUserId != null && owner_id != currentUserId) return true
-        return false
+        if (!role.isNullOrBlank()) return false
+        return owner_id != null && currentUserId != null && owner_id != currentUserId
     }
 }
 

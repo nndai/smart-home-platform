@@ -3,7 +3,10 @@
 #include "compat/wifi.h"
 #include "core/Crypto.h"
 #include "core/DeviceIdentity.h"
-
+#include "protocol/BinaryProtocol.h"
+#include "protocol/BinaryWriter.h"
+#include "protocol/BinaryCommandIds.h"
+#include "protocol/BinaryFieldIds.h"
 
 void RemoteSwitchDriver::setServices(const DriverServices& svc) {
     _services = svc;
@@ -67,24 +70,28 @@ void RemoteSwitchDriver::updateLeds(uint32_t nowMs) {
 }
 
 void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
-    (void)nowMs;
+    // Check connection status once every 1000ms to avoid high-frequency WiFi SDK calls
+    static uint32_t lastCheckMs = 0;
+    if (nowMs - lastCheckMs < 500 && lastCheckMs != 0) {
+        return;
+    }
+    lastCheckMs = nowMs;    
 
-    // AP mode (pairing): chỉ cần AP đang chạy — xanh nháy đều,
-    // không check mqtt/ntp/timeout status
+    // 1. AP mode (pairing): green blinks evenly, no need to check mqtt/ntp/timeout
     if (WiFi.getMode() == WIFI_AP) {
         _ledConnRed.off();
         _ledConnGreen.blink(CONNECT_AP_BLINK_MS);
         return;
     }
 
-    // Check theo thứ tự: wifi → mqtt → ntp → timeout status (lỗi đầu tiên hiển thị)
-    bool wifiOk = (WiFi.status() == WL_CONNECTED);
-    if (!wifiOk) {
+    // 2. WiFi STA connection
+    if (WiFi.status() != WL_CONNECTED) {
         _ledConnGreen.off();
         _ledConnRed.blink(2, CONNECT_BLINK_ON, CONNECT_BLINK_OFF);
         return;
     }
 
+    // 3. MQTT connection
     bool mqttOk = _services.isConnected ? _services.isConnected() : false;
     if (!mqttOk) {
         _ledConnGreen.off();
@@ -92,6 +99,7 @@ void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
         return;
     }
 
+    // 4. NTP sync
     bool ntpOk = _services.log && _services.log->isTimeSynced();
     if (!ntpOk) {
         _ledConnGreen.off();
@@ -99,14 +107,14 @@ void RemoteSwitchDriver::updateConnectLeds(uint32_t nowMs) {
         return;
     }
 
-    // Quá 1p10s không nhận được status từ target → đỏ sáng mãi
-    // (target tự báo status mỗi 60s khi rảnh / 2s khi stream → 70s có 10s dư)
+    // 5. Target status timeout (> 70s without status from target) -> solid red
     if (_cfg->targetId[0] != '\0' && nowMs - _lastStatusRxMs >= STATUS_TIMEOUT_MS) {
         _ledConnGreen.off();
         _ledConnRed.on();
         return;
     }
 
+    // Healthy state: solid green
     _ledConnRed.off();
     _ledConnGreen.on();
 }
@@ -148,118 +156,70 @@ void RemoteSwitchDriver::enterVisualState(TargetVisualState state, uint32_t nowM
     }
 }
 
-// Cập nhật cặp 2 theo status vừa nhận từ target.
-// Chặt: xanh sáng mãi chỉ khi relay on VÀ pumpStateStr == "RUNNING OK".
+// Cập nhật cặp LED 2 theo status nhận từ target:
+// - Có lỗi (_targetError: DRY_RUN, CRITICAL_CURRENT, OVERLOAD) -> ĐỎ nháy (bất kể relay ON hay OFF)
+// - Relay ON và RUNNING OK (hoặc switch ON) -> XANH sáng liên tục (ON_OK)
+// - Relay ON nhưng pumpState chưa RUNNING OK (đang OFF / khởi động) -> XANH nháy (WAITING, tiếp tục chờ)
+// - Relay OFF và không lỗi -> TẮT cả 2 đèn (OFF)
 void RemoteSwitchDriver::updateVisualFromStatus(uint32_t nowMs) {
-    switch (_visualState) {
-    case TargetVisualState::WAITING:
-        // Chỉ rời WAITING khi có kết luận rõ ràng
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        else if (_targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        else if (isTargetRunningOk()) {
+    if (_targetError) {
+        enterVisualState(TargetVisualState::ERROR, nowMs);
+    } else if (!_targetOn) {
+        enterVisualState(TargetVisualState::OFF, nowMs);
+    } else {
+        if (isTargetRunningOk()) {
             enterVisualState(TargetVisualState::ON_OK, nowMs);
+        } else {
+            enterVisualState(TargetVisualState::WAITING, nowMs);
         }
-        // relay on nhưng chưa RUNNING OK → tiếp tục nháy xanh chờ
-        break;
-
-    case TargetVisualState::ON_OK:
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        else if (_targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        break;
-
-    case TargetVisualState::ERROR:
-        if (!_targetOn) {
-            enterVisualState(TargetVisualState::OFF, nowMs);
-        }
-        // target vẫn lỗi → giữ ERROR; timer 60s tự tắt vẫn chạy
-        break;
-
-    case TargetVisualState::OFF:
-    default:
-        if (_targetOn && _targetError) {
-            enterVisualState(TargetVisualState::ERROR, nowMs);
-        }
-        else if (_targetOn && isTargetRunningOk()) {
-            enterVisualState(TargetVisualState::ON_OK, nowMs);
-        }
-        break;
     }
 }
 
 bool RemoteSwitchDriver::isTargetRunningOk() const {
-    if (strcmp(_cfg->targetType, "switch") == 0) {
-        return _targetOn;
-    }
-    // pump: chỉ coi là OK khi relay on + state RUNNING OK
-    return _targetOn && strcmp(_targetPumpStateStr, "RUNNING OK") == 0;
-}
-
-bool RemoteSwitchDriver::buildEnvelope(const char* cmd, const JsonDocument& payload, JsonDocument& envelope) {
-    if (_cfg->targetKey[0] == '\0') return false;
-
-    // Use current time as sequence if available, else monotonic counter
-    uint32_t seq = _targetSeq++;
-    if (_services.log && _services.log->isTimeSynced()) {
-        seq = _services.log->getEpoch(); // epoch survives reboots (no persistence)
-    }
-    uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
-
-    String payloadStr;
-    serializeJson(payload, payloadStr);
-
-    // src = our deviceId: target tracks seq per sender, so the app and this
-    // remote switch never lock each other out (docs §3.2)
-    const char* src = _services.deviceId ? _services.deviceId : "";
-    const String canonical = crypto::buildCanonical(seq, ts, cmd, payloadStr, src);
-
-    char hmacHex[65];
-    if (!crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex)) {
+    if (!_targetOn || _targetError) {
         return false;
     }
-
-    envelope["cmd"] = cmd;
-    envelope["seq"] = seq;
-    envelope["ts"] = ts;
-    if (src[0] != '\0') envelope["src"] = src;
-    envelope["hmac"] = hmacHex;
-    envelope["payload"] = payload;
-
-    return true;
+    // Nếu target là switch thuần (hoặc không có trường pumpState)
+    if (strcmp_P(_cfg->targetType, PSTR("switch")) == 0 ||
+        (strcmp_P(_cfg->targetType, PSTR("pump")) != 0 && _targetPumpStateStr[0] == '\0')) {
+        return _targetOn;
+    }
+    // Target là pump: chỉ coi là OK khi relay ON + pumpState là "RUNNING OK"
+    return _targetOn && (strcmp_P(_targetPumpStateStr, PSTR("RUNNING OK")) == 0);
 }
 
 // Subscribe tới topic trạng thái của target (core ghi nhớ + re-subscribe khi reconnect)
 void RemoteSwitchDriver::subscribeTargetTopic() {
     if (!_services.mqttSubscribe) return;
     if (_cfg->targetId[0] == '\0') return;
-    _services.mqttSubscribe(String("devices/") + _cfg->targetId + "/up");
+    _services.mqttSubscribe(String(F("devices/")) + _cfg->targetId + F("/up"));
 }
 
 void RemoteSwitchDriver::sendRelayCommand(bool on) {
     if (_cfg->targetId[0] == '\0') return;
 
-    JsonDocument payload;
-    payload["state"] = on;
+    uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
+    const char* src = _services.deviceId ? _services.deviceId : "";
 
-    JsonDocument envelope;
-    if (!buildEnvelope("setRelay", payload, envelope)) {
-        LT_EM(CMD, "Cannot build target envelope (targetKey missing?)");
-        return;
+    uint8_t hmacBytes[32];
+    bool hasHmac = false;
+    if (_cfg->hasTargetKey) {
+        const String canonical = crypto::buildCanonical(ts, "setRelay", "", src);
+        if (crypto::hmacSha256(_cfg->targetKey, 32, (const uint8_t*)canonical.c_str(), canonical.length(), hmacBytes)) {
+            hasHmac = true;
+        }
     }
 
-    String json;
-    serializeJson(envelope, json);
-    String topic = String("devices/") + _cfg->targetId + "/cmd";
-    LT_IM(CMD, "Sending setRelay(%s) to %s", on ? "ON" : "OFF", _cfg->targetId);
-    if (_services.mqttPublish) {
-        _services.mqttPublish(topic, json);
+    protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
+    writer.writeBool(protocol::FieldId::State, on);
+    writer.writeU32(protocol::FieldId::Ts, ts);
+    if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
+    if (hasHmac) writer.writeBytes(protocol::FieldId::Hmac, hmacBytes, 32);
+
+    String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
+    LT_IM(CMD, "Sending binary setRelay(%s) to %s", on ? "ON" : "OFF", _cfg->targetId);
+    if (_services.mqttPublishBinary) {
+        _services.mqttPublishBinary(topic, writer.data(), writer.size());
     }
 }
 
@@ -268,46 +228,69 @@ void RemoteSwitchDriver::sendRelayCommand(bool on) {
 void RemoteSwitchDriver::requestStatusStream() {
     if (_cfg->targetId[0] == '\0') return;
 
-    JsonDocument payload;
-    payload["stream"] = true;
+    uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
+    const char* src = _services.deviceId ? _services.deviceId : "";
 
-    JsonDocument envelope;
-    if (!buildEnvelope("getStatus", payload, envelope)) {
-        LT_EM(CMD, "Cannot build target envelope (targetKey missing?)");
-        return;
+    uint8_t hmacBytes[32];
+    bool hasHmac = false;
+    if (_cfg->hasTargetKey) {
+        const String canonical = crypto::buildCanonical(ts, "getStatus", "", src);
+        if (crypto::hmacSha256(_cfg->targetKey, 32, (const uint8_t*)canonical.c_str(), canonical.length(), hmacBytes)) {
+            hasHmac = true;
+        }
     }
 
-    String json;
-    serializeJson(envelope, json);
-    String topic = String("devices/") + _cfg->targetId + "/cmd";
-    LT_IM(CMD, "Requesting status stream from %s", _cfg->targetId);
-    if (_services.mqttPublish) {
-        _services.mqttPublish(topic, json);
+    protocol::BinaryWriter writer(protocol::CommandId::GetStatus);
+    writer.writeBool(protocol::FieldId::Stream, true);
+    writer.writeU32(protocol::FieldId::Ts, ts);
+    if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
+    if (hasHmac) writer.writeBytes(protocol::FieldId::Hmac, hmacBytes, 32);
+
+    String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
+    LT_IM(CMD, "Requesting binary status stream from %s", _cfg->targetId);
+    if (_services.mqttPublishBinary) {
+        _services.mqttPublishBinary(topic, writer.data(), writer.size());
     }
 }
 
-void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
+void RemoteSwitchDriver::handleTargetStatus(uint8_t cmdId, const protocol::CommandRequest& doc) {
     // Mọi message trên devices/{targetId}/up đều chứng minh target còn sống
     _lastStatusRxMs = millis();
 
-    // Reply của target đối với setRelay chuyển tiếp: {state: "on" | "off"}
-    const char* cmd = doc["cmd"] | "";
-    if (strcmp(cmd, "setRelay") == 0) {
-        const char* st = doc["state"].as<const char*>();
-        if (st && strcmp(st, "on") == 0) {
-            _targetOn = true;
-            // Ack "on" chưa khẳng định RUNNING OK → giữ WAITING chờ status
-        } else if (st && strcmp(st, "off") == 0) {
-            _targetOn = false;
-            enterVisualState(TargetVisualState::OFF, millis());
+    // Reply của target đối với setRelay chuyển tiếp: {status: "ok"|"error", state: "on"|"off"}
+    if (cmdId == static_cast<uint8_t>(protocol::CommandId::SetRelay)) {
+        String status;
+        if (doc.getString(protocol::FieldId::Status, status) && status == "error") {
+            _targetError = true;
+            enterVisualState(TargetVisualState::ERROR, millis());
+            return;
+        }
+
+        String st;
+        if (doc.getString(protocol::FieldId::State, st)) {
+            if (st == "on") {
+                _targetOn = true;
+                _targetError = false;
+                if (isTargetRunningOk()) {
+                    enterVisualState(TargetVisualState::ON_OK, millis());
+                } else {
+                    enterVisualState(TargetVisualState::WAITING, millis());
+                }
+            } else if (st == "off") {
+                _targetOn = false;
+                if (!_targetError) {
+                    enterVisualState(TargetVisualState::OFF, millis());
+                }
+            }
         }
         return;
     }
 
     // Status snapshot của target: relay state + pump protection state
-    if (strcmp(cmd, "getStatus") == 0) {
-        if (doc["relay"].is<bool>()) {
-            _targetOn = doc["relay"].as<bool>();
+    if (cmdId == static_cast<uint8_t>(protocol::CommandId::GetStatus)) {
+        bool relay = false;
+        if (doc.getBool(protocol::FieldId::Relay, relay)) {
+            _targetOn = relay;
         }
         updateTargetError(doc);
         updateVisualFromStatus(millis());
@@ -315,144 +298,188 @@ void RemoteSwitchDriver::handleTargetStatus(const JsonDocument& doc) {
     }
 
     // Unknown message (announce, ...): fall back to parsing any fields present
-    if (doc["relay"].is<bool>()) {
-        _targetOn = doc["relay"].as<bool>();
+    bool relay = false;
+    if (doc.getBool(protocol::FieldId::Relay, relay)) {
+        _targetOn = relay;
     }
-    const char* st = doc["state"].as<const char*>();
-    if (st && strcmp(st, "on") == 0) {
-        _targetOn = true;
-    } else if (st && strcmp(st, "off") == 0) {
-        _targetOn = false;
+    String st;
+    if (doc.getString(protocol::FieldId::State, st)) {
+        if (st == "on") {
+            _targetOn = true;
+        } else if (st == "off") {
+            _targetOn = false;
+        }
     }
     updateTargetError(doc);
     updateVisualFromStatus(millis());
 }
 
-void RemoteSwitchDriver::updateTargetError(const JsonDocument& doc) {
-    // Lưu state pump để xác định điều kiện "chặt" RUNNING OK
-    const char* pumpStateStr = doc["pumpStateStr"] | "";
-    strlcpy(_targetPumpStateStr, pumpStateStr, sizeof(_targetPumpStateStr));
+void RemoteSwitchDriver::updateTargetError(const protocol::CommandRequest& doc) {
+    // Lưu state pump để xác định điều kiện lỗi hoặc khỏe mạnh
+    String pumpStateStr;
+    if (doc.getString(protocol::FieldId::PumpStateStr, pumpStateStr)) {
+        strlcpy(_targetPumpStateStr, pumpStateStr.c_str(), sizeof(_targetPumpStateStr));
+    } else {
+        int32_t s = -1;
+        if (doc.getInt(protocol::FieldId::PumpState, s)) {
+            switch (s) {
+            case 0: strlcpy(_targetPumpStateStr, "OFF", sizeof(_targetPumpStateStr)); break;
+            case 1: strlcpy(_targetPumpStateStr, "RUNNING OK", sizeof(_targetPumpStateStr)); break;
+            case 2: strlcpy(_targetPumpStateStr, "HIGH CURRENT", sizeof(_targetPumpStateStr)); break;
+            case 3: strlcpy(_targetPumpStateStr, "DRY RUN", sizeof(_targetPumpStateStr)); break;
+            case 4: strlcpy(_targetPumpStateStr, "CRITICAL CURRENT", sizeof(_targetPumpStateStr)); break;
+            case 5: strlcpy(_targetPumpStateStr, "OVERLOAD", sizeof(_targetPumpStateStr)); break;
+            default: _targetPumpStateStr[0] = '\0'; break;
+            }
+        }
+    }
 
     _targetError = false;
 
-    // Pump errors — top level getStatus fields (pumpStateStr / pumpState enum int)
-    if (strcmp(_targetPumpStateStr, "DRY RUN") == 0 || strcmp(_targetPumpStateStr, "OVERLOAD") == 0 || strcmp(_targetPumpStateStr, "CRITICAL CURRENT") == 0) {
+    // Pump errors: DRY RUN, OVERLOAD, CRITICAL CURRENT
+    if (strcmp_P(_targetPumpStateStr, PSTR("DRY RUN")) == 0 ||
+        strcmp_P(_targetPumpStateStr, PSTR("OVERLOAD")) == 0 ||
+        strcmp_P(_targetPumpStateStr, PSTR("CRITICAL CURRENT")) == 0) {
         _targetError = true;
     }
-    if (doc["pumpState"].is<int>()) {
-        int s = doc["pumpState"].as<int>();
-        if (s == 3 || s == 4 || s == 5) _targetError = true; // PumpState::DRY_RUN / CRITICAL_CURRENT / OVERLOAD
-    }
-
-    // Pump errors — getSystemInfo stream (nested pump.pumpState)
-    if (doc["pump"].is<JsonObject>()) {
-        JsonObjectConst p = doc["pump"].as<JsonObjectConst>();
-        const char* ps = p["pumpState"] | "";
-        if (strcmp(ps, "dry_run") == 0 || strcmp(ps, "overload") == 0 || strcmp(ps, "critical_current") == 0) {
-            _targetError = true;
+    int32_t s = -1;
+    if (doc.getInt(protocol::FieldId::PumpState, s)) {
+        if (s == 3 || s == 4 || s == 5) {
+            _targetError = true; // PumpState::DRY_RUN / CRITICAL_CURRENT / OVERLOAD
         }
     }
 }
 
-bool RemoteSwitchDriver::handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) {
-    if (strcmp(cmd, "setRelay") == 0) {
-        if (!payload["state"].is<bool>()) {
-            resp["status"] = "error";
-            resp["message"] = "Missing or invalid 'state' field";
+bool RemoteSwitchDriver::handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
+        bool on = false;
+        if (!payload.getBool(protocol::FieldId::State, on)) {
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Missing or invalid 'state' field"));
             return true;
         }
-        bool on = payload["state"].as<bool>();
         sendRelayCommand(on);
         if (_services.log) {
             _services.log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         }
-        resp["status"] = "ok";
-        resp["state"] = on ? "on" : "off";
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::State, on ? F("on") : F("off"));
         LT_IM(CMD, "Forward relay %s to target %s", on ? "ON" : "OFF", _cfg->targetId);
         return true;
     }
     return false;
 }
 
-void RemoteSwitchDriver::getStatus(JsonDocument& resp) {
-    resp["targetId"] = _cfg->targetId;
-    resp["targetType"] = _cfg->targetType;
-    resp["targetPaired"] = _cfg->targetKey[0] != '\0';
-    resp["relay"] = _targetOn;
-    resp["targetError"] = _targetError;
+void RemoteSwitchDriver::getStatus(protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::TargetId, _cfg->targetId);
+    resp.setString(protocol::FieldId::TargetType, _cfg->targetType);
+    resp.setBool(protocol::FieldId::TargetPaired, _cfg->hasTargetKey);
+    resp.setBool(protocol::FieldId::Relay, _targetOn);
+    resp.setBool(protocol::FieldId::TargetError, _targetError);
 }
 
-void RemoteSwitchDriver::getConfig(JsonDocument& resp) {
-    resp["targetId"] = _cfg->targetId;
-    resp["targetType"] = _cfg->targetType;
-    // targetKey is never exposed (same policy as mqttPass): only show whether it is set
-    resp["targetKey"] = _cfg->targetKey[0] != '\0' ? "********" : "";
+void RemoteSwitchDriver::getConfig(protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::TargetId, _cfg->targetId);
+    resp.setString(protocol::FieldId::TargetType, _cfg->targetType);
+    resp.setString(protocol::FieldId::TargetKey, _cfg->hasTargetKey ? F("********") : F(""));
 }
 
-bool RemoteSwitchDriver::setConfig(const JsonDocument& payload, JsonDocument& resp) {
+bool RemoteSwitchDriver::setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)resp;
     bool changed = false;
 
-    if (payload["targetId"].is<const char*>()) {
-        const char* id = payload["targetId"].as<const char*>();
-        if (strlen(id) >= sizeof(_cfg->targetId)) {
+    String id;
+    if (payload.getString(protocol::FieldId::TargetId, id)) {
+        if (id.length() >= sizeof(_cfg->targetId)) {
             LT_EM(CMD, "setConfig: targetId too long");
             return false;
         }
-        strlcpy(_cfg->targetId, id, sizeof(_cfg->targetId));
+        strlcpy(_cfg->targetId, id.c_str(), sizeof(_cfg->targetId));
         changed = true;
         subscribeTargetTopic();
     }
-    if (payload["targetKey"].is<const char*>()) {
-        const char* k = payload["targetKey"].as<const char*>();
-        size_t klen = strlen(k);
-        if (klen == 0) {
-            _cfg->targetKey[0] = '\0';
-            changed = true;
-        } else if (klen == 64) {
-            strlcpy(_cfg->targetKey, k, sizeof(_cfg->targetKey));
-            changed = true;
-        } else if (klen == 128) {
-            // E2E Encrypted targetKey: 64 bytes blob [ IV(16) | ciphertext(32) | tag(16) ]
-            uint8_t blob[64];
-            if (!crypto::hexDecode(k, blob, sizeof(blob))) {
-                LT_EM(CMD, "setConfig: invalid hex in targetKeyEnc");
-                return false;
-            }
 
-            if (!_services.identity) {
-                LT_EM(CMD, "setConfig: identity service unavailable for E2E decrypt");
-                return false;
-            }
-
-            String myKeyHex;
-            uint8_t myKey[32];
-            if (!_services.identity->controlKeyHex(myKeyHex) || !crypto::hexDecode(myKeyHex.c_str(), myKey, sizeof(myKey))) {
+    const uint8_t* rawKeyBytes = nullptr;
+    size_t rawKeyLen = 0;
+    if (payload.getBytes(protocol::FieldId::TargetKey, rawKeyBytes, rawKeyLen)) {
+        if (rawKeyLen == 0) {
+            _cfg->hasTargetKey = false;
+            memset(_cfg->targetKey, 0, sizeof(_cfg->targetKey));
+            changed = true;
+        } else if (rawKeyLen == 32) {
+            memcpy(_cfg->targetKey, rawKeyBytes, 32);
+            _cfg->hasTargetKey = true;
+            changed = true;
+            LT_IM(CMD, "setConfig: targetKey set via 32 raw bytes");
+        } else if (rawKeyLen == 64) {
+            // E2E Encrypted blob [IV(16) | ciphertext(32) | tag(16)]
+            const uint8_t* myKey = _services.identity ? _services.identity->controlKey() : nullptr;
+            if (!myKey) {
                 LT_EM(CMD, "setConfig: cannot retrieve my controlKey for decrypt");
                 return false;
             }
-
             uint8_t plainTargetKey[32];
-            if (!crypto::decryptKey(myKey, blob, plainTargetKey)) {
+            if (!crypto::decryptKey(myKey, rawKeyBytes, plainTargetKey)) {
                 LT_EM(CMD, "setConfig: targetKey E2E decrypt failed (bad tag/key)");
                 return false;
             }
-
-            crypto::hexEncode(plainTargetKey, sizeof(plainTargetKey), _cfg->targetKey);
+            memcpy(_cfg->targetKey, plainTargetKey, 32);
+            _cfg->hasTargetKey = true;
             changed = true;
-            LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM");
-        } else {
-            LT_EM(CMD, "setConfig: targetKey must be 64 (plain) or 128 (encrypted) hex chars or empty");
-            return false;
+            LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM (raw blob)");
+        }
+    } else {
+        String k;
+        if (payload.getString(protocol::FieldId::TargetKey, k)) {
+            size_t klen = k.length();
+            if (klen == 0) {
+                _cfg->hasTargetKey = false;
+                memset(_cfg->targetKey, 0, sizeof(_cfg->targetKey));
+                changed = true;
+            } else if (klen == 64) {
+                if (crypto::hexDecode(k.c_str(), _cfg->targetKey, 32)) {
+                    _cfg->hasTargetKey = true;
+                    changed = true;
+                    LT_IM(CMD, "setConfig: targetKey set via 64 hex chars");
+                }
+            } else if (klen == 128) {
+                // E2E Encrypted targetKey: 64 bytes blob [ IV(16) | ciphertext(32) | tag(16) ]
+                uint8_t blob[64];
+                if (!crypto::hexDecode(k.c_str(), blob, sizeof(blob))) {
+                    LT_EM(CMD, "setConfig: invalid hex in targetKeyEnc");
+                    return false;
+                }
+
+                const uint8_t* myKey = _services.identity ? _services.identity->controlKey() : nullptr;
+                if (!myKey) {
+                    LT_EM(CMD, "setConfig: cannot retrieve my controlKey for decrypt");
+                    return false;
+                }
+
+                uint8_t plainTargetKey[32];
+                if (!crypto::decryptKey(myKey, blob, plainTargetKey)) {
+                    LT_EM(CMD, "setConfig: targetKey E2E decrypt failed (bad tag/key)");
+                    return false;
+                }
+
+                memcpy(_cfg->targetKey, plainTargetKey, 32);
+                _cfg->hasTargetKey = true;
+                changed = true;
+                LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM");
+            } else {
+                LT_EM(CMD, "setConfig: targetKey must be 64 (plain) or 128 (encrypted) hex chars or empty");
+                return false;
+            }
         }
     }
-    if (payload["targetType"].is<const char*>()) {
-        const char* t = payload["targetType"].as<const char*>();
-        if (strlen(t) > 0 && strcmp(t, "pump") != 0 && strcmp(t, "switch") != 0) {
+
+    String t;
+    if (payload.getString(protocol::FieldId::TargetType, t)) {
+        if (t.length() > 0 && t != "pump" && t != "switch") {
             LT_EM(CMD, "setConfig: targetType must be 'pump', 'switch', or empty");
             return false;
         }
-        strlcpy(_cfg->targetType, t, sizeof(_cfg->targetType));
+        strlcpy(_cfg->targetType, t.c_str(), sizeof(_cfg->targetType));
         changed = true;
     }
     return changed;
@@ -465,7 +492,11 @@ void RemoteSwitchDriver::_onButtonClick() {
     if (_cfg->targetId[0] == '\0') return;
 
     // Nút bị khóa khi đang chờ phản hồi (long-press menu vẫn hoạt động)
-    if (_visualState == TargetVisualState::WAITING) return;
+    //if (_visualState == TargetVisualState::WAITING) return;
+
+    if (_visualState == TargetVisualState::ERROR) {
+        _targetError = false;
+    }
 
     sendToggleCommand();
     // Bơm/switch chuyển sang tự báo 2s → status về ngay, không phải chờ 60s
@@ -479,14 +510,11 @@ void RemoteSwitchDriver::_onButtonClick() {
     enterVisualState(TargetVisualState::WAITING, millis());
 
     // Notify app so its UI updates (same shape as setRelay response)
-    JsonDocument resp;
-    resp["cmd"] = "setRelay";
-    resp["status"] = "ok";
-    resp["state"] = on ? "on" : "off";
-    String json;
-    serializeJson(resp, json);
-    if (_services.sendResponse) {
-        _services.sendResponse(json);
+    protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
+    writer.writeString(protocol::FieldId::Status, F("ok"));
+    writer.writeString(protocol::FieldId::State, on ? F("on") : F("off"));
+    if (_services.sendBinaryResponse) {
+        _services.sendBinaryResponse(writer.data(), writer.size());
     }
 }
 

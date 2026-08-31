@@ -25,7 +25,7 @@ class MqttDeviceChannel(
     private val connectionManager: MqttConnectionManager,
     private val handshakeManager: DeviceHandshakeManager,
     val deviceId: String,
-    private val envelopeProvider: (String) -> String?,
+    private val envelope: DeviceCommandEnvelope,
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : DeviceChannel {
@@ -33,12 +33,12 @@ class MqttDeviceChannel(
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
     override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
-    private val _incoming = MutableSharedFlow<String>(
+    private val _incoming = MutableSharedFlow<ByteArray>(
         replay = 0,
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val incoming: SharedFlow<String> = _incoming.asSharedFlow()
+    override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
 
     private var activeJob: Job? = null
 
@@ -90,16 +90,29 @@ class MqttDeviceChannel(
 
     private val sendMutex = Mutex()
 
-    override suspend fun send(raw: String): Boolean = sendMutex.withLock {
+    override suspend fun send(raw: ByteArray): Boolean = sendMutex.withLock {
         if (deviceId.isBlank()) return false
 
-        val signedPayload = envelopeProvider(raw) ?: run {
-            Log.w(TAG, "send() failed: cannot sign command for $deviceId")
-            return false
+        val isBinary = raw.size >= 3 && raw[0] == 0xB7.toByte() && raw[raw.size - 1] == 0xA5.toByte()
+        
+        val payloadToSend = if (isBinary) {
+            val signed = envelope.signBinary(deviceId, raw)
+            if (signed == null) {
+                Log.w(TAG, "send() failed: cannot sign binary command for $deviceId")
+                return false
+            }
+            signed
+        } else {
+            val rawStr = String(raw, Charsets.UTF_8)
+            val signedPayloadStr = envelope.sign(deviceId, rawStr) ?: run {
+                Log.w(TAG, "send() failed: cannot sign command for $deviceId")
+                return false
+            }
+            signedPayloadStr.toByteArray(Charsets.UTF_8)
         }
 
         val topic = "devices/$deviceId/cmd"
-        return connectionManager.publish(topic, signedPayload)
+        return connectionManager.publish(topic, payloadToSend)
     }
 
     companion object {

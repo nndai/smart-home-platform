@@ -37,7 +37,7 @@ void PumpController::setTimeouts(uint16_t dryTimeout, uint16_t overloadTimeout) 
     _overloadTimeout = overloadTimeout;
 }
 
-void PumpController::update(float currentAmps) {
+void PumpController::update(float currentAmps, float powerWatts) {
     if (_switch) _switch->handle();
 
     unsigned long now = millis();
@@ -48,8 +48,8 @@ void PumpController::update(float currentAmps) {
     PumpState newState = _state;
 
     if (!_pumpMode) {
-        // Switch mode: OFF / RUNNING_OK / OVERLOAD
-        if (currentMa < _threshOff) {
+        // Switch mode: OFF when relay is off, RUNNING_OK when relay is on, only check _threshOverload (mA)
+        if (!isOn()) {
             newState = PumpState::OFF;
             _overloadStart = 0;
         } else if (currentMa >= _threshOverload) {
@@ -64,7 +64,7 @@ void PumpController::update(float currentAmps) {
         }
     } else {
         // Pump mode: OFF / HIGH_CURRENT / DRY_RUN / CRITICAL_CURRENT / OVERLOAD
-        if (currentMa < _threshOff) {
+        if (!isOn() || powerWatts < _threshOff) {
             newState = PumpState::OFF;
             _dryStart = 0;
             _criticalStart = 0;
@@ -77,7 +77,7 @@ void PumpController::update(float currentAmps) {
             }
             _dryStart = 0;
             _criticalStart = 0;
-        } else if (currentMa >= _threshRunning * PUMP_CRITICAL_PERCENT / 100) {
+        } else if (powerWatts >= (float)_threshRunning * PUMP_CRITICAL_PERCENT / 100.0f) {
             _dryStart = 0;
             _overloadStart = 0;
             if (_criticalStart == 0) {
@@ -85,12 +85,12 @@ void PumpController::update(float currentAmps) {
             } else if (now - _criticalStart >= _dryTimeout) {
                 newState = PumpState::CRITICAL_CURRENT;
             }
-        } else if (currentMa >= _threshRunning) {
+        } else if (powerWatts >= _threshRunning) {
             newState = PumpState::HIGH_CURRENT;
             _dryStart = 0;
             _criticalStart = 0;
             _overloadStart = 0;
-        } else if (currentMa < _threshNoWater) {
+        } else if (powerWatts < _threshNoWater) {
             _overloadStart = 0;
             _criticalStart = 0;
             if (_dryStart == 0) {

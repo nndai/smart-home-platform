@@ -56,11 +56,23 @@ void WebSocketServer::broadcast(const String& message) {
     _server->broadcastTXT(message.c_str(), message.length());
 }
 
+void WebSocketServer::broadcastBinary(const uint8_t* payload, size_t length) {
+    if (!_server || !payload || length == 0) return;
+    _server->broadcastBIN(const_cast<uint8_t*>(payload), length);
+}
+
 bool WebSocketServer::send(const String& clientId, const String& message) {
     if (!_server) return false;
     int idx = _findClient(clientId);
     if (idx < 0) return false;
     return _server->sendTXT(idx, message.c_str(), message.length());
+}
+
+bool WebSocketServer::sendBinary(const String& clientId, const uint8_t* payload, size_t length) {
+    if (!_server || !payload || length == 0) return false;
+    int idx = _findClient(clientId);
+    if (idx < 0) return false;
+    return _server->sendBIN(idx, const_cast<uint8_t*>(payload), length);
 }
 
 int WebSocketServer::clientCount() {

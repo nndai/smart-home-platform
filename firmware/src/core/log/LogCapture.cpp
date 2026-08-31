@@ -19,7 +19,7 @@
 #include "core/log/LogManager.h"
 
 #define LINE_LOG_MAX 256
-#define PREINIT_MAX 15
+#define PREINIT_MAX 20
 #define PREINIT_LINE_MAX 128
 
 static char s_lineBuf[LINE_LOG_MAX];

@@ -11,6 +11,7 @@ const app = {
   debugInfo: null,
   dashboard: null,
   _currentTab: 'dashboard',
+  _buildTargets: [],
 
   init() {
     this._logger = new Logger();
@@ -26,6 +27,9 @@ const app = {
       if (!connected) {
         this._onConnectionChange(false); // If bridge dies
       } else {
+        // Tự động quét build targets ngay khi bridge kết nối
+        this.scanBuildTargets();
+
         // Python Bridge connected. Auto-connect to MCU!
         if (this._autoConnectToDevice && !this._bridgeConnected) {
           this._doConnectToDevice();
@@ -56,7 +60,8 @@ const app = {
     const mqttTopicPub = localStorage.getItem('rp_mqtt_topic_pub');
     const mqttTopicSub = localStorage.getItem('rp_mqtt_topic_sub');
     const mqttTopicOta = localStorage.getItem('rp_mqtt_topic_ota');
-    const fwPath = localStorage.getItem('rp_fw_path');
+    const controlKey = localStorage.getItem('rp_control_key') || '';
+    const senderId = localStorage.getItem('rp_sender_id') || 'web-debug';
 
     if (protocol) {
       const radio = document.querySelector(`input[name="protocol"][value="${protocol}"]`);
@@ -69,17 +74,39 @@ const app = {
     if (mqttPass) Utils.$('mqtt-pass').value = mqttPass;
     if (mqttTopicPub) Utils.$('mqtt-topic-pub').value = mqttTopicPub;
     if (mqttTopicSub) Utils.$('mqtt-topic-sub').value = mqttTopicSub;
-    if (mqttTopicOta && Utils.$('mqtt-topic-ota')) Utils.$('mqtt-topic-ota').value = mqttTopicOta;
-    if (fwPath) Utils.$('fw-path').value = fwPath;
+    if (Utils.$('control-key')) Utils.$('control-key').value = controlKey;
+    if (Utils.$('sender-id')) Utils.$('sender-id').value = senderId;
 
     // Attach listeners to save on change
-    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota', 'fw-path'];
+    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'control-key', 'sender-id'];
     inputs.forEach(id => {
       const el = Utils.$(id);
       if (el) {
         el.addEventListener('change', () => this.saveSettings());
       }
     });
+
+    const pubEl = Utils.$('mqtt-topic-pub');
+    if (pubEl) {
+      pubEl.addEventListener('input', () => {
+        const val = pubEl.value.trim();
+        if (val.endsWith('/cmd')) {
+          const base = val.substring(0, val.length - 4);
+          const subEl = Utils.$('mqtt-topic-sub');
+          if (subEl && (!subEl.value || subEl.value === 'pump/log' || subEl.value.endsWith('/up') || subEl.value.endsWith('/log'))) {
+            subEl.value = `${base}/up`;
+          }
+          this.saveSettings();
+        }
+      });
+    }
+
+    const keyEl = Utils.$('control-key');
+    if (keyEl) {
+      keyEl.addEventListener('input', () => this.updateControlKeyStatus());
+    }
+
+    this.updateControlKeyStatus();
   },
 
   saveSettings() {
@@ -92,8 +119,9 @@ const app = {
     localStorage.setItem('rp_mqtt_pass', Utils.$('mqtt-pass').value);
     localStorage.setItem('rp_mqtt_topic_pub', Utils.$('mqtt-topic-pub').value);
     localStorage.setItem('rp_mqtt_topic_sub', Utils.$('mqtt-topic-sub').value);
-    if (Utils.$('mqtt-topic-ota')) localStorage.setItem('rp_mqtt_topic_ota', Utils.$('mqtt-topic-ota').value);
-    localStorage.setItem('rp_fw_path', Utils.$('fw-path').value);
+    if (Utils.$('control-key')) localStorage.setItem('rp_control_key', Utils.$('control-key').value.trim());
+    if (Utils.$('sender-id')) localStorage.setItem('rp_sender_id', Utils.$('sender-id').value.trim() || 'web-debug');
+    this.updateControlKeyStatus();
   },
 
   updateSettingsUI() {
@@ -109,6 +137,45 @@ const app = {
       mqttSettings.classList.remove('hidden');
     }
     this.saveSettings();
+  },
+
+  updateControlKeyStatus() {
+    const keyEl = Utils.$('control-key');
+    const badge = Utils.$('control-key-badge');
+    const lenEl = Utils.$('control-key-len');
+    if (!keyEl || !badge || !lenEl) return;
+
+    const val = keyEl.value.trim();
+    lenEl.textContent = `${val.length}/64`;
+
+    if (val.length === 0) {
+      badge.textContent = 'Not Set';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/10 text-gray-400 border border-gray-500/20';
+      lenEl.className = 'text-[10px] font-mono text-gray-500';
+    } else if (val.length === 64 && /^[0-9a-fA-F]{64}$/.test(val)) {
+      badge.textContent = '32B Key Valid';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+      lenEl.className = 'text-[10px] font-mono text-emerald-400';
+    } else {
+      badge.textContent = 'Invalid Key';
+      badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
+      lenEl.className = 'text-[10px] font-mono text-rose-400';
+    }
+  },
+
+  toggleControlKeyVisibility() {
+    const input = Utils.$('control-key');
+    const eye = Utils.$('control-key-eye');
+    if (!input) return;
+
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (eye) eye.setAttribute('data-lucide', 'eye-off');
+    } else {
+      input.type = 'password';
+      if (eye) eye.setAttribute('data-lucide', 'eye-outline');
+    }
+    Utils.refreshIcons();
   },
 
   // ── Connection ──
@@ -146,10 +213,8 @@ const app = {
       const port = parseInt(Utils.$('mqtt-port').value.trim()) || 1883;
       const user = Utils.$('mqtt-user').value.trim();
       const password = Utils.$('mqtt-pass').value.trim();
-      const topic_pub = Utils.$('mqtt-topic-pub').value.trim() || 'pump/cmd';
-      const topic_sub = Utils.$('mqtt-topic-sub').value.trim() || 'pump/log';
-      const topic_ota_el = Utils.$('mqtt-topic-ota');
-      const topic_ota = topic_ota_el ? topic_ota_el.value.trim() : 'pump/otachunk';
+      const topic_pub = Utils.$('mqtt-topic-pub').value.trim() || 'devices/pump-ln882h/cmd';
+      const topic_sub = Utils.$('mqtt-topic-sub').value.trim() || 'devices/pump-ln882h/up';
 
       if (!broker) {
         this._logger.log(`[ERROR] Please specify MQTT Broker IP/Domain`, 'error');
@@ -158,6 +223,8 @@ const app = {
       }
 
       this._logger.log(`[INFO] Command Bridge to connect via MQTT: ${broker}:${port}`, 'info');
+      const control_key = (localStorage.getItem('rp_control_key') || '').trim();
+      const sender_id = (localStorage.getItem('rp_sender_id') || 'web-debug').trim() || 'web-debug';
       this._wsManager.send(JSON.stringify({
         cmd: "bridgeConnectMqtt",
         broker: broker,
@@ -166,7 +233,8 @@ const app = {
         password: password,
         topic_pub: topic_pub,
         topic_sub: topic_sub,
-        topic_ota: topic_ota
+        control_key: control_key,
+        sender_id: sender_id
       }));
     }
   },
@@ -239,9 +307,18 @@ const app = {
   // ── Message handling ──
 
   _onMessage(rawMessage) {
-    // Internal messages (from WebSocketManager)
+    // 1. Binary Protocol Frame (from MCU via WebSocket or MQTT)
+    if (rawMessage instanceof ArrayBuffer || rawMessage instanceof Uint8Array) {
+      const data = BinaryProtocolParser.parse(rawMessage);
+      if (data) {
+        this._dispatchDeviceResponse(data);
+        return;
+      }
+    }
+
+    // 2. Text / JSON Message (from Bridge Server or Fallback)
     try {
-      const data = JSON.parse(rawMessage);
+      const data = typeof rawMessage === 'string' ? JSON.parse(rawMessage) : rawMessage;
 
       if (data._internal) {
         const tag = data.type === 'error' ? 'error' : 'info';
@@ -250,13 +327,15 @@ const app = {
       }
 
       if (typeof data === 'object' && data !== null) {
-        const cmd = data.cmd;
+        const cmd = data.cmd || '';
 
+        // Bridge Internal Events
         if (cmd === 'bridgeConnected') {
           this._onConnectionChange(true);
-          const protocol = document.querySelector('input[name="protocol"]:checked').value;
+          this.scanBuildTargets();
+          const protocol = document.querySelector('input[name="protocol"]:checked')?.value || 'ws';
           if (protocol === 'mqtt') {
-            this._sendRaw(JSON.stringify({cmd: 'setLogMqtt', payload: {enabled: true}}));
+            this._sendRaw({ cmd: 'setLogMqtt', payload: { enabled: true } });
           }
           return;
         }
@@ -264,81 +343,17 @@ const app = {
           this._onConnectionChange(false);
           return;
         }
+        if (cmd === 'bridgeBuildTargets') {
+          this.handleBuildTargets(data);
+          return;
+        }
 
-        // Hide progress messages from the generic log output
+        // Hide background progress spam from logs
         if (cmd === 'bridgeProgress' || cmd === 'otaChunk') {
           return;
         }
 
-        // File browser responses
-        const fileCmds = new Set(['listDir', 'readFile', 'fileInfo', 'deleteItem', 'fsInfo', 'downloadFile']);
-        if (fileCmds.has(cmd)) {
-          this.fileBrowser.handleResponse(data);
-          return;
-        }
-
-        // Debug info response
-        if (cmd === 'getSystemInfo') {
-          this.debugInfo.handleResponse(data);
-          return;
-        }
-
-        // Dashboard responses
-        if (cmd === 'getStatus' || cmd === 'setRelay') {
-          if (this.dashboard) this.dashboard.handleResponse(data);
-          // If setRelay, we also might want to log it generically
-          if (cmd !== 'getStatus') {
-            this._logger.log(`[INFO] Command '${cmd}' response: ${data.status || 'unknown'}, state: ${data.state || 'unknown'}`, 'info');
-          }
-          return;
-        }
-
-        // Upload responses (shown in logs)
-        if (cmd === 'beginUploadFirmwareSuccess') {
-          this._logger.log('[INFO] Device ready for firmware data', 'info');
-          return;
-        }
-        if (cmd === 'beginUploadFirmwareFailed') {
-          this._logger.log(`[ERROR] Device rejected: ${data.message || ''}`, 'error');
-          return;
-        }
-        if (cmd === 'otaResult') {
-          if (data.status === 'ok') {
-            this._logger.log('[SUCCESS] Firmware flashed!', 'success');
-          } else {
-            this._logger.log(`[ERROR] Flash failed: ${data.message || ''}`, 'error');
-          }
-          return;
-        }
-        if (cmd === 'otaError') {
-          this._logger.log(`[ERROR] ${data.message || 'Lỗi OTA'}`, 'error');
-          // Reset UI buttons nếu uploader chưa kịp reset
-          const uploadBtn = Utils.$('btn-upload');
-          const sendBtn = Utils.$('btn-send');
-          uploadBtn.querySelector('#btn-upload-text').textContent = 'Upload Firmware';
-          if (this._wsManager && this._wsManager.connected) {
-            sendBtn.disabled = false;
-          }
-          const progressEl = Utils.$('upload-progress');
-          progressEl.classList.add('hidden');
-          Utils.$('progress-bar').style.width = '0%';
-          Utils.$('progress-text').textContent = '0%';
-          return;
-        }
-
-        // Device log messages
-        if (cmd === 'log') {
-          const msg = data.msg || '';
-          let tag = 'info';
-          if (msg.includes('[ERROR]')) tag = 'error';
-          else if (msg.includes('[WARN]')) tag = 'warn';
-          else if (msg.includes('[DEBUG]')) tag = 'debug';
-          this._logger.log(msg, tag);
-          return;
-        }
-
-        // Generic JSON response
-        this._logger.log(JSON.stringify(data, null, 2));
+        this._dispatchDeviceResponse(data);
         return;
       }
     } catch (_) {
@@ -346,22 +361,167 @@ const app = {
     }
 
     // Plain text message
-    this._logger.log(rawMessage);
+    if (typeof rawMessage === 'string') {
+      this._logger.log(rawMessage);
+    }
   },
 
-  // ── Sending ──
+  _dispatchDeviceResponse(data) {
+    const cmd = data.cmd;
 
-  _sendRaw(text) {
-    this._wsManager.send(text);
+    // File browser responses
+    const fileCmds = new Set(['listDir', 'readFile', 'fileInfo', 'deleteItem', 'fsInfo', 'downloadFile']);
+    if (fileCmds.has(cmd)) {
+      this.fileBrowser.handleResponse(data);
+      return;
+    }
+
+    // Debug info response
+    if (cmd === 'getSystemInfo') {
+      this.debugInfo.handleResponse(data);
+      return;
+    }
+
+    // Dashboard responses
+    if (cmd === 'getStatus' || cmd === 'setRelay') {
+      if (this.dashboard) this.dashboard.handleResponse(data);
+      if (cmd !== 'getStatus') {
+        this._logger.log(`[INFO] Command '${cmd}' response: ${data.status || 'unknown'}, state: ${data.state !== undefined ? data.state : 'unknown'}`, 'info');
+      }
+      return;
+    }
+
+    // Upload responses
+    if (cmd === 'beginUploadFirmwareSuccess') {
+      this._logger.log('[INFO] Device ready for firmware data', 'info');
+      return;
+    }
+    if (cmd === 'beginUploadFirmwareFailed') {
+      this._logger.log(`[ERROR] Device rejected: ${data.message || ''}`, 'error');
+      return;
+    }
+    if (cmd === 'otaResult') {
+      if (data.status === 'ok') {
+        this._logger.log('[SUCCESS] Firmware flashed!', 'success');
+      } else {
+        this._logger.log(`[ERROR] Flash failed: ${data.message || ''}`, 'error');
+      }
+      return;
+    }
+    if (cmd === 'otaError') {
+      this._logger.log(`[ERROR] ${data.message || 'Lỗi OTA'}`, 'error');
+      const uploadBtn = Utils.$('btn-upload');
+      const sendBtn = Utils.$('btn-send');
+      if (uploadBtn) uploadBtn.querySelector('#btn-upload-text').textContent = 'Upload Firmware';
+      if (this._wsManager && this._wsManager.connected && sendBtn) {
+        sendBtn.disabled = false;
+      }
+      const progressEl = Utils.$('upload-progress');
+      if (progressEl) progressEl.classList.add('hidden');
+      if (Utils.$('progress-bar')) Utils.$('progress-bar').style.width = '0%';
+      if (Utils.$('progress-text')) Utils.$('progress-text').textContent = '0%';
+      return;
+    }
+
+    // Device log messages
+    if (cmd === 'log') {
+      const msg = data.msg || data.message || '';
+      let tag = 'info';
+      if (msg.includes('[ERROR]')) tag = 'error';
+      else if (msg.includes('[WARN]')) tag = 'warn';
+      else if (msg.includes('[DEBUG]')) tag = 'debug';
+      this._logger.log(msg, tag);
+      return;
+    }
+
+    // Generic JSON response
+    this._logger.log(JSON.stringify(data, null, 2));
   },
 
+  // ── Sending & Binary Protocol Serialization ──
+
+  /**
+   * Serializes and optionally signs a device command into a binary frame,
+   * then sends it over WebSocket.
+   *
+   * @param {string|object|Uint8Array|ArrayBuffer} msg 
+   */
+  _sendRaw(msg) {
+    if (!this._wsManager || !this._wsManager.connected) return;
+
+    // 1. Internal Bridge Commands (JSON string)
+    if (typeof msg === 'string' && msg.includes('"bridge')) {
+      this._wsManager.send(msg);
+      return;
+    }
+    if (typeof msg === 'object' && msg !== null && !(msg instanceof Uint8Array) && !(msg instanceof ArrayBuffer) && msg.cmd && msg.cmd.startsWith('bridge')) {
+      this._wsManager.send(JSON.stringify(msg));
+      return;
+    }
+
+    // 2. Device Binary Frame
+    const protocolRadio = document.querySelector('input[name="protocol"]:checked');
+    const protocol = protocolRadio ? protocolRadio.value : (localStorage.getItem('rp_protocol') || 'ws');
+    const controlKey = (localStorage.getItem('rp_control_key') || '').trim();
+    const senderId = (localStorage.getItem('rp_sender_id') || 'web-debug').trim() || 'web-debug';
+
+    let binaryFrame;
+    if (msg instanceof Uint8Array || msg instanceof ArrayBuffer) {
+      binaryFrame = msg instanceof Uint8Array ? msg : new Uint8Array(msg);
+    } else {
+      binaryFrame = BinaryProtocolParser.serialize(msg);
+    }
+
+    // 3. Sign Binary Frame if MQTT
+    if (protocol === 'mqtt') {
+      binaryFrame = BinaryProtocolParser.signBinary(binaryFrame, controlKey, senderId);
+    }
+
+    this._wsManager.sendBinary(binaryFrame);
+  },
+
+  /**
+   * Handle user-entered raw command in the log console.
+   * Accepts JSON commands (e.g. {"cmd":"getStatus"} or {"cmd":"setRelay","state":true})
+   * or command names (e.g. getStatus), converts them to Binary Protocol frames, signs if MQTT,
+   * and dispatches them.
+   */
   sendCmd() {
-    if (!this._wsManager.connected) return;
+    if (!this._wsManager.connected) {
+      Utils.toast('error', 'Not connected to bridge');
+      return;
+    }
     const input = Utils.$('cmd-input');
     const text = input.value.trim();
     if (!text) return;
-    if (this._wsManager.send(text)) {
-      this._logger.log(`>>> ${text}`, 'sent');
+
+    let jsonObj = null;
+    try {
+      jsonObj = JSON.parse(text);
+    } catch (_) {
+      // Allow shorthand e.g. "getStatus" -> {"cmd":"getStatus"}
+      if (/^[a-zA-Z0-9_]+$/.test(text)) {
+        jsonObj = { cmd: text };
+      } else {
+        this._logger.log(`[ERROR] Invalid JSON: ${text}`, 'error');
+        Utils.toast('error', 'Invalid JSON syntax');
+        return;
+      }
+    }
+
+    const protocolRadio = document.querySelector('input[name="protocol"]:checked');
+    const protocol = protocolRadio ? protocolRadio.value : (localStorage.getItem('rp_protocol') || 'ws');
+    const controlKey = (localStorage.getItem('rp_control_key') || '').trim();
+    const senderId = (localStorage.getItem('rp_sender_id') || 'web-debug').trim() || 'web-debug';
+
+    let binaryFrame = BinaryProtocolParser.serialize(jsonObj);
+    if (protocol === 'mqtt') {
+      binaryFrame = BinaryProtocolParser.signBinary(binaryFrame, controlKey, senderId);
+    }
+
+    if (this._wsManager.sendBinary(binaryFrame)) {
+      const hexPreview = Array.from(binaryFrame.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      this._logger.log(`>>> [JSON -> Binary: ${jsonObj.cmd || 'cmd'}, ${binaryFrame.length}B] ${JSON.stringify(jsonObj)}`, 'sent');
       input.value = '';
     } else {
       this._logger.log('[ERROR] Send failed', 'error');
@@ -416,6 +576,109 @@ const app = {
     this._logger.clear();
   },
 
+  // ── Firmware Build Targets ──
+
+  scanBuildTargets() {
+    if (this._wsManager && this._wsManager.connected) {
+      const scanBtn = Utils.$('btn-scan-fw');
+      if (scanBtn) {
+        const icon = scanBtn.querySelector('i');
+        if (icon) icon.classList.add('animate-spin');
+        setTimeout(() => { if (icon) icon.classList.remove('animate-spin'); }, 600);
+      }
+      this._sendRaw(JSON.stringify({ cmd: 'bridgeScanBuildTargets' }));
+    }
+  },
+
+  handleBuildTargets(data) {
+    this._buildTargets = data.targets || [];
+    const select = Utils.$('fw-target-select');
+    const badge = Utils.$('fw-build-dir-badge');
+    if (badge && data.buildDir) {
+      badge.textContent = data.buildDir;
+    }
+
+    if (!select) return;
+
+    select.innerHTML = '';
+    if (this._buildTargets.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No build targets found (build project first)';
+      opt.disabled = true;
+      opt.selected = true;
+      select.appendChild(opt);
+      this.updateFirmwareInfoCard(null);
+      return;
+    }
+
+    const savedTarget = localStorage.getItem('rp_fw_target');
+    let selectedIdx = 0;
+
+    this._buildTargets.forEach((target, idx) => {
+      const opt = document.createElement('option');
+      opt.value = target.name;
+      const sizeStr = target.exists ? Utils.formatBytes(target.size) : 'not found';
+      opt.textContent = `${target.name} [${target.file} • ${sizeStr}]`;
+      select.appendChild(opt);
+
+      if (savedTarget && target.name === savedTarget) {
+        selectedIdx = idx;
+      }
+    });
+
+    select.selectedIndex = selectedIdx;
+    this.onTargetSelected(this._buildTargets[selectedIdx].name);
+    if (window.lucide) lucide.createIcons();
+  },
+
+  onTargetSelected(targetName) {
+    if (!targetName) return;
+    localStorage.setItem('rp_fw_target', targetName);
+    const target = (this._buildTargets || []).find(t => t.name === targetName);
+    this.updateFirmwareInfoCard(target);
+  },
+
+  updateFirmwareInfoCard(target) {
+    const nameEl = Utils.$('fw-info-filename');
+    const statusEl = Utils.$('fw-info-status');
+    const sizeEl = Utils.$('fw-info-size');
+    const mtimeEl = Utils.$('fw-info-mtime');
+    const pathEl = Utils.$('fw-info-path');
+
+    if (!target) {
+      if (nameEl) nameEl.textContent = 'firmware.bin';
+      if (statusEl) {
+        statusEl.textContent = 'Not Found';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
+      }
+      if (sizeEl) sizeEl.textContent = '-';
+      if (mtimeEl) mtimeEl.textContent = '-';
+      if (pathEl) pathEl.textContent = 'No build target selected';
+      return;
+    }
+
+    if (nameEl) nameEl.textContent = target.file || 'firmware.bin';
+    if (statusEl) {
+      if (target.exists) {
+        statusEl.textContent = 'Ready';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+      } else {
+        statusEl.textContent = 'Missing .bin';
+        statusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20';
+      }
+    }
+    if (sizeEl) sizeEl.textContent = target.exists ? Utils.formatBytes(target.size) : '0 B';
+    if (mtimeEl) mtimeEl.textContent = target.exists ? target.mtimeStr : 'Not built yet';
+    if (pathEl) pathEl.textContent = target.relPath || target.path || '';
+  },
+
+  getSelectedBuildTarget() {
+    const select = Utils.$('fw-target-select');
+    if (!select || !select.value) return null;
+    return (this._buildTargets || []).find(t => t.name === select.value) || null;
+  },
+
   // ── Upload ──
 
   startUpload() {
@@ -424,11 +687,13 @@ const app = {
       return;
     }
 
-    const fwPath = Utils.$('fw-path').value.trim();
-    if (fwPath) {
-      this._uploader.startLocalUpload(fwPath);
+    const target = this.getSelectedBuildTarget();
+    if (target && target.exists && target.path) {
+      this._uploader.startLocalUpload(target.path);
+    } else if (target && !target.exists) {
+      Utils.toast('error', `Firmware file not found in ${target.name}. Please compile with PlatformIO first.`);
     } else {
-      // Create file input to pick firmware
+      // Fallback: create file input to pick firmware manually
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.uf2,.bin,.hex';

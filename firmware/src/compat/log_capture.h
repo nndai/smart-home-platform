@@ -17,5 +17,9 @@ class LogManager;
 // logManager.begin()). Từ đó trở đi log đẩy thẳng vào LogManager.
 void logCaptureFlushFile(LogManager* lm);
 
-// Gọi bởi các module hook UART (vd: compat/log_capture_esp8266.cpp)
 void logCaptureChar(char c);
+
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <pgmspace.h>
+void logPrintf_P(const char* prefix, PGM_P fmt, ...);
+#endif

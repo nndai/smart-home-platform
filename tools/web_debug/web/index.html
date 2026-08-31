@@ -391,37 +391,112 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex flex-col gap-1">
               <label class="text-xs text-gray-500">Publish Topic (Tx)</label>
-              <input id="mqtt-topic-pub" type="text" placeholder="pump/cmd" value="pump/cmd"
+              <input id="mqtt-topic-pub" type="text" placeholder="devices/pump-ln882h/cmd" value="devices/pump-ln882h/cmd"
                      class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-xs text-gray-500">Subscribe Topic (Rx)</label>
-              <input id="mqtt-topic-sub" type="text" placeholder="pump/log" value="pump/log"
-                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs text-gray-500">OTA Chunk Topic</label>
-              <input id="mqtt-topic-ota" type="text" placeholder="pump/otachunk" value="pump/otachunk"
+              <input id="mqtt-topic-sub" type="text" placeholder="devices/pump-ln882h/up" value="devices/pump-ln882h/up"
                      class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
             </div>
           </div>
+
+          <!-- Command Signing (HMAC-SHA256 Envelope) -->
+          <div class="pt-2 border-t border-white/5 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                <i data-lucide="key" class="w-3.5 h-3.5 text-accent"></i>
+                Command Signing Envelope (HMAC-SHA256)
+              </span>
+              <span id="control-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/10 text-gray-400 border border-gray-500/20">Not Set</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-gray-500 flex items-center justify-between">
+                  <span>Control Key (Hex 64)</span>
+                  <span id="control-key-len" class="text-[10px] font-mono text-gray-500">0/64</span>
+                </label>
+                <div class="relative">
+                  <input id="control-key" type="password" placeholder="64 hex characters (32 bytes)"
+                         class="w-full bg-surface-800 border border-white/10 rounded-lg pl-3 pr-10 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+                  <button type="button" id="btn-toggle-key" onclick="app.toggleControlKeyVisibility()"
+                          class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 p-1.5 rounded"
+                          title="Toggle Key Visibility">
+                    <i data-lucide="eye" id="control-key-eye" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-gray-500 flex items-center justify-between">
+                  <span>Sender ID (src)</span>
+                  <span id="seq-badge" class="text-[10px] font-mono text-gray-400">Seq: 0</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="sender-id" type="text" placeholder="web-debug" value="web-debug"
+                         class="flex-1 bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+                  <button type="button" onclick="app.resetSeq()" title="Sync Seq with current timestamp"
+                          class="px-3 py-2 text-xs font-medium rounded-lg bg-surface-800 border border-white/10 text-gray-400 hover:text-white hover:border-accent/40 hover:bg-accent/10 transition-all whitespace-nowrap active:scale-95">
+                    Sync Seq
+                  </button>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] text-gray-500 italic">
+              When MQTT is used, commands will automatically be signed: <code class="text-accent/80 font-mono text-[10px]">seq|ts|cmd|payload|src</code> (seq = timestamp).
+            </span>
+          </div>
         </div>
 
-        <!-- System Settings -->
+        <!-- Firmware Target Settings -->
         <div class="bg-surface-900/60 backdrop-blur border border-white/5 rounded-xl p-4 flex flex-col gap-3 mb-4">
-          <h3 class="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
-            <i data-lucide="cpu" class="w-4 h-4 text-accent"></i> System
-          </h3>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs text-gray-500">Firmware Path (.uf2 / .bin)</label>
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <i data-lucide="cpu" class="w-4 h-4 text-accent"></i> Firmware Target (.pio/build)
+            </h3>
+            <button id="btn-scan-fw" onclick="app.scanBuildTargets()"
+                    class="px-2.5 py-1 text-xs font-medium rounded-lg bg-surface-800 border border-white/10 text-gray-300 hover:text-white hover:border-accent/40 hover:bg-accent/10 transition-all flex items-center gap-1.5 active:scale-95"
+                    title="Scan .pio/build folder for build targets">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span>Rescan</span>
+            </button>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-gray-500 flex items-center justify-between">
+              <span>Select Build Target</span>
+              <span id="fw-build-dir-badge" class="font-mono text-[11px] text-gray-400"></span>
+            </label>
+            
             <div class="relative">
-              <i data-lucide="file-code" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"></i>
-              <input id="fw-path" type="text" value="D:/projects/RemotePumpLN882H/.pio/build/generic-ln882h/firmware.uf2"
-                     placeholder="D:/path/to/firmware.uf2"
-                     class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
+              <i data-lucide="folder-code" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+              <select id="fw-target-select" onchange="app.onTargetSelected(this.value)"
+                      class="w-full bg-surface-800 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm font-mono text-gray-200 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all appearance-none cursor-pointer">
+                <option value="" disabled selected>Scanning targets...</option>
+              </select>
+              <i data-lucide="chevron-down" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none"></i>
+            </div>
+
+            <!-- Selected Firmware Card / Details -->
+            <div id="fw-info-card" class="bg-surface-800/80 border border-white/5 rounded-lg p-3 flex flex-col gap-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-300 font-medium flex items-center gap-1.5">
+                  <i data-lucide="file-check" class="w-3.5 h-3.5 text-accent"></i>
+                  <span id="fw-info-filename">firmware.bin</span>
+                </span>
+                <span id="fw-info-status" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Ready</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-gray-400 font-mono text-[11px]">
+                <div>Size: <span id="fw-info-size" class="text-gray-200">-</span></div>
+                <div>Built: <span id="fw-info-mtime" class="text-gray-200">-</span></div>
+              </div>
+              <div class="text-[11px] font-mono text-gray-500 break-all bg-surface-900/60 p-1.5 rounded border border-white/5" id="fw-info-path">
+                No firmware selected
+              </div>
             </div>
           </div>
         </div>
@@ -481,14 +556,15 @@
   <div id="toast-container" class="fixed top-4 right-4 flex flex-col gap-2 z-50 pointer-events-none"></div>
 
   <!-- JS Modules -->
-  <script src="js/utils.js?v=5"></script>
-  <script src="js/websocket.js?v=5"></script>
-  <script src="js/logger.js?v=5"></script>
-  <script src="js/file-browser.js?v=5"></script>
-  <script src="js/debug-info.js?v=5"></script>
-  <script src="js/uploader.js?v=5"></script>
-  <script src="js/dashboard.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/utils.js?v=11"></script>
+  <script src="js/protocol.js?v=11"></script>
+  <script src="js/websocket.js?v=11"></script>
+  <script src="js/logger.js?v=11"></script>
+  <script src="js/file-browser.js?v=11"></script>
+  <script src="js/debug-info.js?v=11"></script>
+  <script src="js/uploader.js?v=11"></script>
+  <script src="js/dashboard.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
   <script>
     lucide.createIcons();
   </script>

@@ -35,6 +35,13 @@ class PumpRepository(
     private val _pumpStatus = MutableStateFlow<PumpStatus?>(null)
     val pumpStatus: StateFlow<PumpStatus?> = _pumpStatus.asStateFlow()
 
+    private var lastStatusReceivedTime: Long = 0L
+    private val _statusLatencyMs = MutableStateFlow<Long?>(null)
+    val statusLatencyMs: StateFlow<Long?> = _statusLatencyMs.asStateFlow()
+
+    private val _isStatusStale = MutableStateFlow(false)
+    val isStatusStale: StateFlow<Boolean> = _isStatusStale.asStateFlow()
+
     private val _deviceConfig = MutableStateFlow<DeviceConfig?>(null)
     val deviceConfig: StateFlow<DeviceConfig?> = _deviceConfig.asStateFlow()
 
@@ -89,7 +96,15 @@ class PumpRepository(
         scope.launch {
             remote.events.collect { event ->
                 when (event) {
-                    is PumpCommandEvent.StatusUpdate -> _pumpStatus.value = event.status
+                    is PumpCommandEvent.StatusUpdate -> {
+                        val now = System.currentTimeMillis()
+                        if (lastStatusReceivedTime > 0L) {
+                            _statusLatencyMs.value = now - lastStatusReceivedTime
+                        }
+                        lastStatusReceivedTime = now
+                        _isStatusStale.value = false
+                        _pumpStatus.value = event.status
+                    }
                     is PumpCommandEvent.ConfigUpdate -> _deviceConfig.value = event.config
                     is PumpCommandEvent.InfoUpdate -> _deviceInfo.value = event.info
                     is PumpCommandEvent.CommandResult -> {
@@ -111,6 +126,21 @@ class PumpRepository(
             }
         }
 
+        // Ticker kiểm tra độ trễ nhận getStatus (mỗi 1s):
+        // Nếu quá 3s (>3000ms) không nhận được getStatus thì cập nhật ms tăng dần và bật cờ isStatusStale
+        scope.launch {
+            while (isActive) {
+                delay(1000L)
+                if (channel.state.value is ConnectionState.Connected && lastStatusReceivedTime > 0L) {
+                    val elapsed = System.currentTimeMillis() - lastStatusReceivedTime
+                    if (elapsed > 3000L) {
+                        _statusLatencyMs.value = elapsed
+                        _isStatusStale.value = true
+                    }
+                }
+            }
+        }
+
         // When transport reconnects, renew active stream subscriptions if any
         scope.launch {
             connectionState.collectLatest { state ->
@@ -122,6 +152,10 @@ class PumpRepository(
                     if (sysInfoStreamJob?.isActive == true) {
                         ensureSysInfoStream()
                     }
+                } else {
+                    lastStatusReceivedTime = 0L
+                    _statusLatencyMs.value = null
+                    _isStatusStale.value = false
                 }
             }
         }
@@ -313,9 +347,13 @@ class PumpRepository(
         remote.getLogMqtt()
     }
 
+    suspend fun sendRaw(rawInput: String): Boolean {
+        Log.d(TAG, "sendRaw($rawInput)")
+        return remote.sendRaw(rawInput)
+    }
+
     suspend fun sendRawJson(rawJson: String): Boolean {
-        Log.d(TAG, "sendRawJson($rawJson)")
-        return remote.sendRawJson(rawJson)
+        return sendRaw(rawJson)
     }
 
     fun reconnect() {
@@ -326,6 +364,9 @@ class PumpRepository(
     fun switchDevice() {
         Log.d(TAG, "switchDevice() clearing cached device state and restarting channel")
         stopAllStreams()
+        lastStatusReceivedTime = 0L
+        _statusLatencyMs.value = null
+        _isStatusStale.value = false
         _pumpStatus.value = null
         _deviceConfig.value = null
         _deviceInfo.value = null

@@ -5,6 +5,7 @@
 
 struct RemoteSwitchConfig : public DeviceConfig {
     char targetId[32] = "";
-    char targetKey[65] = ""; // Target control key (hex string is 64 chars + null)
+    uint8_t targetKey[32] = {0}; // 32-byte raw target control key
+    bool hasTargetKey = false;
     char targetType[16] = ""; // "pump" or "switch"
 };

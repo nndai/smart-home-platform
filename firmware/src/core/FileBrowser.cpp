@@ -1,44 +1,41 @@
 #include "core/FileBrowser.h"
 #include "compat/fs.h"
 #include "core/Crypto.h"
-#include <ArduinoJson.h>
 #include <vector>
 #include <algorithm>
 
-String FileBrowser::listDir(const String& path, size_t offset, size_t limit) {
-    JsonDocument doc;
-    doc["status"] = "ok";
-    doc["path"] = path;
-    //LT_IM(SYS, "Listing directory: %s", path.c_str());
+void FileBrowser::listDir(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
     File dir = LITTLEFS.open(path, "r");
     if (!dir) {
-        doc["status"] = "error";
-        doc["message"] = "Not a directory";
-        String out;
-        serializeJson(doc, out);
-        return out;
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not a directory"));
+        resp.setString(protocol::FieldId::Path, path);
+        return;
     }
 
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Path, path);
+
     if (limit == 0) {
-        JsonArray entries = doc["entries"].to<JsonArray>();
+        auto entries = resp.beginArray(protocol::FieldId::Entries);
         compat::DirIterator it(path.c_str());
         String name;
         size_t size;
         bool isDir;
         while (it.next(name, size, isDir)) {
-            JsonObject e = entries.add<JsonObject>();
-            e["name"] = name;
+            auto e = entries->addBeginObject();
+            e->setString(protocol::FieldId::Name, name);
             if (isDir) {
-                e["type"] = "dir";
+                e->setString(protocol::FieldId::Type, F("dir"));
             } else {
-                e["type"] = "file";
-                e["size"] = (unsigned long)size;
+                e->setString(protocol::FieldId::Type, F("file"));
+                e->setU32(protocol::FieldId::Size, (uint32_t)size);
             }
+            entries->endObject(e);
         }
         it.close();
-        String out;
-        serializeJson(doc, out);
-        return out;
+        resp.endArray(entries);
+        return;
     }
 
     struct DirEntry {
@@ -80,57 +77,53 @@ String FileBrowser::listDir(const String& path, size_t offset, size_t limit) {
     });
 
     size_t total = all.size();
-    doc["total"] = (unsigned long)total;
+    resp.setU32(protocol::FieldId::Total, (uint32_t)total);
 
     if (offset >= total) {
-        doc["entries"] = JsonArray();
-        doc["more"] = false;
+        auto entries = resp.beginArray(protocol::FieldId::Entries);
+        resp.endArray(entries);
+        resp.setBool(protocol::FieldId::More, false);
     } else {
         size_t end = offset + limit;
         if (end > total) end = total;
-        doc["more"] = (end < total);
-        JsonArray entries = doc["entries"].to<JsonArray>();
+        resp.setBool(protocol::FieldId::More, (end < total));
+        auto entries = resp.beginArray(protocol::FieldId::Entries);
         for (size_t i = offset; i < end; i++) {
-            JsonObject e = entries.add<JsonObject>();
-            e["name"] = all[i].name;
-            e["type"] = all[i].type;
+            auto e = entries->addBeginObject();
+            e->setString(protocol::FieldId::Name, all[i].name);
+            e->setString(protocol::FieldId::Type, all[i].type);
             if (all[i].type == "file") {
-                e["size"] = all[i].size;
+                e->setU32(protocol::FieldId::Size, (uint32_t)all[i].size);
             }
+            entries->endObject(e);
         }
+        resp.endArray(entries);
     }
-
-    String out;
-    serializeJson(doc, out);
-    return out;
 }
 
-String FileBrowser::readFile(const String& path, size_t offset, size_t limit, bool encode) {
-    JsonDocument doc;
-    doc["status"] = "ok";
-    doc["path"] = path;
-    doc["encode"] = encode;
-    doc["offset"] = (unsigned long)offset;
+void FileBrowser::readFile(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
+    if (limit == 0 || limit > 1500) {
+        limit = 1500;
+    }
+    resp.setString(protocol::FieldId::Path, path);
+    resp.setU32(protocol::FieldId::Offset, (uint32_t)offset);
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        doc["status"] = "error";
-        doc["message"] = "File not found";
-        String out;
-        serializeJson(doc, out);
-        return out;
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("File not found"));
+        return;
     }
 
     size_t fileSize = f.size();
-    doc["size"] = (unsigned long)fileSize;
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setU32(protocol::FieldId::Size, (uint32_t)fileSize);
 
     if (offset >= fileSize) {
-        doc["data"] = "";
-        doc["more"] = false;
+        resp.setBytes(protocol::FieldId::Data, nullptr, 0);
+        resp.setBool(protocol::FieldId::More, false);
         f.close();
-        String out;
-        serializeJson(doc, out);
-        return out;
+        return;
     }
 
     f.seek(offset, SeekSet);
@@ -140,76 +133,45 @@ String FileBrowser::readFile(const String& path, size_t offset, size_t limit, bo
         toRead = fileSize - offset;
     }
 
-    if (encode) {
-        uint8_t* buf = (uint8_t*)malloc(toRead);
-        if (!buf) {
-            doc["status"] = "error";
-            doc["message"] = "Out of memory";
-            f.close();
-            String out;
-            serializeJson(doc, out);
-            return out;
-        }
-        size_t n = f.read(buf, toRead);
-        doc["data"] = crypto::base64Encode(buf, n);
-        free(buf);
-        doc["more"] = (offset + n < fileSize);
-    } else {
-        char buf[128];
-        String data;
-        data.reserve(toRead + 64);
-        size_t remaining = toRead;
-        while (remaining > 0) {
-            size_t n = f.read((uint8_t*)buf, std::min<size_t>(sizeof(buf) - 1, remaining));
-            if (n == 0) break;
-            buf[n] = '\0';
-            data += buf;
-            remaining -= n;
-        }
-        doc["data"] = data;
-        doc["more"] = (offset + data.length() < fileSize);
+    uint8_t* buf = (uint8_t*)malloc(toRead);
+    if (!buf) {
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Out of memory"));
+        f.close();
+        return;
     }
+    size_t n = f.read(buf, toRead);
+    resp.setBytes(protocol::FieldId::Data, buf, n);
+    free(buf);
+    resp.setBool(protocol::FieldId::More, (offset + n < fileSize));
 
     f.close();
-    String out;
-    serializeJson(doc, out);
-    return out;
 }
 
-String FileBrowser::fileInfo(const String& path) {
-    JsonDocument doc;
-    doc["path"] = path;
+void FileBrowser::fileInfo(const String& path, protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::Path, path);
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        doc["status"] = "error";
-        doc["message"] = "Not found";
-        String out;
-        serializeJson(doc, out);
-        return out;
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not found"));
+        return;
     }
 
-    doc["status"] = "ok";
-    doc["type"] = f.isDirectory() ? "dir" : "file";
-    doc["size"] = (unsigned long)f.size();
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Type, f.isDirectory() ? F("dir") : F("file"));
+    resp.setU32(protocol::FieldId::Size, (uint32_t)f.size());
     f.close();
-
-    String out;
-    serializeJson(doc, out);
-    return out;
 }
 
-String FileBrowser::deleteItem(const String& path) {
-    JsonDocument doc;
-    doc["path"] = path;
+void FileBrowser::deleteItem(const String& path, protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::Path, path);
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        doc["status"] = "error";
-        doc["message"] = "Not found";
-        String out;
-        serializeJson(doc, out);
-        return out;
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not found"));
+        return;
     }
     bool isDir = f.isDirectory();
     f.close();
@@ -232,27 +194,15 @@ String FileBrowser::deleteItem(const String& path) {
     }
 
     if (ok) {
-        doc["status"] = "ok";
+        resp.setString(protocol::FieldId::Status, F("ok"));
     } else {
-        doc["status"] = "error";
-        doc["message"] = "Delete failed";
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Delete failed"));
     }
-
-    String out;
-    serializeJson(doc, out);
-    return out;
 }
 
-String FileBrowser::fsInfo() {
-    JsonDocument doc;
-
-    doc["status"] = "ok";
-    doc["totalBytes"] = (unsigned long)compat::fsTotalBytes();
-    doc["usedBytes"] = (unsigned long)compat::fsUsedBytes();
-
-    String out;
-    serializeJson(doc, out);
-    return out;
+void FileBrowser::fsInfo(protocol::CommandResponse& resp) {
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setU32(protocol::FieldId::TotalBytes, (uint32_t)compat::fsTotalBytes());
+    resp.setU32(protocol::FieldId::UsedBytes, (uint32_t)compat::fsUsedBytes());
 }
-
-

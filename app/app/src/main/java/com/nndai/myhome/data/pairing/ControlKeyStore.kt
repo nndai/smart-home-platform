@@ -52,6 +52,38 @@ class ControlKeyStore(context: Context) {
         }
     }
 
+    fun remove(deviceId: String) {
+        prefs.edit()
+            .remove("enc_$deviceId")
+            .remove("iv_$deviceId")
+            .remove(deviceId)
+            .apply()
+    }
+
+    /**
+     * Removes only user-scoped secrets (control keys + their IVs).
+     * Called when the session ends (logout / token revoked) so a different
+     * account signing in on this device cannot reuse the previous account's
+     * keys — critical for shared VIEWER accounts.
+     */
+    fun clearUserSecrets() {
+        val editor = prefs.edit()
+        secretKeys().forEach { editor.remove(it) }
+        editor.apply()
+    }
+
+    /** Device ids that currently have a stored control key.
+     *  IMPORTANT: derive ONLY from "enc_" entries — including "iv_" would
+     *  yield phantom ids like "iv_dev-xxx", and pruning those deletes the
+     *  real IV file (remove() strips prefixes per id), breaking decryption. */
+    fun storedIds(): Set<String> =
+        prefs.all.keys.filter { it.startsWith("enc_") }
+            .map { it.removePrefix("enc_") }
+            .toSet()
+
+    private fun secretKeys(): List<String> =
+        prefs.all.keys.filter { it.startsWith("enc_") || it.startsWith("iv_") }
+
     fun get(deviceId: String): String? {
         val encryptedBase64 = prefs.getString("enc_$deviceId", null) ?: return null
         val ivBase64 = prefs.getString("iv_$deviceId", null) ?: return null
@@ -72,19 +104,7 @@ class ControlKeyStore(context: Context) {
         }
     }
 
-    // ── Seq counter cho envelope lệnh (persist theo từng thiết bị; thiết bị giữ
-    //    floor seq riêng cho mỗi sender qua field "src" của envelope) ──
-    fun getSeq(deviceId: String): Long = prefs.getLong("seq_$deviceId", 0L)
-
-    fun nextSeq(deviceId: String): Long {
-        val next = getSeq(deviceId) + 1
-        prefs.edit().putLong("seq_$deviceId", next).apply()
-        return next
-    }
-
     // ── Sender ID ổn định của app (field "src" trong envelope) ──
-    // Phải ổn định qua mọi lần mở app: thiết bị track floor seq riêng cho từng
-    // sender; nếu src đổi mỗi lần launch, cửa sổ replay của app sẽ reset.
     fun appSenderId(): String {
         prefs.getString(KEY_APP_SENDER, null)?.let { return it }
         val id = "app-" + generateHex(8)

@@ -57,8 +57,8 @@ class FirmwareUploader {
       this._logger.log('[INFO] Sent uploadFirmwareStart', 'info');
 
       // Wait for begin response
-      const startResp = await this._waitForResponse(ws, 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
-      if (!startResp || startResp.cmd === 'beginUploadFirmwareFailed') {
+      const startResp = await this._waitForResponse(ws, 'uploadFirmwareStart', 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
+      if (!startResp || (startResp.cmd === 'uploadFirmwareStart' && startResp.status !== 'ok') || startResp.cmd === 'beginUploadFirmwareFailed') {
         throw new Error(`Device refused: ${startResp?.message || 'unknown error'}`);
       }
 
@@ -76,14 +76,49 @@ class FirmwareUploader {
           reject(new Error('Upload cancelled by user'));
         };
 
-        const handler = (event) => {
+        const handler = async (event) => {
           if (this._cancelled) {
-            this._cancelReject();
+            if (this._cancelReject) this._cancelReject();
             return;
           }
           try {
+            // 1. Binary Response Frame from MCU
+            let binaryData = null;
+            if (event.data instanceof ArrayBuffer) {
+              binaryData = new Uint8Array(event.data);
+            } else if (event.data instanceof Blob) {
+              const buf = await event.data.arrayBuffer();
+              binaryData = new Uint8Array(buf);
+            }
+
+            if (binaryData && typeof BinaryProtocolParser !== 'undefined') {
+              const parsed = BinaryProtocolParser.parse(binaryData);
+              if (parsed) {
+                if (parsed.status === 'error') {
+                  ws.removeEventListener('message', handler);
+                  this._cancelReject = null;
+                  this.stopUpload();
+                  reject(new Error(`MCU OTA Error (${parsed.cmd || 'OTA'}): ${parsed.message || 'Lỗi ghi Flash'}`));
+                  return;
+                }
+                if (parsed.cmd === 'otaProgress' || parsed.cmd === 50) {
+                  const pct = parsed.pct || 0;
+                  progressBar.style.width = `${pct}%`;
+                  progressText.textContent = `${pct}%`;
+                }
+              }
+            }
+
+            // 2. JSON or bridge progress message
             if (typeof event.data === 'string') {
               const data = JSON.parse(event.data);
+              if (data.cmd === 'otaError' || (data.status === 'error' && ['otaChunk', 'uploadFirmwareStart', 'uploadFirmwareEnd', 'otaResult'].includes(data.cmd))) {
+                ws.removeEventListener('message', handler);
+                this._cancelReject = null;
+                this.stopUpload();
+                reject(new Error(data.message || `Lỗi OTA từ thiết bị (${data.cmd})`));
+                return;
+              }
               if (data.cmd === 'bridgeProgress') {
                 const elapsed = (Date.now() - startTime) / 1000;
                 const speed = elapsed > 0.1 ? Utils.formatBytes(data.uploaded / elapsed) + '/s' : '0B/s';
@@ -92,12 +127,9 @@ class FirmwareUploader {
 
                 if (data.pct >= 100) {
                   ws.removeEventListener('message', handler);
+                  this._cancelReject = null;
                   resolve();
                 }
-              } else if (data.cmd === 'otaError') {
-                ws.removeEventListener('message', handler);
-                this._cancelReject = null;
-                reject(new Error(data.message || 'Lỗi OTA từ bridge'));
               }
             }
           } catch (_) { }
@@ -181,8 +213,8 @@ class FirmwareUploader {
       this._logger.log('[INFO] Sent uploadFirmwareStart', 'info');
 
       // Wait for device success
-      const startResp = await this._waitForResponse(ws, 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
-      if (!startResp || startResp.cmd === 'beginUploadFirmwareFailed') {
+      const startResp = await this._waitForResponse(ws, 'uploadFirmwareStart', 'beginUploadFirmwareSuccess', 'beginUploadFirmwareFailed');
+      if (!startResp || (startResp.cmd === 'uploadFirmwareStart' && startResp.status !== 'ok') || startResp.cmd === 'beginUploadFirmwareFailed') {
         throw new Error(`Device refused: ${startResp?.message || 'unknown error'}`);
       }
 
@@ -198,14 +230,49 @@ class FirmwareUploader {
           reject(new Error('Upload cancelled by user'));
         };
         
-        const handler = (event) => {
+        const handler = async (event) => {
           if (this._cancelled) {
-            this._cancelReject();
+            if (this._cancelReject) this._cancelReject();
             return;
           }
           try {
+            // 1. Binary Response Frame from MCU
+            let binaryData = null;
+            if (event.data instanceof ArrayBuffer) {
+              binaryData = new Uint8Array(event.data);
+            } else if (event.data instanceof Blob) {
+              const buf = await event.data.arrayBuffer();
+              binaryData = new Uint8Array(buf);
+            }
+
+            if (binaryData && typeof BinaryProtocolParser !== 'undefined') {
+              const parsed = BinaryProtocolParser.parse(binaryData);
+              if (parsed) {
+                if (parsed.status === 'error') {
+                  ws.removeEventListener('message', handler);
+                  this._cancelReject = null;
+                  this.stopUpload();
+                  reject(new Error(`MCU OTA Error (${parsed.cmd || 'OTA'}): ${parsed.message || 'Lỗi ghi Flash'}`));
+                  return;
+                }
+                if (parsed.cmd === 'otaProgress' || parsed.cmd === 50) {
+                  const pct = parsed.pct || 0;
+                  progressBar.style.width = `${pct}%`;
+                  progressText.textContent = `${pct}%`;
+                }
+              }
+            }
+
+            // 2. JSON or bridge progress message
             if (typeof event.data === 'string') {
               const data = JSON.parse(event.data);
+              if (data.cmd === 'otaError' || (data.status === 'error' && ['otaChunk', 'uploadFirmwareStart', 'uploadFirmwareEnd', 'otaResult'].includes(data.cmd))) {
+                ws.removeEventListener('message', handler);
+                this._cancelReject = null;
+                this.stopUpload();
+                reject(new Error(data.message || `Lỗi OTA từ thiết bị (${data.cmd})`));
+                return;
+              }
               if (data.cmd === 'bridgeProgress') {
                 const elapsed = (Date.now() - startTime) / 1000;
                 const speed = elapsed > 0.1 ? Utils.formatBytes(data.uploaded / elapsed) + '/s' : '0B/s';
@@ -217,10 +284,6 @@ class FirmwareUploader {
                   this._cancelReject = null;
                   resolve();
                 }
-              } else if (data.cmd === 'otaError') {
-                ws.removeEventListener('message', handler);
-                this._cancelReject = null;
-                reject(new Error(data.message || 'Lỗi OTA từ bridge'));
               }
             }
           } catch (_) {}
@@ -292,15 +355,35 @@ class FirmwareUploader {
         resolve(null);
       }, 10000);
 
-      const handler = (event) => {
+      const handler = async (event) => {
         try {
+          let data = null;
           if (typeof event.data === 'string') {
-            const data = JSON.parse(event.data);
-            if (data && expectedCmds.includes(data.cmd)) {
-              clearTimeout(timeout);
-              ws.removeEventListener('message', handler);
-              resolve(data);
+            data = JSON.parse(event.data);
+          } else if (event.data instanceof ArrayBuffer || event.data instanceof Uint8Array) {
+            if (typeof BinaryProtocolParser !== 'undefined') {
+              data = BinaryProtocolParser.parse(event.data);
             }
+          } else if (event.data instanceof Blob) {
+            const buf = await event.data.arrayBuffer();
+            if (typeof BinaryProtocolParser !== 'undefined') {
+              data = BinaryProtocolParser.parse(new Uint8Array(buf));
+            }
+          }
+
+          if (!data) return;
+
+          if (data.status === 'error' || data.cmd === 'otaError' || data.cmd === 'beginUploadFirmwareFailed') {
+            clearTimeout(timeout);
+            ws.removeEventListener('message', handler);
+            resolve(data);
+            return;
+          }
+
+          if (expectedCmds.includes(data.cmd)) {
+            clearTimeout(timeout);
+            ws.removeEventListener('message', handler);
+            resolve(data);
           }
         } catch (_) { }
       };

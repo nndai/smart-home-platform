@@ -1,8 +1,9 @@
-package com.nndai.myhome.presentation.device.common.settings
+﻿package com.nndai.myhome.presentation.device.common.settings
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nndai.myhome.R
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.data.model.ConnectionState
 import com.nndai.myhome.data.model.DeviceConfig
@@ -62,7 +63,7 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
                         saveTimeoutJob?.cancel()
                         if (_isSaving.value) {
                             _isSaving.value = false
-                            _messages.tryEmit(event.message ?: if (event.success) "Đã lưu cài đặt" else "Lưu thất bại")
+                            _messages.tryEmit(event.message ?: if (event.success) getString(R.string.cs_msg_saved) else getString(R.string.cs_msg_save_failed))
                             if (event.success) {
                                 refreshConfig()
                                 if (event.needReboot) {
@@ -75,11 +76,11 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
                         rebootTimeoutJob?.cancel()
                         if (_isRebooting.value) {
                             _isRebooting.value = false
-                            _messages.tryEmit(event.message ?: "Thiết bị đang khởi động lại...")
+                            _messages.tryEmit(event.message ?: getString(R.string.cs_msg_rebooting_device))
                         }
                     }
                     "factoryReset" -> {
-                        _messages.tryEmit("Đang khôi phục cài đặt gốc...")
+                        _messages.tryEmit(getString(R.string.cs_msg_factory_resetting))
                     }
                 }
             }
@@ -99,10 +100,10 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
                     _wifiNetworks.value = result.networks
                     _showWifiScanDialog.value = true
                     if (result.networks.isEmpty()) {
-                        _messages.tryEmit("Không tìm thấy mạng WiFi nào")
+                        _messages.tryEmit(getString(R.string.cs_msg_no_wifi_found))
                     }
                 } else {
-                    _messages.tryEmit(result.message ?: "Quét WiFi thất bại")
+                    _messages.tryEmit(result.message ?: getString(R.string.cs_msg_wifi_scan_failed))
                 }
             }
         }
@@ -136,7 +137,7 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
             delay(30000L)
             if (_isScanningWifi.value) {
                 _isScanningWifi.value = false
-                _messages.tryEmit("Quá thời gian quét WiFi")
+                _messages.tryEmit(getString(R.string.cs_msg_wifi_scan_timeout))
             }
         }
     }
@@ -162,7 +163,7 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
             delay(8000L)
             if (_isSaving.value) {
                 _isSaving.value = false
-                _messages.tryEmit("Quá thời gian phản hồi lưu cấu hình")
+                _messages.tryEmit(getString(R.string.cs_msg_save_timeout))
             }
         }
     }
@@ -180,7 +181,7 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
             delay(8000L)
             if (_isRebooting.value) {
                 _isRebooting.value = false
-                _messages.tryEmit("Đã gửi lệnh khởi động lại")
+                _messages.tryEmit(getString(R.string.cs_msg_reboot_sent))
             }
         }
     }
@@ -190,4 +191,7 @@ open class CommonSettingsViewModel(application: Application) : AndroidViewModel(
             repository.factoryReset()
         }
     }
+
+    protected fun getString(resId: Int): String =
+        getApplication<Application>().getString(resId)
 }

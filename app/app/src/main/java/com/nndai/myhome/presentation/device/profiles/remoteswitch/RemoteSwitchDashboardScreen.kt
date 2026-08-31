@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.profiles.remoteswitch
+﻿package com.nndai.myhome.presentation.device.profiles.remoteswitch
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -72,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -80,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
@@ -91,6 +93,7 @@ import com.nndai.myhome.data.model.Device
 @Composable
 fun RemoteSwitchDashboardScreen(
     snackbarHostState: SnackbarHostState,
+    readOnly: Boolean = false,
     viewModel: RemoteSwitchViewModel = viewModel()
 ) {
     val status by viewModel.deviceStatus.collectAsStateWithLifecycle()
@@ -122,7 +125,7 @@ fun RemoteSwitchDashboardScreen(
     val targetDevice = remember(targetId, ownedDevices) {
         ownedDevices.find { it.device_id == targetId }
     }
-    val targetDisplayName = targetDevice?.name ?: if (isTargetConfigured) targetId else "Chưa thiết lập"
+    val targetDisplayName = targetDevice?.name ?: if (isTargetConfigured) targetId else stringResource(R.string.rs_target_unset)
 
     Column(
         modifier = Modifier
@@ -141,11 +144,12 @@ fun RemoteSwitchDashboardScreen(
                 isRelayOn = isRelayOn,
                 isToggling = isToggling,
                 hasError = hasTargetError,
+                readOnly = readOnly,
                 onToggleRelay = { viewModel.toggleRelay() },
                 onChangeTarget = { showTargetSelectorSheet = true },
                 onClearTarget = { showConfirmClearDialog = true }
             )
-        } else {
+        } else if (!readOnly) {
             UnconfiguredTargetCard(
                 onSelectTarget = { showTargetSelectorSheet = true }
             )
@@ -193,14 +197,14 @@ fun RemoteSwitchDashboardScreen(
             },
             title = {
                 Text(
-                    text = "Xóa liên kết mục tiêu?",
+                    text = stringResource(R.string.rs_clear_link_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "Remote Switch sẽ ngắt kết nối với '$targetDisplayName'. Nút bấm vật lý sẽ không điều khiển thiết bị này nữa cho đến khi bạn liên kết lại.",
+                    text = stringResource(R.string.rs_clear_link_message, targetDisplayName),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -223,13 +227,13 @@ fun RemoteSwitchDashboardScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("Xóa mục tiêu", color = RedError, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.rs_clear_target_action), color = RedError, fontWeight = FontWeight.Bold)
                     }
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showConfirmClearDialog = false }) {
-                    Text("Hủy")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -249,7 +253,8 @@ private fun ConfiguredTargetCard(
     hasError: Boolean,
     onToggleRelay: () -> Unit,
     onChangeTarget: () -> Unit,
-    onClearTarget: () -> Unit
+    onClearTarget: () -> Unit,
+    readOnly: Boolean = false
 ) {
     val targetIcon = getProfileIcon(targetType)
     val powerColor by animateColorAsState(
@@ -372,7 +377,7 @@ private fun ConfiguredTargetCard(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = if (isRelayOn) "THIẾT BỊ ĐANG BẬT" else "THIẾT BỊ ĐANG TẮT",
+                    text = stringResource(if (isRelayOn) R.string.rs_device_on else R.string.rs_device_off),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.sp,
@@ -412,7 +417,7 @@ private fun ConfiguredTargetCard(
                         modifier = Modifier
                             .size(100.dp)
                             .clip(CircleShape)
-                            .clickable(enabled = !isToggling, onClick = onToggleRelay),
+                            .clickable(enabled = !isToggling && !readOnly, onClick = onToggleRelay),
                         shape = CircleShape,
                         color = if (isRelayOn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(3.dp, powerColor),
@@ -428,7 +433,7 @@ private fun ConfiguredTargetCard(
                             } else {
                                 Icon(
                                     imageVector = Icons.Filled.PowerSettingsNew,
-                                    contentDescription = "Toggle Relay",
+                                    contentDescription = stringResource(R.string.desc_toggle_relay),
                                     tint = powerColor,
                                     modifier = Modifier.size(46.dp)
                                 )
@@ -438,7 +443,7 @@ private fun ConfiguredTargetCard(
                 }
 
                 Text(
-                    text = "Chạm để bật/tắt thiết bị mục tiêu",
+                    text = stringResource(R.string.rs_tap_toggle_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -469,13 +474,13 @@ private fun ConfiguredTargetCard(
                         )
                         Column {
                             Text(
-                                text = "Cảnh báo sự cố từ thiết bị mục tiêu",
+                                text = stringResource(R.string.rs_fault_warning_title),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = RedError
                             )
                             Text(
-                                text = "Thiết bị mục tiêu báo lỗi bảo vệ (Cạn nước / Quá tải). Đã tự động ngắt relay để bảo vệ an toàn.",
+                                text = stringResource(R.string.rs_fault_warning_desc),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = RedError.copy(alpha = 0.9f)
                             )
@@ -493,6 +498,7 @@ private fun ConfiguredTargetCard(
             ) {
                 OutlinedButton(
                     onClick = onChangeTarget,
+                    enabled = !readOnly,
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp),
@@ -507,7 +513,7 @@ private fun ConfiguredTargetCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Đổi mục tiêu",
+                        text = stringResource(R.string.rs_change_target),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = CyanBlue
@@ -516,6 +522,7 @@ private fun ConfiguredTargetCard(
 
                 Button(
                     onClick = onClearTarget,
+                    enabled = !readOnly,
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp),
@@ -533,7 +540,7 @@ private fun ConfiguredTargetCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Xóa mục tiêu",
+                        text = stringResource(R.string.rs_clear_target_action),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = RedError
@@ -583,13 +590,13 @@ private fun UnconfiguredTargetCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Chưa liên kết thiết bị mục tiêu",
+                    text = stringResource(R.string.rs_unlinked_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Remote Switch cần được liên kết với một máy bơm hoặc công tắc khác để thực hiện điều khiển bật/tắt an toàn từ xa.",
+                    text = stringResource(R.string.rs_unlinked_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -610,7 +617,7 @@ private fun UnconfiguredTargetCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Chọn thiết bị mục tiêu ngay",
+                    text = stringResource(R.string.rs_pick_now),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -643,7 +650,7 @@ private fun HardwareGuideCard() {
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
-                    text = "Hướng dẫn nút bấm & đèn LED vật lý",
+                    text = stringResource(R.string.rs_hw_guide_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -654,20 +661,20 @@ private fun HardwareGuideCard() {
                 GuideRow(
                     badgeText = "1 Click",
                     badgeColor = CyanBlue,
-                    title = "Bật / Tắt mục tiêu",
-                    subtitle = "Gửi lệnh toggle đến máy bơm/công tắc mục tiêu"
+                    title = stringResource(R.string.rs_hw_toggle_title),
+                    subtitle = stringResource(R.string.rs_hw_toggle_subtitle)
                 )
                 GuideRow(
                     badgeText = "2 Click",
                     badgeColor = GreenOk,
-                    title = "Lấy trạng thái",
-                    subtitle = "Cập nhật tức thì trạng thái mục tiêu qua MQTT"
+                    title = stringResource(R.string.rs_hw_status_title),
+                    subtitle = stringResource(R.string.rs_hw_status_subtitle)
                 )
                 GuideRow(
-                    badgeText = "Giữ 5s",
+                    badgeText = stringResource(R.string.rs_hw_hold_badge),
                     badgeColor = OrangeWarning,
-                    title = "Menu cấu hình",
-                    subtitle = "Bước 1: Reset WiFi • Bước 2: Debug Mode • Bước 3: Factory Reset"
+                    title = stringResource(R.string.rs_hw_menu_title),
+                    subtitle = stringResource(R.string.rs_hw_menu_subtitle)
                 )
             }
         }
@@ -745,7 +752,7 @@ private fun TargetSelectionSheetContent(
                 modifier = Modifier.size(24.dp)
             )
             Text(
-                text = "Chọn thiết bị mục tiêu để điều khiển",
+                text = stringResource(R.string.rs_sheet_pick_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -753,7 +760,7 @@ private fun TargetSelectionSheetContent(
         }
 
         Text(
-            text = "Danh sách chỉ bao gồm các thiết bị thuộc quyền sở hữu của bạn. Khóa điều khiển sẽ được mã hóa đầu cuối E2E (AES-256-GCM) trước khi gửi qua MQTT.",
+            text = stringResource(R.string.rs_sheet_scope_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -778,13 +785,13 @@ private fun TargetSelectionSheetContent(
                         modifier = Modifier.size(32.dp)
                     )
                     Text(
-                        text = "Không tìm thấy thiết bị nào khả dụng",
+                        text = stringResource(R.string.rs_no_devices),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Hãy đảm bảo bạn đã liên kết (pair) máy bơm hoặc công tắc vào tài khoản.",
+                        text = stringResource(R.string.rs_pair_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -897,14 +904,14 @@ private fun TargetDeviceItemRow(
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(Icons.Filled.Key, contentDescription = null, tint = GreenOk, modifier = Modifier.size(10.dp))
-                            Text("Khóa OK", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = GreenOk)
+                            Text(stringResource(R.string.rs_key_ok), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = GreenOk)
                         }
                     }
                 }
                 if (isSelected) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
+                        contentDescription = stringResource(R.string.desc_selected),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )

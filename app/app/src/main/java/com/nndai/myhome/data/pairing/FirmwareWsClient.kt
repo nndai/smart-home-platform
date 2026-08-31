@@ -1,6 +1,7 @@
 package com.nndai.myhome.data.pairing
 
 import android.util.Log
+import com.nndai.myhome.protocol.BinaryProtocolParser
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -13,6 +14,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
+import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -53,8 +57,10 @@ class FirmwareWsClient(host: String, port: Int = 82) {
             put("reqId", reqId)
             payload?.let { put("payload", it) }
         }
-        Log.d(TAG, "request(): sending cmd='$cmd' reqId=$reqId payload=${payload ?: "{}"}")
-        val sent = webSocket?.send(message.toString()) ?: false
+        Log.d(TAG, "request(): sending binary cmd='$cmd' reqId=$reqId payload=${payload ?: "{}"}")
+        val orgJson = JSONObject(message.toString())
+        val binaryFrame = BinaryProtocolParser.serialize(orgJson)
+        val sent = webSocket?.send(binaryFrame.toByteString()) ?: false
         if (!sent) {
             Log.e(TAG, "request(): send FAILED (socket null or closed) cmd='$cmd'")
             pending.remove(reqId)
@@ -80,6 +86,15 @@ class FirmwareWsClient(host: String, port: Int = 82) {
         webSocket = null
     }
 
+    private fun dispatchDoc(doc: JsonObject) {
+        val reqId = doc["reqId"]?.jsonPrimitive?.content
+        if (reqId != null && pending.containsKey(reqId)) {
+            pending.remove(reqId)?.complete(doc)
+        } else {
+            eventHandler?.invoke(doc)
+        }
+    }
+
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             Log.d(TAG, "onOpen: WS open, response code=${response.code}")
@@ -87,15 +102,19 @@ class FirmwareWsClient(host: String, port: Int = 82) {
             connected.complete(Unit)
         }
 
-        override fun onMessage(webSocket: WebSocket, text: String) {
-            Log.d(TAG, "onMessage: ${text.take(200)}")
-            val doc = runCatching { json.parseToJsonElement(text) as JsonObject }.getOrNull() ?: return
-            val reqId = doc["reqId"]?.jsonPrimitive?.content
-            if (reqId != null && pending.containsKey(reqId)) {
-                pending.remove(reqId)?.complete(doc)
-            } else {
-                eventHandler?.invoke(doc)
+        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            val raw = bytes.toByteArray()
+            val parsedObj = BinaryProtocolParser.parse(raw)
+            if (parsedObj != null) {
+                val doc = runCatching { json.parseToJsonElement(parsedObj.toString()) as JsonObject }.getOrNull() ?: return
+                dispatchDoc(doc)
             }
+        }
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            Log.d(TAG, "onMessage (text): ${text.take(200)}")
+            val doc = runCatching { json.parseToJsonElement(text) as JsonObject }.getOrNull() ?: return
+            dispatchDoc(doc)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

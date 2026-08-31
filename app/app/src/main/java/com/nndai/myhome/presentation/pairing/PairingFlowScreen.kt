@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,6 +47,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -67,9 +72,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.stringResource
+import com.nndai.myhome.R
 import com.nndai.myhome.data.pairing.PairingDevice
 import com.nndai.myhome.data.pairing.PairingState
 import com.nndai.myhome.data.pairing.WifiNetworkInfo
+import com.nndai.myhome.presentation.device.components.WifiSignalBars
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,7 +89,11 @@ fun PairingFlowScreen(
     val state by viewModel.state.collectAsState()
     val scanDevices by viewModel.scanDevices.collectAsState()
     val scanInProgress by viewModel.scanInProgress.collectAsState()
+    val wifiScanInProgress by viewModel.wifiScanInProgress.collectAsState()
     val context = LocalContext.current
+
+    // Danh sách mạng gần nhất — giữ nguyên để form manual không trống khi quét lại
+    var lastKnownNetworks by remember { mutableStateOf<List<WifiNetworkInfo>>(emptyList()) }
 
     val locationPermission = Manifest.permission.ACCESS_FINE_LOCATION
     val nearbyPermission = Manifest.permission.NEARBY_WIFI_DEVICES
@@ -99,10 +111,10 @@ fun PairingFlowScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Device", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.add_device), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.desc_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -129,8 +141,8 @@ fun PairingFlowScreen(
                         }
                     }
                     ProgressContent(
-                        message = "Đang mở trình tìm kiếm thiết bị...",
-                        detail = "Chấp nhận pop-up hệ thống Android hiển thị trên màn hình để kết nối"
+                        message = stringResource(R.string.pair_scanning_ble),
+                        detail = stringResource(R.string.pair_scanning_ble_detail)
                     )
                 }
 
@@ -139,61 +151,77 @@ fun PairingFlowScreen(
                         viewModel.connectSystemChooser()
                     }
                     ProgressContent(
-                        message = "Đang tìm kiếm thiết bị MyHome...",
-                        detail = "Chấp nhận thông báo/pop-up hệ thống để kết nối thiết bị"
+                        message = stringResource(R.string.pair_finding_devices),
+                        detail = stringResource(R.string.pair_finding_detail)
                     )
                 }
 
                 is PairingState.ConnectingAp -> ProgressContent(
-                    message = "Đang kết nối thiết bị MyHome...",
-                    detail = "Hãy nhấn 'Kết nối / Allow' trên pop-up của hệ thống Android"
+                    message = stringResource(R.string.pair_connecting_device),
+                    detail = stringResource(R.string.pair_connecting_detail)
                 )
 
                 is PairingState.DeviceReady -> LaunchedEffect(Unit) { viewModel.scanWifiOnDevice() }
-                    .let { ProgressContent(message = "Đang kết nối...", detail = "Đọc cấu hình thiết bị") }
+                    .let { ProgressContent(message = stringResource(R.string.pair_reading_config), detail = stringResource(R.string.pair_reading_config_detail)) }
 
-                is PairingState.ScanningWifi -> ProgressContent(
-                    message = "Đang quét WiFi lân cận...",
-                    detail = "Thiết bị đang quét các mạng xung quanh"
-                )
+                is PairingState.ScanningWifi -> {
+                    // Giữ nguyên màn WiFi (form manual không bị thay thế):
+                    // hiển thị danh sách cũ (nếu có) + thanh tiến trình nhỏ.
+                    WifiSelectContent(
+                        networks = lastKnownNetworks,
+                        scanning = true,
+                        onRescan = { },
+                        onConnect = { ssid, pass -> viewModel.pair(ssid, pass) }
+                    )
+                }
 
                 is PairingState.WaitingForReconnect -> ProgressContent(
-                    message = "Đang chờ thiết bị quét xong...",
-                    detail = "Thiết bị đã tạm ngắt WiFi để quét, kết nối sẽ tự phục hồi trong vài giây"
+                    message = stringResource(R.string.pair_wait_wifi),
+                    detail = stringResource(R.string.pair_wait_wifi_detail)
                 )
 
-                is PairingState.WifiList -> WifiSelectContent(
-                    networks = current.networks,
-                    onRescan = { viewModel.scanWifiOnDevice() },
-                    onConnect = { ssid, pass -> viewModel.pair(ssid, pass) }
-                )
+                is PairingState.WifiList -> {
+                    lastKnownNetworks = current.networks
+                    WifiSelectContent(
+                        networks = current.networks,
+                        scanning = wifiScanInProgress,
+                        onRescan = { viewModel.scanWifiOnDevice() },
+                        onConnect = { ssid, pass -> viewModel.pair(ssid, pass) }
+                    )
+                }
 
                 is PairingState.SendingPair -> ProgressContent(
-                    message = "Đang cấu hình thiết bị...",
-                    detail = "Thiết bị sẽ khởi động lại sau khi lưu cấu hình"
+                    message = stringResource(R.string.pair_configuring),
+                    detail = stringResource(R.string.pair_configuring_detail)
                 )
 
                 is PairingState.Claiming -> ProgressContent(
-                    message = "Đang lưu thiết bị vào tài khoản...",
-                    detail = "Chờ điện thoại kết nối lại WiFi nhà"
+                    message = stringResource(R.string.pair_saving_account),
+                    detail = stringResource(R.string.pair_saving_detail)
                 )
 
-                is PairingState.Claimed -> SuccessContent(
-                    deviceId = current.deviceId,
-                    name = modelName(current.profile),
-                    onDone = {
-                        onPairComplete(current.deviceId, current.profile, modelName(current.profile), current.controlKeyHex)
-                    }
-                )
+                is PairingState.Claimed -> {
+                    val deviceModelName = modelName(current.profile)
+                    SuccessContent(
+                        deviceId = current.deviceId,
+                        name = deviceModelName,
+                        onDone = {
+                            onPairComplete(current.deviceId, current.profile, deviceModelName, current.controlKeyHex)
+                        }
+                    )
+                }
 
-                is PairingState.ClaimSavedOffline -> SuccessContent(
-                    deviceId = current.deviceId,
-                    name = modelName(current.profile),
-                    offline = true,
-                    onDone = {
-                        onPairComplete(current.deviceId, current.profile, modelName(current.profile), current.controlKeyHex)
-                    }
-                )
+                is PairingState.ClaimSavedOffline -> {
+                    val deviceModelName = modelName(current.profile)
+                    SuccessContent(
+                        deviceId = current.deviceId,
+                        name = deviceModelName,
+                        offline = true,
+                        onDone = {
+                            onPairComplete(current.deviceId, current.profile, deviceModelName, current.controlKeyHex)
+                        }
+                    )
+                }
 
                 is PairingState.ClaimFailed -> ErrorContent(
                     message = current.message,
@@ -231,16 +259,16 @@ private fun IdleContent(
             modifier = Modifier.size(64.dp)
         )
         Text(
-            text = "Quét thiết bị xung quanh",
+            text = stringResource(R.string.pair_scan_nearby_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
         Text(
             text = if (permissionGranted)
-                "App sẽ tìm các thiết bị myhome trong mạng WiFi gần bạn"
+                stringResource(R.string.pair_scan_nearby_desc)
             else
-                "App cần quyền quét WiFi để tìm thiết bị",
+                stringResource(R.string.pair_permission_needed),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -254,7 +282,7 @@ private fun IdleContent(
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text(if (permissionGranted) "Quét danh sách WiFi" else "Cấp quyền & quét", fontWeight = FontWeight.Bold)
+            Text(if (permissionGranted) stringResource(R.string.pair_scan_wifi_list) else stringResource(R.string.pair_grant_and_scan), fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onSystemChooserClick,
@@ -263,7 +291,7 @@ private fun IdleContent(
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text("Tìm & Kết nối qua System Popup", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.pair_system_popup_action), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -282,15 +310,15 @@ private fun DeviceListContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Thiết bị tìm thấy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.pair_devices_found), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "${devices.size} thiết bị myhome",
+                    stringResource(R.string.pair_devices_count, devices.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = onRefresh) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.system_refresh))
             }
         }
 
@@ -314,12 +342,12 @@ private fun DeviceListContent(
                     modifier = Modifier.size(56.dp)
                 )
                 Text(
-                    text = if (scanInProgress) "Đang quét..." else "Không tìm thấy thiết bị trong danh sách",
+                    text = if (scanInProgress) stringResource(R.string.pair_scanning_or_empty) else stringResource(R.string.pair_none_in_list),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Điện thoại có thể bị khóa kênh Wi-Fi nhà. Hãy bấm nút bên dưới để mở System Popup quét toàn bộ 14 kênh sóng:",
+                    text = stringResource(R.string.pair_channel_blocked_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
@@ -333,7 +361,7 @@ private fun DeviceListContent(
                         .height(48.dp),
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text("Tìm & Kết nối bằng System Popup 🚀", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.pair_popup_action), fontWeight = FontWeight.Bold)
                 }
             }
         } else {
@@ -418,64 +446,182 @@ private fun ProgressContent(message: String, detail: String) {
 @Composable
 private fun WifiSelectContent(
     networks: List<WifiNetworkInfo>,
+    scanning: Boolean,
     onRescan: () -> Unit,
     onConnect: (ssid: String, pass: String) -> Unit
 ) {
-    var selected by remember { mutableStateOf<String?>(null) }
+    var manualSsid by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var connecting by remember { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // ── Password policy ──
+    // SSID trùng mạng đã quét: biết ngay open/encrypted.
+    // SSID lạ (nhập tay): pass trống = coi như open, hoặc phải đủ 8–64.
+    val trimmedSsid = manualSsid.trim()
+    val matchedNetwork = networks.firstOrNull { it.name == trimmedSsid }
+    val matchedIsEncrypted = matchedNetwork?.encrypted
+    val isOpenNetwork = when {
+        matchedNetwork != null -> !matchedNetwork.encrypted
+        else -> password.isBlank()
+    }
+    val showPassField = matchedNetwork == null || matchedIsEncrypted == true
+    val passError = if (!isOpenNetwork && password.isNotEmpty() && password.length !in 8..64) {
+        stringResource(R.string.settings_wifi_pass_length)
+    } else null
+    val passRequiredHint = if (!isOpenNetwork && password.isEmpty()) {
+        stringResource(R.string.pair_pass_required_hint)
+    } else null
+    val canConnect = !scanning && !connecting && trimmedSsid.isNotBlank() &&
+            (isOpenNetwork || password.length in 8..64)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Chọn WiFi nhà", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.pair_pick_home_wifi), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Thiết bị quét được ${networks.size} mạng — chọn mạng nhà bạn",
+                    stringResource(R.string.pair_networks_found, networks.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = onRescan) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Quét lại")
+            IconButton(onClick = onRescan, enabled = !scanning) {
+                if (scanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.pair_rescan_desc))
+                }
             }
         }
 
-        if (networks.isEmpty()) {
+        // Thanh tiến trình quét — nhỏ, không che form nhập tay
+        androidx.compose.animation.AnimatedVisibility(visible = scanning) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.pair_scan_wifi),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // ── Manual entry: luôn hiển thị ngay khi vào bước này ──
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    "Thiết bị không quét được mạng nào — hãy thử lại",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    stringResource(R.string.pair_manual_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                OutlinedButton(onClick = onRescan) {
-                    Text("Quét lại")
+                OutlinedTextField(
+                    value = manualSsid,
+                    onValueChange = { manualSsid = it },
+                    label = { Text(stringResource(R.string.pair_ssid_label)) },
+                    supportingText = if (manualSsid.isBlank()) {
+                        { Text(stringResource(R.string.pair_ssid_required_hint)) }
+                    } else null,
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (!showPassField) {
+                    // Open network trong danh sách quét → không cần mật khẩu
+                    Text(
+                        text = stringResource(R.string.pair_open_network_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { if (it.length <= 64) password = it },
+                        label = { Text(stringResource(R.string.pair_label_wifi_password)) },
+                        isError = passError != null,
+                        supportingText = passError?.let {
+                            { Text(it, color = MaterialTheme.colorScheme.error) }
+                        } ?: passRequiredHint?.let {
+                            { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (canConnect) {
+                            connecting = true
+                            onConnect(manualSsid.trim(), password)
+                        }
+                    },
+                    enabled = canConnect && !connecting,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = if (connecting) stringResource(R.string.pair_connecting) else stringResource(R.string.pair_connect),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
+        }
+
+        // ── Scanned networks (tuỳ chọn) ──
+        if (networks.isEmpty()) {
+            Text(
+                stringResource(R.string.pair_no_networks),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
         } else {
+            Text(
+                text = stringResource(R.string.pair_pick_from_scan),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
             val sortedNetworks = networks.sortedByDescending { it.rssi }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f)
+            ) {
                 items(sortedNetworks) { network ->
-                    val isSelected = selected == network.name
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                selected = network.name
+                                // Chọn từ danh sách → điền sẵn SSID, focus nhập pass
+                                manualSsid = network.name
                                 password = ""
                             },
                         shape = MaterialTheme.shapes.medium,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        color = if (manualSsid == network.name) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                         else MaterialTheme.colorScheme.surface,
                         border = BorderStroke(
                             1.dp,
-                            if (isSelected) MaterialTheme.colorScheme.primary
+                            if (manualSsid == network.name) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                         )
                     ) {
@@ -490,7 +636,7 @@ private fun WifiSelectContent(
                                     Text(
                                         text = network.name,
                                         style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (manualSsid == network.name) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
@@ -499,7 +645,7 @@ private fun WifiSelectContent(
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Icon(
                                             imageVector = Icons.Filled.Lock,
-                                            contentDescription = "Encrypted",
+                                            contentDescription = stringResource(R.string.desc_encrypted),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(14.dp).offset(y = (-1).dp)
                                         )
@@ -526,94 +672,17 @@ private fun WifiSelectContent(
             }
         }
 
-        val selectedNetwork = networks.firstOrNull { it.name == selected }
-        if (selectedNetwork != null && selectedNetwork.encrypted) {
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Mật khẩu WiFi") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = MaterialTheme.shapes.small
-            )
-        }
-
-        Button(
-            onClick = {
-                if (selectedNetwork != null) {
-                    connecting = true
-                    onConnect(selectedNetwork.name, password)
-                }
-            },
-            enabled = selectedNetwork != null && (!selectedNetwork.encrypted || password.isNotEmpty()),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = MaterialTheme.shapes.small
-        ) {
-            Text(
-                text = if (connecting) "Đang kết nối..." else "Connect",
-                fontWeight = FontWeight.Bold
-            )
+        // ── Dynamic IME Spacer: nội dung neo sát mép trên bàn phím ──
+        val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val extraIme = (imeBottom - navBottom).coerceAtLeast(0.dp)
+        if (extraIme > 0.dp) {
+            Spacer(modifier = Modifier.height(extraIme))
         }
     }
 }
 
-@Composable
-private fun WifiSignalBars(
-    rssi: Int,
-    modifier: Modifier = Modifier
-) {
-    val activeLevel = when {
-        rssi >= -55 -> 4
-        rssi >= -67 -> 3
-        rssi >= -78 -> 2
-        else -> 1
-    }
 
-    val activeColor = MaterialTheme.colorScheme.primary
-    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
-
-    androidx.compose.foundation.Canvas(
-        modifier = modifier.size(20.dp)
-    ) {
-        val strokeWidth = 2.dp.toPx()
-        val centerX = size.width / 2f
-        val centerY = size.height - strokeWidth / 2f
-
-        val dotRadius = strokeWidth * 0.9f
-        drawCircle(
-            color = if (activeLevel >= 1) activeColor else inactiveColor,
-            radius = dotRadius,
-            center = androidx.compose.ui.geometry.Offset(centerX, centerY - dotRadius)
-        )
-
-        val radii = listOf(
-            strokeWidth * 2.6f,
-            strokeWidth * 4.4f,
-            strokeWidth * 6.2f
-        )
-
-        for (i in 0 until 3) {
-            val level = i + 2
-            val r = radii[i]
-            val color = if (activeLevel >= level) activeColor else inactiveColor
-
-            drawArc(
-                color = color,
-                startAngle = 225f,
-                sweepAngle = 90f,
-                useCenter = false,
-                topLeft = androidx.compose.ui.geometry.Offset(centerX - r, (centerY - dotRadius) - r),
-                size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                    width = strokeWidth,
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-            )
-        }
-    }
-}
 
 @Composable
 private fun SuccessContent(
@@ -634,7 +703,7 @@ private fun SuccessContent(
             modifier = Modifier.size(72.dp)
         )
         Text(
-            text = if (offline) "Ghép nối xong, chưa lưu vào tài khoản" else "Ghép nối thành công",
+            text = if (offline) stringResource(R.string.pair_offline_saved) else stringResource(R.string.pair_success),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
@@ -645,9 +714,9 @@ private fun SuccessContent(
         )
         Text(
             text = if (offline) {
-                "Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Chưa gửi được thông tin lên tài khoản vì mất mạng — sẽ tự động đồng bộ khi có mạng trở lại."
+                stringResource(R.string.pair_offline_desc)
             } else {
-                "Thiết bị đang khởi động lại và kết nối WiFi nhà bạn. Bạn sẽ thấy nó trong danh sách thiết bị."
+                stringResource(R.string.pair_success_desc)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -662,7 +731,7 @@ private fun SuccessContent(
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text("Xong", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.action_done), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -680,7 +749,7 @@ private fun ErrorContent(message: String, onRetry: () -> Unit, onBack: () -> Uni
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(64.dp)
         )
-        Text("Không thành công", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.pair_failed_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
@@ -696,7 +765,7 @@ private fun ErrorContent(message: String, onRetry: () -> Unit, onBack: () -> Uni
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text("Thử lại", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.pair_retry), fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onBack,
@@ -705,16 +774,17 @@ private fun ErrorContent(message: String, onRetry: () -> Unit, onBack: () -> Uni
                 .height(48.dp),
             shape = MaterialTheme.shapes.small
         ) {
-            Text("Quay lại")
+            Text(stringResource(R.string.pair_go_back))
         }
     }
 }
 
+@Composable
 private fun modelName(model: String): String = when (model.lowercase()) {
-    "pump" -> "Máy bơm"
-    "switch" -> "Công tắc"
-    "fan" -> "Quạt"
-    "lamp" -> "Đèn"
+    "pump" -> stringResource(R.string.pair_profile_pump)
+    "switch" -> stringResource(R.string.pair_profile_switch)
+    "fan" -> stringResource(R.string.pair_profile_fan)
+    "lamp" -> stringResource(R.string.pair_profile_lamp)
     else -> model
 }
 

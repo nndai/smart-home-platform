@@ -7,8 +7,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -62,12 +64,14 @@ import com.nndai.myhome.presentation.device.common.settings.NetworkConnectionMod
 import com.nndai.myhome.presentation.device.common.settings.SysLogSettingsCard
 import com.nndai.myhome.presentation.device.common.settings.WifiScanDialog
 import com.nndai.myhome.presentation.device.components.CompactTextField
+import com.nndai.myhome.data.remote.WifiNetwork
 import com.nndai.myhome.presentation.device.components.ConfirmDialog
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.text.style.TextOverflow
 
 private data class PendingFieldChange(
     val key: String,
@@ -81,10 +85,19 @@ fun SettingsScreen(
     snackbarHostState: SnackbarHostState,
     viewModel: SettingsViewModel = viewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val config by viewModel.deviceConfig.collectAsStateWithLifecycle()
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val isRebooting by viewModel.isRebooting.collectAsStateWithLifecycle()
     val showRebootPrompt by viewModel.showRebootPrompt.collectAsStateWithLifecycle()
+
+    // Localized display names for field-confirm dialogs
+    val displayNameOffThreshold = stringResource(R.string.ps_label_display_name_off)
+    val displayNameDryRun = stringResource(R.string.ps_label_display_name_dry)
+    val displayNameRunning = stringResource(R.string.ps_label_display_name_running)
+    val displayNameOverload = stringResource(R.string.ps_label_display_name_overload)
+    val displayNameDryTimeout = stringResource(R.string.ps_label_display_name_dry_timeout)
+    val displayNameOverloadTimeout = stringResource(R.string.ps_label_display_name_overload_timeout)
 
     val isScanningWifi by viewModel.isScanningWifi.collectAsStateWithLifecycle()
     val wifiNetworks by viewModel.wifiNetworks.collectAsStateWithLifecycle()
@@ -94,19 +107,36 @@ fun SettingsScreen(
     var connMode by remember(config) { mutableIntStateOf(config?.connMode ?: 1) }
     var wifiSSID by remember(config) { mutableStateOf(config?.wifiSSID ?: "") }
     var wifiPass by remember(config) { mutableStateOf(config?.wifiPass ?: "") }
-    var isWifiOpen by remember { mutableStateOf(false) }
+
+    // Track initial values to detect what actually changed
+    val initialConnMode by remember(config) { mutableIntStateOf(config?.connMode ?: 1) }
+    val initialWifiSSID by remember(config) { mutableStateOf(config?.wifiSSID ?: "") }
+    val initialWifiPass by remember(config) { mutableStateOf(config?.wifiPass ?: "") }
+    // True when user explicitly edited the password (typed something different from the masked value)
+    var wifiPassEdited by remember(config) { mutableStateOf(false) }
+
+    // Keep last scanned networks to derive open/encrypted status
+    var lastScannedNetworks by remember { mutableStateOf<List<WifiNetwork>>(emptyList()) }
+
+    // Derive isWifiOpen from current SSID vs scanned list (only true if matched scanned network is open)
+    val matchedNetwork = lastScannedNetworks.firstOrNull { it.ssid == wifiSSID.trim() }
+    val isWifiOpen = matchedNetwork != null && !matchedNetwork.isEncrypt
 
     var debugSSID by remember(config) { mutableStateOf(config?.debugSSID ?: "") }
     var debugPass by remember(config) { mutableStateOf(config?.debugPass ?: "") }
+
+    val initialDebugSSID by remember(config) { mutableStateOf(config?.debugSSID ?: "") }
+    val initialDebugPass by remember(config) { mutableStateOf(config?.debugPass ?: "") }
+    var debugPassEdited by remember(config) { mutableStateOf(false) }
 
     var sysLogFileEnabled by remember(config) { mutableStateOf(config?.sysLogFileEnabled ?: false) }
     var sysLogFileLevel by remember(config) { mutableStateOf(config?.sysLogFileLevel?.toString() ?: "0") }
 
     // Form states - Pump Specific
     var pumpMode by remember(config) { mutableStateOf(config?.pumpMode ?: true) }
-    var threshOff by remember(config) { mutableStateOf(config?.threshOff?.toString() ?: "100") }
-    var threshDry by remember(config) { mutableStateOf(config?.threshNoWater?.toString() ?: "2000") }
-    var threshRunning by remember(config) { mutableStateOf(config?.threshRunning?.toString() ?: "5000") }
+    var threshOff by remember(config) { mutableStateOf(config?.threshOff?.toString() ?: "10") }
+    var threshDry by remember(config) { mutableStateOf(config?.threshNoWater?.toString() ?: "300") }
+    var threshRunning by remember(config) { mutableStateOf(config?.threshRunning?.toString() ?: "750") }
     var threshOverload by remember(config) { mutableStateOf(config?.threshOverload?.toString() ?: "20000") }
     var dryTimeout by remember(config) { mutableStateOf(config?.dryTimeout?.toString() ?: "7000") }
     var overloadTimeout by remember(config) { mutableStateOf(config?.overloadTimeout?.toString() ?: "1000") }
@@ -127,6 +157,8 @@ fun SettingsScreen(
     var showRelayModeDialog by remember { mutableStateOf<Int?>(null) }
     var showLogSwitchDialog by remember { mutableStateOf<Boolean?>(null) }
     var showLogLevelDialog by remember { mutableStateOf<String?>(null) }
+    // Pending network config changes awaiting user confirmation
+    var pendingNetworkUpdates by remember { mutableStateOf<Map<String, Any>?>(null) }
 
     val focusManager = LocalFocusManager.current
 
@@ -171,9 +203,9 @@ fun SettingsScreen(
             onFieldFocusLost = { key, displayName, newValStr ->
                 val newInt = newValStr.toIntOrNull()
                 val oldInt = when(key) {
-                    "threshOff" -> config?.threshOff ?: 100
-                    "threshNoWater" -> config?.threshNoWater ?: 2000
-                    "threshRunning" -> config?.threshRunning ?: 5000
+                    "threshOff" -> config?.threshOff ?: 1
+                    "threshNoWater" -> config?.threshNoWater ?: 300
+                    "threshRunning" -> config?.threshRunning ?: 750
                     "threshOverload" -> config?.threshOverload ?: 20000
                     "dryTimeout" -> config?.dryTimeout ?: 7000
                     "overloadTimeout" -> config?.overloadTimeout ?: 1000
@@ -182,9 +214,9 @@ fun SettingsScreen(
 
                 val revertAction: () -> Unit = {
                     when(key) {
-                        "threshOff" -> threshOff = (config?.threshOff ?: 100).toString()
-                        "threshNoWater" -> threshDry = (config?.threshNoWater ?: 2000).toString()
-                        "threshRunning" -> threshRunning = (config?.threshRunning ?: 5000).toString()
+                        "threshOff" -> threshOff = (config?.threshOff ?: 1).toString()
+                        "threshNoWater" -> threshDry = (config?.threshNoWater ?: 400).toString()
+                        "threshRunning" -> threshRunning = (config?.threshRunning ?: 1000).toString()
                         "threshOverload" -> threshOverload = (config?.threshOverload ?: 20000).toString()
                         "dryTimeout" -> dryTimeout = (config?.dryTimeout ?: 7000).toString()
                         "overloadTimeout" -> overloadTimeout = (config?.overloadTimeout ?: 1000).toString()
@@ -194,20 +226,28 @@ fun SettingsScreen(
                 if (newInt != null && newInt != oldInt) {
                     var isValid = true
                     if (key.startsWith("thresh")) {
-                        val offVal = if (key == "threshOff") newInt else threshOff.toIntOrNull() ?: (config?.threshOff ?: 100)
-                        val dryVal = if (key == "threshNoWater") newInt else threshDry.toIntOrNull() ?: (config?.threshNoWater ?: 2000)
-                        val runningVal = if (key == "threshRunning") newInt else threshRunning.toIntOrNull() ?: (config?.threshRunning ?: 5000)
+                        val offVal = if (key == "threshOff") newInt else threshOff.toIntOrNull() ?: (config?.threshOff ?: 10)
+                        val dryVal = if (key == "threshNoWater") newInt else threshDry.toIntOrNull() ?: (config?.threshNoWater ?: 300)
+                        val runningVal = if (key == "threshRunning") newInt else threshRunning.toIntOrNull() ?: (config?.threshRunning ?: 750)
                         val overloadVal = if (key == "threshOverload") newInt else threshOverload.toIntOrNull() ?: (config?.threshOverload ?: 20000)
 
-                        if (!(offVal < dryVal && dryVal < runningVal && runningVal < overloadVal)) {
-                            isValid = false
-                            viewModel.showMessage("Lỗi: Ngưỡng Tắt < Cạn Nước < Chạy BT < Quá Tải")
-                            revertAction()
+                        if (key == "threshOverload") {
+                            if (overloadVal <= 0) {
+                                isValid = false
+                                viewModel.showMessage(context.getString(R.string.settings_timeout_positive))
+                                revertAction()
+                            }
+                        } else {
+                            if (!(offVal < dryVal && dryVal < runningVal)) {
+                                isValid = false
+                                viewModel.showMessage(context.getString(R.string.settings_threshold_order))
+                                revertAction()
+                            }
                         }
                     } else if (key.endsWith("Timeout")) {
                         if (newInt <= 0) {
                             isValid = false
-                            viewModel.showMessage("Thời gian phải > 0")
+                            viewModel.showMessage(context.getString(R.string.settings_timeout_positive))
                             revertAction()
                         }
                     }
@@ -228,9 +268,9 @@ fun SettingsScreen(
             realWatts = realWatts, onRealWattsChange = { realWatts = it },
             onCalibrateClick = {
                 val calibData = mutableMapOf<String, Any>()
-                realAmps.toFloatOrNull()?.let { calibData["real_i"] = it }
-                realVolts.toFloatOrNull()?.let { calibData["real_v"] = it }
-                realWatts.toFloatOrNull()?.let { calibData["real_p"] = it }
+                realAmps.toFloatOrNull()?.let { calibData["current"] = it }
+                realVolts.toFloatOrNull()?.let { calibData["voltage"] = it }
+                realWatts.toFloatOrNull()?.let { calibData["power"] = it }
                 if (calibData.isNotEmpty()) {
                     viewModel.calibrate(calibData)
                     realAmps = ""
@@ -249,27 +289,85 @@ fun SettingsScreen(
             wifiSSID = wifiSSID,
             onWifiSSIDChange = { wifiSSID = it },
             wifiPass = wifiPass,
-            onWifiPassChange = { wifiPass = it },
+            onWifiPassChange = {
+                wifiPass = it
+                // Mark password as edited only if the new value differs from initial
+                wifiPassEdited = (it != initialWifiPass)
+            },
             isWifiOpen = isWifiOpen,
-            onWifiOpenChange = { isWifiOpen = it },
+            onWifiOpenChange = { /* derived, no-op */ },
             debugSSID = debugSSID,
             onDebugSSIDChange = { debugSSID = it },
             debugPass = debugPass,
-            onDebugPassChange = { debugPass = it },
+            onDebugPassChange = {
+                debugPass = it
+                debugPassEdited = (it != initialDebugPass)
+            },
             isScanningWifi = isScanningWifi,
             onScanWifiClick = { viewModel.scanWifi() },
             onSaveNetworkClick = {
-                val updates = mutableMapOf<String, Any>(
-                    "connMode" to connMode
-                )
-                if (connMode == 1) {
-                    updates["wifiSSID"] = wifiSSID
-                    updates["wifiPass"] = wifiPass
-                } else if (connMode == 2) {
-                    updates["debugSSID"] = debugSSID
-                    updates["debugPass"] = debugPass
+                val updates = mutableMapOf<String, Any>()
+                // Always include connMode if it changed
+                if (connMode != initialConnMode) {
+                    updates["connMode"] = connMode
                 }
-                viewModel.saveConfig(updates)
+                if (connMode == 1) {
+                    val matched = lastScannedNetworks.firstOrNull { it.ssid == wifiSSID.trim() }
+                    if (matched != null) {
+                        // Mạng có trong danh sách quét
+                        if (matched.isEncrypt) {
+                            // Mạng bắt buộc mật khẩu: nếu sửa pass thì phải đủ 8-64 ký tự
+                            if (wifiPassEdited && wifiPass.length !in 8..64) {
+                                viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                                return@NetworkConnectionModeCard
+                            }
+                        }
+                    } else {
+                        // Mạng nhập tay (không có trong danh sách quét):
+                        // Không nhập pass -> OK (mạng open). Nếu đã nhập pass -> phải đủ 8-64 ký tự
+                        if (wifiPassEdited && wifiPass.isNotEmpty() && wifiPass.length !in 8..64) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                            return@NetworkConnectionModeCard
+                        }
+                    }
+
+                    // Validate SSID when changed
+                    if (wifiSSID != initialWifiSSID) {
+                        if (wifiSSID.trim().isEmpty()) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_ssid_empty))
+                            return@NetworkConnectionModeCard
+                        }
+                        updates["wifiSSID"] = wifiSSID.trim()
+                    }
+                    // Only include password if user explicitly edited it
+                    if (wifiPassEdited) {
+                        if (matched != null && !matched.isEncrypt) {
+                            updates["wifiPass"] = ""
+                        } else {
+                            updates["wifiPass"] = wifiPass
+                        }
+                    }
+                } else if (connMode == 2) {
+                    if (debugSSID != initialDebugSSID) {
+                        if (debugSSID.trim().isEmpty()) {
+                            viewModel.showMessage(context.getString(R.string.settings_wifi_ssid_empty))
+                            return@NetworkConnectionModeCard
+                        }
+                        updates["debugSSID"] = debugSSID.trim()
+                    }
+                    if (debugPassEdited && debugPass.isNotEmpty() && debugPass.length !in 8..64) {
+                        viewModel.showMessage(context.getString(R.string.settings_wifi_pass_length))
+                        return@NetworkConnectionModeCard
+                    }
+                    if (debugPassEdited) {
+                        updates["debugPass"] = debugPass
+                    }
+                }
+                if (updates.isEmpty()) {
+                    viewModel.showMessage(context.getString(R.string.cs_msg_no_changes))
+                } else {
+                    pendingNetworkUpdates = updates
+                }
             },
             isSaving = isSaving
         )
@@ -305,20 +403,54 @@ fun SettingsScreen(
         networks = wifiNetworks,
         onSelectNetwork = { network ->
             wifiSSID = network.ssid
-            isWifiOpen = !network.isEncrypt
-            if (isWifiOpen) {
-                wifiPass = ""
-            }
+            // Selecting from scan always clears password and marks it as edited
+            wifiPass = ""
+            wifiPassEdited = true
+            // Persist scanned networks for open/encrypted validation
+            lastScannedNetworks = wifiNetworks
         },
-        onDismiss = { viewModel.dismissWifiScanDialog() }
+        onDismiss = {
+            // Persist networks even when dismissing dialog
+            if (wifiNetworks.isNotEmpty()) lastScannedNetworks = wifiNetworks
+            viewModel.dismissWifiScanDialog()
+        }
     )
+
+    // Network Save Confirm Dialog
+    pendingNetworkUpdates?.let { updates ->
+        val summary = updates.entries.joinToString("\n") { (key, value) ->
+            when (key) {
+                "connMode" -> "• ${context.getString(R.string.cs_network_mode)}: ${when (value) {
+                    0 -> context.getString(R.string.cs_ap_hotspot)
+                    1 -> context.getString(R.string.settings_wifi_mqtt)
+                    2 -> context.getString(R.string.settings_wifi_debug)
+                    else -> value.toString()
+                }}"
+                "wifiSSID" -> "• ${context.getString(R.string.cs_label_wifi_ssid)}: $value"
+                "wifiPass" -> "• ${context.getString(R.string.cs_label_wifi_password)}: $value"
+                "debugSSID" -> "• ${context.getString(R.string.cs_label_debug_ssid)}: $value"
+                "debugPass" -> "• ${context.getString(R.string.cs_label_debug_password)}: $value"
+                else -> "• $key: $value"
+            }
+        }
+        ConfirmDialog(
+            title = stringResource(R.string.cs_confirm_network_title),
+            message = stringResource(R.string.cs_confirm_network_msg, summary),
+            confirmText = stringResource(R.string.action_save),
+            onConfirm = {
+                viewModel.saveConfig(updates)
+                pendingNetworkUpdates = null
+            },
+            onDismiss = { pendingNetworkUpdates = null }
+        )
+    }
 
     // Single Field Confirm Dialog
     pendingSingleField?.let { pending ->
         ConfirmDialog(
-            title = "Lưu cấu hình",
-            message = "Bạn có muốn lưu thông số '${pending.displayName}' thành ${pending.newValue} không?",
-            confirmText = "Lưu",
+            title = stringResource(R.string.ps_save_config_title),
+            message = stringResource(R.string.settings_confirm_save_message, pending.displayName, pending.newValue),
+            confirmText = stringResource(R.string.action_save),
             onConfirm = {
                 viewModel.saveConfig(mapOf(pending.key to pending.newValue))
                 pendingSingleField = null
@@ -333,12 +465,12 @@ fun SettingsScreen(
     // Mode Switch Confirm Dialog
     showModeDialog?.let { targetMode ->
         ConfirmDialog(
-            title = if (targetMode) "Chuyển sang Máy Bơm" else "Chuyển sang Rơ-le thường",
+            title = stringResource(if (targetMode) R.string.settings_switch_pump_mode else R.string.settings_switch_switch_mode),
             message = if (targetMode)
-                "Chế độ Máy Bơm sẽ kích hoạt tự động ngắt cạn nước và ngắt dòng cao (nếu bị kẹt)."
+                stringResource(R.string.settings_pump_mode_desc)
             else
-                "Chế độ Rơ-le thường chỉ bật/tắt theo lệnh và chỉ ngắt khi Quá tải nặng.",
-            confirmText = "Đồng ý",
+                stringResource(R.string.settings_switch_mode_desc),
+            confirmText = stringResource(R.string.rss_agree),
             isDangerous = !targetMode,
             onConfirm = {
                 showModeDialog = null
@@ -352,14 +484,14 @@ fun SettingsScreen(
     // Relay Mode Confirm Dialog
     showRelayModeDialog?.let { targetMode ->
         val modeText = when (targetMode) {
-            0 -> "Luôn Tắt"
-            1 -> "Luôn Bật"
-            else -> "Nhớ trước đó"
+            0 -> stringResource(R.string.settings_relay_off)
+            1 -> stringResource(R.string.settings_relay_on)
+            else -> stringResource(R.string.settings_relay_keep_last)
         }
         ConfirmDialog(
-            title = "Đổi trạng thái Relay",
-            message = "Đổi trạng thái khởi động thành: $modeText?",
-            confirmText = "Lưu",
+            title = stringResource(R.string.settings_change_relay_mode),
+            message = context.getString(R.string.settings_relay_mode_message, modeText),
+            confirmText = stringResource(R.string.action_save),
             onConfirm = {
                 showRelayModeDialog = null
                 relayStartMode = targetMode
@@ -372,9 +504,9 @@ fun SettingsScreen(
     // SysLog Switch Confirm Dialog
     showLogSwitchDialog?.let { targetState ->
         ConfirmDialog(
-            title = if (targetState) "Bật SysLog" else "Tắt SysLog",
-            message = if (targetState) "Bật ghi log hệ thống vào tệp flash?" else "Tắt ghi log hệ thống?",
-            confirmText = "Đồng ý",
+            title = stringResource(if (targetState) R.string.rss_syslog_on_title else R.string.rss_syslog_off_title),
+            message = stringResource(if (targetState) R.string.ps_syslog_on_msg else R.string.ps_syslog_off_msg),
+            confirmText = stringResource(R.string.rss_agree),
             onConfirm = {
                 showLogSwitchDialog = null
                 sysLogFileEnabled = targetState
@@ -387,18 +519,18 @@ fun SettingsScreen(
     // SysLog Level Confirm Dialog
     showLogLevelDialog?.let { targetLevel ->
         val levelName = when (targetLevel) {
-            "0" -> "TRACE (Nhiều nhất)"
-            "1" -> "DEBUG (Chi tiết)"
-            "2" -> "INFO (Thông tin)"
-            "3" -> "WARN (Cảnh báo)"
-            "4" -> "ERROR (Lỗi)"
-            "5" -> "FATAL (Nghiêm trọng)"
-            else -> "Mức $targetLevel"
+            "0" -> context.getString(R.string.rss_loglevel_trace)
+            "1" -> context.getString(R.string.rss_loglevel_debug)
+            "2" -> context.getString(R.string.rss_loglevel_info)
+            "3" -> context.getString(R.string.rss_loglevel_warn)
+            "4" -> context.getString(R.string.rss_loglevel_error)
+            "5" -> context.getString(R.string.rss_loglevel_fatal)
+            else -> context.getString(R.string.rss_loglevel_custom, targetLevel)
         }
         ConfirmDialog(
-            title = "Thay đổi Mức độ Log",
-            message = "Bạn có muốn đổi mức độ ghi log thành $levelName không?",
-            confirmText = "Đồng ý",
+            title = context.getString(R.string.rss_loglevel_change_title),
+            message = context.getString(R.string.rss_loglevel_change_msg, levelName),
+            confirmText = stringResource(R.string.rss_agree),
             onConfirm = {
                 showLogLevelDialog = null
                 sysLogFileLevel = targetLevel
@@ -411,9 +543,9 @@ fun SettingsScreen(
     // Reboot Confirmation Dialog
     if (showRebootDialog || showRebootPrompt) {
         ConfirmDialog(
-            title = "Khởi động lại thiết bị",
-            message = if (showRebootPrompt) "Cấu hình vừa thay đổi cần khởi động lại để áp dụng. Khởi động lại ngay?" else "Bạn có muốn khởi động lại thiết bị không?",
-            confirmText = "Khởi động lại",
+            title = stringResource(R.string.rss_reboot_title),
+            message = stringResource(if (showRebootPrompt) R.string.rss_reboot_pending_msg else R.string.rss_reboot_ask_msg),
+            confirmText = stringResource(R.string.settings_reboot_now),
             onConfirm = {
                 showRebootDialog = false
                 viewModel.reboot()
@@ -440,7 +572,7 @@ fun SettingsScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(36.dp))
                     Text(
-                        text = "Đang lưu cấu hình...",
+                        text = stringResource(R.string.cs_saving_config),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -463,7 +595,7 @@ fun SettingsScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(36.dp))
                     Text(
-                        text = "Đang khởi động lại...",
+                        text = stringResource(R.string.rss_rebooting),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -474,9 +606,9 @@ fun SettingsScreen(
     // Factory Reset Confirmation Dialog
     if (showFactoryResetDialog) {
         ConfirmDialog(
-            title = "Khôi phục cài đặt gốc",
-            message = "Thao tác này sẽ xóa toàn bộ cấu hình WiFi, hiệu chuẩn và thiết lập trên thiết bị. Thiết bị sẽ trở về trạng thái ban đầu.",
-            confirmText = "Khôi phục gốc",
+            title = stringResource(R.string.rss_factory_title),
+            message = stringResource(R.string.ps_factory_message),
+            confirmText = stringResource(R.string.cs_factory_reset),
             isDangerous = true,
             requiredInput = "reset",
             onConfirm = {
@@ -490,9 +622,9 @@ fun SettingsScreen(
     // Reset Calibration Confirmation Dialog
     if (showResetCalibDialog) {
         ConfirmDialog(
-            title = "Khôi phục hiệu chuẩn mặc định",
-            message = "Bạn có chắc chắn muốn đặt lại các hệ số hiệu chuẩn dòng điện, điện áp và công suất về mặc định không?",
-            confirmText = "Đặt lại",
+            title = stringResource(R.string.settings_reset_calibration_title),
+            message = stringResource(R.string.settings_reset_calibration_msg),
+            confirmText = stringResource(R.string.settings_reset_to_default),
             isDangerous = true,
             onConfirm = {
                 showResetCalibDialog = false
@@ -537,7 +669,7 @@ private fun PumpModeCard(
                     }
                 }
                 Text(
-                    text = "Chế độ hoạt động thiết bị",
+                    text = stringResource(R.string.ps_device_mode_section),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -545,13 +677,16 @@ private fun PumpModeCard(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Pump Mode Pill
                 Surface(
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .clip(MaterialTheme.shapes.small)
                         .clickable { onPumpModeChange(true) },
                     shape = MaterialTheme.shapes.medium,
@@ -560,7 +695,9 @@ private fun PumpModeCard(
                     border = if (pumpMode) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Row(
@@ -569,14 +706,17 @@ private fun PumpModeCard(
                         ) {
                             Icon(Icons.Filled.WaterDrop, contentDescription = null, tint = CyanBlue, modifier = Modifier.size(18.dp))
                             Text(
-                                text = "Chế độ Máy Bơm",
+                                text = stringResource(R.string.settings_pump_mode),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (pumpMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                color = if (pumpMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Text(
-                            text = "Bảo vệ Cạn nước, Quá tải",
+                            text = stringResource(R.string.ps_pump_mode_protect_desc),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -587,6 +727,7 @@ private fun PumpModeCard(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .clip(MaterialTheme.shapes.small)
                         .clickable { onPumpModeChange(false) },
                     shape = MaterialTheme.shapes.medium,
@@ -595,7 +736,9 @@ private fun PumpModeCard(
                     border = if (!pumpMode) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Row(
@@ -604,14 +747,17 @@ private fun PumpModeCard(
                         ) {
                             Icon(Icons.Filled.Power, contentDescription = null, tint = OrangeWarning, modifier = Modifier.size(18.dp))
                             Text(
-                                text = "Công tắt thường",
+                                text = stringResource(R.string.ps_manual_switch_label),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (!pumpMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                color = if (!pumpMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Text(
-                            text = "Bật/tắt thuần túy",
+                            text = stringResource(R.string.ps_pure_toggle_desc),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -634,6 +780,12 @@ private fun PumpProtectionCard(
     relayStartMode: Int, onRelayStartModeChange: (Int) -> Unit,
     onFieldFocusLost: (key: String, displayName: String, newValStr: String) -> Unit
 ) {
+    val displayNameOffThreshold = stringResource(R.string.ps_label_display_name_off)
+    val displayNameDryRun = stringResource(R.string.ps_label_display_name_dry)
+    val displayNameRunning = stringResource(R.string.ps_label_display_name_running)
+    val displayNameOverload = stringResource(R.string.ps_label_display_name_overload)
+    val displayNameDryTimeout = stringResource(R.string.ps_label_display_name_dry_timeout)
+    val displayNameOverloadTimeout = stringResource(R.string.ps_label_display_name_overload_timeout)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -658,67 +810,73 @@ private fun PumpProtectionCard(
                     }
                 }
                 Text(
-                    text = "Ngưỡng bảo vệ & Thời gian ngắt",
+                    text = stringResource(R.string.ps_thresholds_timeouts_section),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // Current Thresholds
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactTextField(
-                    value = threshOff, onValueChange = onThreshOffChange,
-                    label = "Ngưỡng Tắt (mA)", isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("threshOff", "Ngưỡng Tắt", threshOff) }
-                )
-                CompactTextField(
-                    value = threshOverload, onValueChange = onThreshOverloadChange,
-                    label = "Quá tải (mA)", isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("threshOverload", "Quá tải", threshOverload) }
-                )
-            }
-
+            // Protection Thresholds & Timeouts
             if (pumpMode) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactTextField(
+                        value = threshOverload, onValueChange = onThreshOverloadChange,
+                        label = stringResource(R.string.ps_label_overload_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOverload", displayNameOverload, threshOverload) }
+                    )
+                    CompactTextField(
+                        value = threshOff, onValueChange = onThreshOffChange,
+                        label = stringResource(R.string.ps_label_off_threshold_w), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOff", displayNameOffThreshold, threshOff) }
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactTextField(
                         value = threshDry, onValueChange = onThreshDryChange,
-                        label = "Cạn nước (mA)", isNumber = true, modifier = Modifier.weight(1f),
-                        onFocusLost = { onFieldFocusLost("threshNoWater", "Cạn nước", threshDry) }
+                        label = stringResource(R.string.ps_label_dry_w), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshNoWater", displayNameDryRun, threshDry) }
                     )
                     CompactTextField(
                         value = threshRunning, onValueChange = onThreshRunningChange,
-                        label = "Chạy bình thường (mA)", isNumber = true, modifier = Modifier.weight(1f),
-                        onFocusLost = { onFieldFocusLost("threshRunning", "Chạy bình thường", threshRunning) }
+                        label = stringResource(R.string.ps_label_running_w), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshRunning", displayNameRunning, threshRunning) }
                     )
                 }
-            }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-            // Timeouts
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (pumpMode) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactTextField(
                         value = dryTimeout, onValueChange = onDryTimeoutChange,
-                        label = "Timeout Cạn nước (ms)", isNumber = true, modifier = Modifier.weight(1f),
-                        onFocusLost = { onFieldFocusLost("dryTimeout", "Timeout Cạn nước", dryTimeout) }
+                        label = stringResource(R.string.ps_label_dry_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("dryTimeout", displayNameDryTimeout, dryTimeout) }
+                    )
+                    CompactTextField(
+                        value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
+                        label = stringResource(R.string.ps_label_overload_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("overloadTimeout", displayNameOverloadTimeout, overloadTimeout) }
                     )
                 }
-                CompactTextField(
-                    value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
-                    label = "Timeout Quá tải (ms)", isNumber = true, modifier = Modifier.weight(1f),
-                    onFocusLost = { onFieldFocusLost("overloadTimeout", "Timeout Quá tải", overloadTimeout) }
-                )
-                if (!pumpMode) {
-                    Spacer(modifier = Modifier.weight(1f))
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactTextField(
+                        value = threshOverload, onValueChange = onThreshOverloadChange,
+                        label = stringResource(R.string.ps_label_overload_ma), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("threshOverload", displayNameOverload, threshOverload) }
+                    )
+                    CompactTextField(
+                        value = overloadTimeout, onValueChange = onOverloadTimeoutChange,
+                        label = stringResource(R.string.ps_label_overload_timeout_ms), isNumber = true, modifier = Modifier.weight(1f),
+                        onFocusLost = { onFieldFocusLost("overloadTimeout", displayNameOverloadTimeout, overloadTimeout) }
+                    )
                 }
             }
 
             // Relay Start Mode Pills
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "Trạng thái Relay sau khi cắm nguồn",
+                    text = stringResource(R.string.settings_relay_startup_mode),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -726,7 +884,7 @@ private fun PumpProtectionCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("Luôn Tắt" to 0, "Luôn Bật" to 1, "Nhớ trước đó" to 2).forEach { (label, mode) ->
+                    listOf(stringResource(R.string.settings_relay_off) to 0, stringResource(R.string.settings_relay_on) to 1, stringResource(R.string.settings_relay_keep_last) to 2).forEach { (label, mode) ->
                         val isSelected = relayStartMode == mode
                         Surface(
                             modifier = Modifier
@@ -781,7 +939,7 @@ private fun PumpCalibrationCard(
                     }
                 }
                 Text(
-                    text = "Hiệu chuẩn cảm biến công suất",
+                    text = stringResource(R.string.settings_calibration_coefficients),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -791,15 +949,15 @@ private fun PumpCalibrationCard(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CompactTextField(
                     value = realAmps, onValueChange = onRealAmpsChange,
-                    label = "Dòng điện (A)", isNumber = true, modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.ps_label_current_a), isNumber = true, modifier = Modifier.weight(1f)
                 )
                 CompactTextField(
                     value = realVolts, onValueChange = onRealVoltsChange,
-                    label = "Điện áp (V)", isNumber = true, modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.ps_label_voltage_v), isNumber = true, modifier = Modifier.weight(1f)
                 )
                 CompactTextField(
                     value = realWatts, onValueChange = onRealWattsChange,
-                    label = "Công suất (W)", isNumber = true, modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.ps_label_power_w), isNumber = true, modifier = Modifier.weight(1f)
                 )
             }
 
@@ -817,7 +975,7 @@ private fun PumpCalibrationCard(
                 ) {
                     Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Đặt lại mặc định", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.settings_reset_to_default), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
@@ -830,7 +988,7 @@ private fun PumpCalibrationCard(
                 ) {
                     Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Hiệu chuẩn", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.ps_calibrate_action), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

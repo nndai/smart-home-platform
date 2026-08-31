@@ -86,10 +86,7 @@ class WebSocketManager {
 
     this._ws.onmessage = (event) => {
       if (this._onMessage) {
-        if (typeof event.data === 'string') {
-          this._onMessage(event.data);
-        }
-        // Binary data ignored on monitor connection
+        this._onMessage(event.data);
       }
     };
 

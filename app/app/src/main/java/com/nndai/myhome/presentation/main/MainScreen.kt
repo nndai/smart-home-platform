@@ -1,6 +1,8 @@
 package com.nndai.myhome.presentation.main
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -82,9 +84,12 @@ fun MainScreen(
         },
         bottomBar = {
             NavigationBar(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .height(60.dp),
+                windowInsets = WindowInsets(0),
                 containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.height(64.dp)
+                contentColor = MaterialTheme.colorScheme.onSurface
             ) {
                 val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
@@ -153,6 +158,11 @@ fun MainScreen(
                     onAddDeviceClick = { parentNavController.navigate("pairing") },
                     onNavigateToDevice = { deviceId, profile ->
                         parentNavController.navigate("device/$deviceId/$profile")
+                    },
+                    onManageMembers = { uuid, key, name ->
+                        parentNavController.navigate(
+                            "members/$uuid/$key/${android.net.Uri.encode(name)}"
+                        )
                     }
                 )
             }

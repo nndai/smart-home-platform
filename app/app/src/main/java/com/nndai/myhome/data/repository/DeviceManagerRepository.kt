@@ -8,7 +8,6 @@ import com.nndai.myhome.data.pairing.PendingClaim
 import com.nndai.myhome.data.pairing.PendingClaimStore
 import com.nndai.myhome.data.remote.SupabaseConfig
 import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +46,16 @@ class DeviceManagerRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Clears user-scoped local state: cached device list + in-memory flow.
+     * Called when the session ends (logout / token revoked). Device logs are
+     * stored separately (LogManager) and intentionally kept across accounts.
+     */
+    fun clearLocalState() {
+        localCache.clearCache()
+        _devices.value = emptyList()
+    }
+
     suspend fun fetchDevices(): Result<Unit> {
         syncPendingClaims()
         return fetchDevicesInternal()
@@ -55,9 +64,9 @@ class DeviceManagerRepository(private val context: Context) {
     private suspend fun fetchDevicesInternal(): Result<Unit> {
         return try {
             val oldList = _devices.value
-            val result = supabaseDb.from("devices")
-                .select(Columns.list("id", "device_id", "profile", "name", "owner_id", "status"))
-                .decodeList<Device>()
+            // get_my_devices (0008_sharing.sql): devices + vai trò của chính mình
+            // (role) — dùng cho badge và phân quyền UI. Decode thẳng vào Device.
+            val result = supabaseDb.rpc("get_my_devices").decodeList<Device>()
 
             // Fetch control keys securely via RPC (bypassing RLS read restrictions on the devices table)
             try {
@@ -69,6 +78,15 @@ class DeviceManagerRepository(private val context: Context) {
                         keyStore.save(item.device_id, hexKey)
                     }
                 }
+                // Prune stale keys: a device no longer in the authorized set
+                // (membership revoked, device removed) must not keep its local
+                // key — otherwise an ex-member could still sign commands.
+                val validIds = keysResponse.map { it.device_id }.toSet()
+                var pruned = 0
+                keyStore.storedIds().filter { it !in validIds }.forEach {
+                    keyStore.remove(it); pruned++
+                }
+                Log.i(TAG, "Control keys synced: ${keysResponse.size} from server, $pruned pruned locally.")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to sync control keys via RPC: ${e.message}")
             }
@@ -222,6 +240,41 @@ class DeviceManagerRepository(private val context: Context) {
     }
 
     /**
+     * Cập nhật tên thiết bị trong Supabase DB và cập nhật local cache.
+     */
+    suspend fun updateDeviceName(deviceId: String, newName: String): Result<Unit> {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(IllegalArgumentException("Tên thiết bị không được để trống"))
+        }
+        return try {
+            supabaseDb.from("devices").update(
+                {
+                    set("name", trimmed)
+                }
+            ) {
+                filter {
+                    eq("device_id", deviceId)
+                }
+            }
+
+            // Cập nhật StateFlow và local cache
+            _devices.value = _devices.value.map {
+                if (it.device_id == deviceId) it.copy(name = trimmed) else it
+            }
+            localCache.saveCachedDevices(_devices.value)
+            _lastError.value = null
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "updateDeviceName() failed for $deviceId: ${e.message}")
+            _lastError.value = "Không thể đổi tên thiết bị: ${e.message}"
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Xóa liên kết thiết bị cho user hiện tại.
      * DB function remove_device:
      *   - Xóa dòng device_members của user.
@@ -235,6 +288,15 @@ class DeviceManagerRepository(private val context: Context) {
             }
             supabaseDb.rpc("remove_device", params)
             pendingStore.remove(deviceId)
+
+            // Dọn dẹp key trong ControlKeyStore
+            val keyStore = com.nndai.myhome.data.pairing.ControlKeyStore(context)
+            keyStore.remove(deviceId)
+
+            // Dọn dẹp trong HandshakeManager
+            val handshakeMgr = com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager()
+            handshakeMgr.unregisterDevice(deviceId)
+
             fetchDevicesInternal()
             _lastError.value = null
             Result.success(Unit)
@@ -245,6 +307,24 @@ class DeviceManagerRepository(private val context: Context) {
             _lastError.value = "Không thể xóa thiết bị: ${e.message}"
             Result.failure(e)
         }
+    }
+
+    /**
+     * Rời khỏi một thiết bị được chia sẻ (member/viewer tự rời — RPC
+     * leave_device trong 0008_sharing.sql). Dọn key + handshake cục bộ,
+     * rồi làm mới danh sách.
+     */
+    suspend fun leaveSharedDevice(deviceId: String, deviceUuid: String): Result<Unit> {
+        val shareRepo = com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceShareRepository()
+        val result = shareRepo.leaveDevice(deviceUuid)
+        if (result.isSuccess) {
+            pendingStore.remove(deviceId)
+            com.nndai.myhome.data.pairing.ControlKeyStore(context).remove(deviceId)
+            val handshakeMgr = com.nndai.myhome.data.di.PumpRepositoryProvider.provideDeviceHandshakeManager()
+            handshakeMgr.unregisterDevice(deviceId)
+            fetchDevicesInternal()
+        }
+        return result
     }
 
     companion object {

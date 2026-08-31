@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.device.common.deviceinfo
+﻿package com.nndai.myhome.presentation.device.common.deviceinfo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -202,7 +202,7 @@ private fun RenderSectionContent(data: Any) {
         }
         else -> {
             InfoRow(
-                label = "Value",
+                label = stringResource(R.string.info_label_value),
                 value = formatDynamicValue("val", data),
                 showDivider = false
             )

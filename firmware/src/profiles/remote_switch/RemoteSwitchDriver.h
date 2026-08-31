@@ -30,12 +30,12 @@ public:
 
     void begin(DeviceConfig& cfg, ConfigSaveFn saveFn) override;
     void loop(uint32_t nowMs) override;
-    bool handleCmd(const char* cmd, const JsonDocument& payload, JsonDocument& resp) override;
-    void getStatus(JsonDocument& resp) override;
-    void getConfig(JsonDocument& resp) override;
-    bool setConfig(const JsonDocument& payload, JsonDocument& resp) override;
+    bool handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
+    void getStatus(protocol::CommandResponse& resp) override;
+    void getConfig(protocol::CommandResponse& resp) override;
+    bool setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) override;
     void setServices(const DriverServices& svc) override;
-    void handleTargetStatus(const JsonDocument& doc) override;
+    void handleTargetStatus(uint8_t cmdId, const protocol::CommandRequest& doc) override;
 
 private:
     RemoteSwitchConfig* _cfg;
@@ -61,7 +61,7 @@ private:
     TargetVisualState _visualState = TargetVisualState::OFF;
 
     // ── Timing (millis, chống wrap bằng so sánh unsigned hiệu số) ──
-    static constexpr uint32_t WAIT_RESPONSE_MS   = 5000;   // timeout chờ phản hồi setRelay
+    static constexpr uint32_t WAIT_RESPONSE_MS   = 15000;  // timeout chờ phản hồi setRelay / pump vào RUNNING OK
     static constexpr uint32_t ERROR_AUTOOFF_MS   = 60000;  // error không thao tác → tắt đèn
     static constexpr uint32_t STATUS_TIMEOUT_MS  = 70000;  // 1p10s không nhận status → lỗi connect
     static constexpr uint32_t CONNECT_BLINK_ON   = 300;    // cụm nháy đỏ (wifi/mqtt/ntp)
@@ -75,7 +75,6 @@ private:
     bool _targetOn = false;
     bool _targetError = false;
     char _targetPumpStateStr[16] = ""; // "RUNNING OK" / "DRY RUN" / ... (chặt: chỉ xanh khi RUNNING OK)
-    uint32_t _targetSeq = 0;
 
     void updateLeds(uint32_t nowMs);
     void updateConnectLeds(uint32_t nowMs);
@@ -86,9 +85,8 @@ private:
     void sendRelayCommand(bool on);
     void sendToggleCommand() { sendRelayCommand(!_targetOn); }
     void requestStatusStream();
-    bool buildEnvelope(const char* cmd, const JsonDocument& payload, JsonDocument& envelope);
     void subscribeTargetTopic();
-    void updateTargetError(const JsonDocument& doc);
+    void updateTargetError(const protocol::CommandRequest& doc);
 
     // Callbacks for button
     void _onButtonClick();

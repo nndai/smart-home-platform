@@ -15,8 +15,10 @@ inline void wdtFeed() { WDT.feed(); }
 #elif defined(ARDUINO_ARCH_ESP8266)
 
 namespace compat {
-inline bool wdtEnable(uint32_t timeout) { (void)timeout; ESP.wdtEnable(WDTO_8S); return true; }
-inline void wdtFeed() { ESP.wdtFeed(); }
+// inline bool wdtEnable(uint32_t timeout) { (void)timeout; ESP.wdtEnable(WDTO_8S); return true; }
+// inline void wdtFeed() { ESP.wdtFeed(); }
+    inline bool wdtEnable(uint32_t timeout) {return true; }
+    inline void wdtFeed() { }
 }
 
 // ── MCU khác (ESP32): esp_task_wdt ──

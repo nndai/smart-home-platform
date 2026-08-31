@@ -39,7 +39,6 @@ class PumpCommandDataSource(
     init {
         scope.launch(dispatcher) {
             channel.incoming.collect { raw ->
-                Log.d(TAG, "incoming payload=\n$raw")
                 handleIncoming(raw)
             }
         }
@@ -85,9 +84,7 @@ class PumpCommandDataSource(
     }
 
     suspend fun setDeviceMode(pumpMode: Boolean) {
-        sendCommand("setDeviceMode", JSONObject().apply {
-            put("pumpMode", pumpMode)
-        })
+        setConfig(mapOf("pumpMode" to pumpMode))
     }
 
     suspend fun getInfo(stream: Boolean = false) {
@@ -168,25 +165,72 @@ class PumpCommandDataSource(
                 put("payload", payload)
             }
         }
-        sendJson(json)
+        sendBinary(json)
     }
 
-    suspend fun sendRawJson(rawJson: String): Boolean {
-        Log.d(TAG, "sendRawJson payload=${rawJson.take(200)}")
+    suspend fun sendRaw(rawInput: String): Boolean {
+        Log.d(TAG, "sendRaw payload=${rawInput.take(200)}")
+        val bytesToSend: ByteArray = try {
+            val json = JSONObject(rawInput)
+            com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
+        } catch (e: Exception) {
+            // If input is already raw hex string like "B7 01 00 00 A5"
+            val hexClean = rawInput.replace(" ", "").replace("0x", "")
+            if (hexClean.matches(Regex("^[0-9a-fA-F]+$")) && hexClean.length % 2 == 0) {
+                hexToByteArray(hexClean)
+            } else {
+                Log.e(TAG, "sendRaw: cannot parse JSON to binary: ${e.message}")
+                _events.tryEmit(PumpCommandEvent.Failure("Invalid JSON for Binary mode: ${e.message}"))
+                return false
+            }
+        }
+
         val sent = withContext(dispatcher) {
-            channel.send(rawJson)
+            channel.send(bytesToSend)
         }
         if (!sent) {
-            _events.tryEmit(PumpCommandEvent.Failure("Cannot send raw JSON"))
+            _events.tryEmit(PumpCommandEvent.Failure("Cannot send raw command"))
         }
         return sent
     }
 
-    private suspend fun sendJson(json: JSONObject) {
-        val payload = json.toString()
-        Log.d(TAG, "sendJson payload=${payload.take(200)}")
+    suspend fun sendRawJson(rawJson: String): Boolean {
+        return sendRaw(rawJson)
+    }
+
+    private suspend fun sendBinary(json: JSONObject) {
+        val cmdStr = json.optString("cmd", "")
+        val binaryBytes = try {
+            com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to serialize binary frame for cmd=$cmdStr: ${e.message}", e)
+            null
+        }
+
         val sent = withContext(dispatcher) {
-            channel.send(payload)
+            if (binaryBytes != null && binaryBytes.size >= 3) {
+                Log.d(TAG, "sendBinary payload length=${binaryBytes.size} cmd=$cmdStr")
+                channel.send(binaryBytes)
+            } else {
+                val rawStr = json.toString()
+                Log.d(TAG, "Fallback sendJson payload length=${rawStr.length} cmd=$cmdStr")
+                channel.send(rawStr.toByteArray(Charsets.UTF_8))
+            }
+        }
+        if (!sent) {
+            _events.tryEmit(
+                PumpCommandEvent.Failure(
+                    "Cannot send command: $cmdStr"
+                )
+            )
+        }
+    }
+
+    private suspend fun sendJson(json: JSONObject) {
+        val rawStr = json.toString()
+        Log.d(TAG, "sendJson payload length=${rawStr.length} cmd=${json.optString("cmd")}")
+        val sent = withContext(dispatcher) {
+            channel.send(rawStr.toByteArray(Charsets.UTF_8))
         }
         if (!sent) {
             _events.tryEmit(
@@ -197,11 +241,24 @@ class PumpCommandDataSource(
         }
     }
 
+    private fun hexToByteArray(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
+
     // ── Parse incoming ──
 
-    private fun handleIncoming(raw: String) {
+    private fun handleIncoming(raw: ByteArray) {
         try {
-            val json = JSONObject(raw)
+            val json = com.nndai.myhome.protocol.BinaryProtocolParser.parse(raw) 
+                ?: JSONObject(String(raw, Charsets.UTF_8))
+                
             val cmd = json.optString("cmd", "")
             Log.d(TAG, "handleIncoming cmd=$cmd")
 
@@ -230,9 +287,10 @@ class PumpCommandDataSource(
                 }
             }
         } catch (ex: JSONException) {
-            Log.d(TAG, "handleIncoming() raw string message: $raw")
-            if (raw.isNotBlank()) {
-                _events.tryEmit(PumpCommandEvent.LogMessage(raw))
+            val rawStr = String(raw, Charsets.UTF_8)
+            Log.d(TAG, "handleIncoming() raw string message: $rawStr")
+            if (rawStr.isNotBlank()) {
+                _events.tryEmit(PumpCommandEvent.LogMessage(rawStr))
             }
         }
     }
@@ -257,6 +315,7 @@ class PumpCommandDataSource(
                 str = json.optString("pumpStateStr", json.optString("pumpState"))
             ),
             timestamp = json.optLong("timestamp", 0L),
+            onDuration = json.optLong("onDuration", 0L),
             targetId = json.optString("targetId", ""),
             targetType = json.optString("targetType", ""),
             targetPaired = json.optBoolean("targetPaired", false),
@@ -284,12 +343,12 @@ class PumpCommandDataSource(
             debugGateway = json.optString("debugGateway", ""),
             debugNetmask = json.optString("debugNetmask", ""),
             pumpMode = json.optBoolean("pumpMode", true),
-            threshOff = json.optInt("threshOff", 100),
-            threshNoWater = json.optInt("threshNoWater", 2000),
-            threshRunning = json.optInt("threshRunning", 5000),
+            threshOff = json.optInt("threshOff", 1),
+            threshNoWater = json.optInt("threshNoWater", 400),
+            threshRunning = json.optInt("threshRunning", 1000),
             threshOverload = json.optInt("threshOverload", 20000),
-            dryTimeout = json.optInt("dryTimeout", 10000),
-            overloadTimeout = json.optInt("overloadTimeout", 3000),
+            dryTimeout = json.optInt("dryTimeout", 7000),
+            overloadTimeout = json.optInt("overloadTimeout", 1000),
             relayStartMode = json.optInt("relayStartMode", 0),
             cCal = json.optDouble("cCal", 1.0),
             vCal = json.optDouble("vCal", 1.0),
@@ -445,7 +504,11 @@ class PumpCommandDataSource(
         val status = json.optString("status", "")
         val success = status == "ok"
         val path = json.optString("path", "")
-        val data = json.optString("data", "")
+        val data: ByteArray = when (val rawData = json.opt("data")) {
+            is ByteArray -> rawData
+            is String -> rawData.toByteArray(Charsets.UTF_8)
+            else -> ByteArray(0)
+        }
         val offset = json.optLong("offset", 0L)
         val size = json.optLong("size", 0L)
         val more = json.optBoolean("more", false)

@@ -72,7 +72,7 @@ graph TD
 | Dump flash → nạp board khác | AES-GCM + KDF(SHA256(deviceId + FW_SECRET)) | ✅ Clone phải re-pair, không dùng được |
 | Sửa MAC để "khớp" identity | Anchor không phải MAC; dùng UID die flash | ✅ Không sửa được |
 | Recompile firmware bỏ check | LN882H: không có secure boot → dựa cloud detection; ESP32 (ESP-IDF): secure boot v2 + flash encryption (nâng cấp tùy chọn) | ⚠️ Tùy nền tảng |
-| Replay lệnh | `seq` tăng dần + `ts` + HMAC controlKey, device từ chối seq cũ | ✅ |
+| Replay lệnh | Timestamp window `ts` (±60s) + HMAC controlKey | ✅ |
 | Chạy 2 thiết bị cùng danh tính | Client ID cố định → HiveMQ kick session cũ + app cảnh báo offline bất thường | ✅ |
 | Tái activate vào tài khoản khác | Server-side revocation khi re-pair | ✅ |
 
@@ -90,20 +90,19 @@ devices/{deviceId}/up      → trạng thái thiết bị → app (QoS 1, retain
 ```json
 {
   "reqId": "uuid-ngắn",
-  "seq": 1024,
   "ts": 1750000000,
   "cmd": "setLevel",
   "payload": { "level": 80 },
-  "src": "dev-abc... hoặc app-...",   // senderId — bắt buộc kể từ envelope v2
-  "hmac": "hex64"   // HMAC-SHA256(controlKey, seq|ts|cmd|payload|src)
+  "src": "dev-abc... hoặc app-...",   // senderId
+  "hmac": "hex64"   // HMAC-SHA256(controlKey, ts|cmd|payload|src)
 }
 ```
 
 - `controlKey` (32B): **sinh bởi APP** khi pair, gửi trong lệnh `pair` (xem IDENTITY §1/§4 — getConfig không trả key); lưu mã hóa trên thiết bị + Supabase (RLS — **chỉ OWNER/ADMIN đọc**, xem §6) → phân phối cho các app được chia sẻ
-- `src`: định danh sender ổn định (`dev-{deviceId}` của remote switch khi nút bấm chuyển tiếp lệnh, `app-{hex}` của app). **Nhiều sender ký cùng controlKey nhưng giữ seq riêng** → thiết bị track floor riêng từng sender, không khóa nhau
-- Canonical string: `"<seq>|<ts>|<cmd>|<payload JSON compact>|<src>"` — gồm cả `cmd` + `src` (kẻ đánh cắp 1 lệnh hợp lệ không thể đổi `cmd`/`src`)
-- Thiết bị kiểm tra: `seq > seq_cuối của sender` (bảng RAM, **không persist flash** — sau reboot cửa sổ replay giới hạn bởi `ts`) + `|now - ts| < 60s` (bỏ qua khi NTP chưa set) + HMAC hợp lệ → mới thực thi
-- Trạng thái `up` không cần ký (đã qua TLS + broker auth), kèm `seq` để app phát hiện lệch nhịp
+- `src`: định danh sender ổn định (`dev-{deviceId}` của remote switch khi nút bấm chuyển tiếp lệnh, `app-{hex}` của app).
+- Canonical string: `"<ts>|<cmd>|<payload JSON compact>|<src>"` — gồm cả `cmd` + `src` (kẻ đánh cắp 1 lệnh hợp lệ không thể đổi `cmd`/`src`)
+- Thiết bị kiểm tra: `|now - ts| < 60s` (bỏ qua khi NTP chưa set) + HMAC hợp lệ → mới thực thi
+- Trạng thái `up` không cần ký (đã qua TLS + broker auth)
 
 ### 3.3 Credential HiveMQ (cho gia đình — 1 credential shared)
 
@@ -187,11 +186,11 @@ sequenceDiagram
     participant D as Thiết bị
     U->>A: Bật công tắc đèn
     A->>A: Kiểm tra quyền (viewer? → chặn ở UI)
-    A->>A: Ký HMAC-SHA256(controlKey, seq|ts|cmd|payload)
-    A->>H: publish devices/dev-xxx/cmd {seq, ts, cmd:setRelay, payload:{on:true}, hmac}
+    A->>A: Ký HMAC-SHA256(controlKey, ts|cmd|payload|src)
+    A->>H: publish devices/dev-xxx/cmd {ts, cmd:setRelay, payload:{on:true}, src, hmac}
     Note over A,H: MQTT trực tiếp (credential device-family từ Android Keystore)
     H->>D: chuyển tiếp
-    D->>D: Verify seq/ts/HMAC → relay ON
+    D->>D: Verify ts/HMAC → relay ON
     D->>H: publish devices/dev-xxx/up {cmd:getStatus, relay:on, ...} (retained)
     A->>H: subscribe devices/dev-xxx/up → cập nhật UI realtime
 ```
@@ -237,7 +236,6 @@ graph TD
     subgraph Identity["DeviceIdentity"]
         SECRET["controlKey AES-GCM(SHA256(deviceId + FW_SECRET))"]
         STATE["pairing state máy trạng thái"]
-        CONTROL["controlKey + seq"]
     end
     subgraph Capability["Capability Registry"]
         PUMP["Profile PUMP<br/>power + current/temp sensor<br/>+ auto dry-run/overload (giữ logic hiện tại)"]
@@ -245,7 +243,7 @@ graph TD
         DIMMER["Profile DIMMER<br/>power + level"]
         FAN["Profile FAN<br/>power + speed"]
     end
-    MQTT["MqttClient: topic /devices/{id}/{cmd,up}<br/>envelope + verify seq/ts/hmac"] --> Identity
+    MQTT["MqttClient: topic /devices/{id}/{cmd,up}<br/>envelope + verify ts/hmac"] --> Identity
     CMD["CommandHandler: pair, identify, setRelay, setLevel,<br/>setSpeed, getStatus, getConfig..."] --> Capability
     PAIR["Pairing Portal AP_WS: SSID myhome-{model}-XXXX<br/>scanWifi (danh sách MCU) + nhận WiFi + controlKey"]
 ```
@@ -270,14 +268,17 @@ Data:
 
 ## 9. OTA
 
-- Firmware upload → Supabase Storage (1GB free) → URL HTTPS → giữ nguyên cơ chế OTA verify + rollback hiện có (OtaVerify/boot guard)
+- Firmware binary (`.bin`) upload → **Supabase Storage** (bucket `firmwares`, 1GB free) → URL HTTPS trực tiếp.
+- Metadata (version, profile, env, chip, checksum SHA-256/MD5, changelog) lưu tại bảng **`public.firmware_releases`** (`supabase/migrations/0009_firmware_releases.sql`).
+- Script tự động build & upload: `tools/upload_firmware.py` (hoặc `.ps1`). Chi tiết xem `docs/OTA_FIRMWARE_GUIDE.md`.
+- Giữ nguyên cơ chế OTA an toàn (stream timeout, abort khi ngắt mạng, reboot flash swap).
 
 ## 10. Lộ trình triển khai
 
 | Phase | Nội dung | Deliverable |
 |---|---|---|
 | **P1** | Hạ tầng cloud | Supabase project + SQL migration (schema+RLS+RPC `claim_device`, `get_mqtt_credential`); tạo credential `app-family` (EF bridge) + `device-family` (shared) trong HiveMQ console → `app-family` vào Function Secrets, `device-family` seed qua `tools/seed_mqtt_credential.ps1`; script test MQTT trong `tools/` |
-| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`myhome-{model}-XXXX`, `pair` command, scanWifi trong AP); envelope seq/ts/hmac ✅; MQTT auth: credential shared qua pair (fallback per-device) ✅; revocation khi re-pair; verify scan khi đang ở AP mode |
+| **P2** | Firmware core | Board abstraction; DeviceIdentity (anchor + AES-GCM blob + máy trạng thái pairing); Pairing Portal AP_WS (`myhome-{model}-XXXX`, `pair` command, scanWifi trong AP); envelope ts/hmac ✅; MQTT auth: credential shared qua pair (fallback per-device) ✅; revocation khi re-pair; verify scan khi đang ở AP mode |
 | **P3** | Firmware profiles | SWITCH/DIMMER/FAN (cùng codebase, build thử ESP32); PUMP giữ nguyên |
 | **P4** | App core | Login; Device List + Add Device (scan AP `myhome-` prefix → WifiNetworkSpecifier → chọn WiFi từ danh sách MCU → pair → tự claim); refactor repository/navigation |
 | **P5** | App device UI | Màn hình theo capability; điều khiển qua RPC send_command; quản lý thiết bị |

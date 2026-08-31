@@ -19,11 +19,11 @@ void DeviceIdentity::begin(const char* model) {
     char anchorHex[13];
     crypto::hexEncode(anchorHash, 6, anchorHex);
 
-    memcpy(_deviceId, "dev-", 4);
+    _deviceId[0] = 'd'; _deviceId[1] = 'e'; _deviceId[2] = 'v'; _deviceId[3] = '-';
     memcpy(_deviceId + 4, anchorHex, 12);
     _deviceId[16] = '\0';
 
-    snprintf(_apSSID, sizeof(_apSSID), "myhome-%s-%.4s", _model, anchorHex);
+    snprintf_P(_apSSID, sizeof(_apSSID), PSTR("myhome-%s-%.4s"), _model, anchorHex);
 
     LT_IM(CFG, "Identity: deviceId=%s apSSID=%s", _deviceId, _apSSID);
 }
@@ -52,6 +52,13 @@ bool DeviceIdentity::controlKeyHex(String& out) const {
     crypto::hexEncode(_controlKey, KEY_LEN, hex);
     out = hex;
     return true;
+}
+
+bool DeviceIdentity::setControlKey(const uint8_t key[32]) {
+    if (!key) return false;
+    memcpy(_controlKey, key, KEY_LEN);
+    _hasControlKey = true;
+    return _save();
 }
 
 bool DeviceIdentity::setControlKeyHex(const char* hex) {

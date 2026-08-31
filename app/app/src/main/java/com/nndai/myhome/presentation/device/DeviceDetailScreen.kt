@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -59,8 +63,10 @@ import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.core.theme.RedError
+import com.nndai.myhome.presentation.device.components.ConnectionStatusIndicator
 import com.nndai.myhome.data.di.PumpRepositoryProvider
 import com.nndai.myhome.data.model.ConnectionState
+import com.nndai.myhome.data.repository.DeviceManagerRepository
 import com.nndai.myhome.presentation.device.common.deviceinfo.DeviceInfoScreen
 import com.nndai.myhome.presentation.device.common.history.ToggleHistoryScreen
 import com.nndai.myhome.presentation.device.common.log.LogScreen
@@ -71,6 +77,7 @@ import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchDa
 import com.nndai.myhome.presentation.device.profiles.remoteswitch.RemoteSwitchSettingsScreen
 
 private data class DeviceTabItem(
+    val route: String,
     val titleRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
@@ -81,6 +88,7 @@ private data class DeviceTabItem(
 fun DeviceDetailScreen(
     deviceId: String,
     profile: String,
+    deviceRepository: DeviceManagerRepository? = null,
     onNavigateBack: () -> Unit
 ) {
     // Set active device synchronously before any child view models or composables run
@@ -91,6 +99,18 @@ fun DeviceDetailScreen(
     val repository = remember(deviceId) { PumpRepositoryProvider.provide(deviceId) }
     val connectionState by repository.connectionState.collectAsStateWithLifecycle()
     val pumpStatus by repository.pumpStatus.collectAsStateWithLifecycle()
+    val statusLatencyMs by repository.statusLatencyMs.collectAsStateWithLifecycle()
+    val isStatusStale by repository.isStatusStale.collectAsStateWithLifecycle()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val deviceManager = remember { deviceRepository ?: DeviceManagerRepository(context.applicationContext) }
+    val devices by deviceManager.devices.collectAsStateWithLifecycle()
+    val device = remember(devices, deviceId) { devices.find { it.device_id == deviceId } }
+    val deviceName = device?.name ?: when (profile.lowercase()) {
+        "pump" -> stringResource(R.string.pair_profile_pump)
+        "remote_switch" -> "Remote Switch"
+        else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
+    }
 
     val isConnected = connectionState is ConnectionState.Connected
     val isConnecting = connectionState is ConnectionState.Connecting || connectionState is ConnectionState.TransportReady
@@ -101,15 +121,25 @@ fun DeviceDetailScreen(
     val isPump = profile.equals("pump", ignoreCase = true)
     val isRemoteSwitch = profile.equals("remote_switch", ignoreCase = true)
 
-    val tabs = remember(profile) {
-        listOf(
-            DeviceTabItem(R.string.nav_dashboard, Icons.Filled.Dashboard, Icons.Outlined.Dashboard),
-            DeviceTabItem(R.string.nav_history, Icons.Filled.BarChart, Icons.Outlined.BarChart),
-            DeviceTabItem(R.string.nav_log, Icons.Filled.Terminal, Icons.Filled.Terminal),
-            DeviceTabItem(R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings),
-            DeviceTabItem(R.string.nav_system, Icons.Filled.Info, Icons.Outlined.Info)
-        )
+    // VIEWER của thiết bị được chia sẻ: chỉ xem — không điều khiển, không cài đặt.
+    // (Firmware vẫn là ranh giới cuối: VIEWER không có control_key để ký lệnh.)
+    val isViewer = device?.role?.uppercase() == com.nndai.myhome.data.model.DeviceRoles.VIEWER
+
+    // Settings tab là tập hợp lệnh ghi (setConfig/reboot/factory reset) → ẩn
+    // hẳn với VIEWER. Dispatch nội dung theo route key để không lệch index
+    // khi danh sách tab thay đổi.
+    val tabs = remember(profile, isViewer) {
+        buildList {
+            add(DeviceTabItem("dash", R.string.nav_dashboard, Icons.Filled.Dashboard, Icons.Outlined.Dashboard))
+            add(DeviceTabItem("hist", R.string.nav_history, Icons.Filled.BarChart, Icons.Outlined.BarChart))
+            add(DeviceTabItem("log", R.string.nav_log, Icons.Filled.Terminal, Icons.Filled.Terminal))
+            if (!isViewer) {
+                add(DeviceTabItem("settings", R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings))
+            }
+            add(DeviceTabItem("sysinfo", R.string.nav_system, Icons.Filled.Info, Icons.Outlined.Info))
+        }
     }
+    val currentTabRoute = tabs.getOrNull(selectedTabIndex)?.route ?: "dash"
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
@@ -118,10 +148,10 @@ fun DeviceDetailScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
                 // Resume streams based on current tab
-                if (selectedTabIndex == 4) {
-                    repository.ensureSysInfoStream()
-                } else if (selectedTabIndex != 3) {
-                    repository.ensureStatusStream()
+                when (currentTabRoute) {
+                    "sysinfo" -> repository.ensureSysInfoStream()
+                    "settings" -> { /* settings không stream */ }
+                    else -> repository.ensureStatusStream()
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 // Stop streams when app goes to background
@@ -129,12 +159,12 @@ fun DeviceDetailScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        
+
         // Start status stream on first entry (if not in settings/sysinfo tab)
-        if (selectedTabIndex != 3 && selectedTabIndex != 4) {
-            repository.ensureStatusStream()
-        } else if (selectedTabIndex == 4) {
-            repository.ensureSysInfoStream()
+        when (currentTabRoute) {
+            "sysinfo" -> repository.ensureSysInfoStream()
+            "settings" -> { /* settings không stream */ }
+            else -> repository.ensureStatusStream()
         }
 
         onDispose {
@@ -150,16 +180,16 @@ fun DeviceDetailScreen(
     }
 
     // Handle tab switching
-    LaunchedEffect(selectedTabIndex) {
-        when (selectedTabIndex) {
-            3 -> { // Settings
+    LaunchedEffect(currentTabRoute) {
+        when (currentTabRoute) {
+            "settings" -> { // Settings
                 repository.stopSysInfoStream()
                 repository.refreshConfig()
             }
-            4 -> { // System info
+            "sysinfo" -> { // System info
                 repository.ensureSysInfoStream()
             }
-            else -> { // Dashboard (0), History (1), Log (2)
+            else -> { // Dashboard, History, Log
                 repository.stopSysInfoStream()
                 repository.ensureStatusStream()
             }
@@ -173,50 +203,32 @@ fun DeviceDetailScreen(
                 title = {
                     Column(verticalArrangement = Arrangement.Center) {
                         Text(
-                            text = when (profile.lowercase()) {
-                                "pump" -> "Máy Bơm (Pump)"
-                                "remote_switch" -> "Remote Switch"
-                                else -> "${profile.replaceFirstChar { it.uppercase() }} Control"
-                            },
+                            text = deviceName,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Live Status Dot
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            isConnected -> GreenOk
-                                            isConnecting -> OrangeWarning
-                                            else -> RedError
-                                        }
-                                    )
+                            ConnectionStatusIndicator(
+                                isConnected = isConnected,
+                                isConnecting = isConnecting,
+                                dotSize = 6.dp,
+                                iconSize = 11.dp
                             )
-                            Text(
-                                text = when {
-                                    isConnected -> "Đã kết nối (MQTT)"
-                                    isConnecting -> "Đang kết nối..."
-                                    else -> "Mất kết nối"
-                                },
+                        Text(
+                            text = when {
+                                isConnected -> stringResource(R.string.conn_connected)
+                                isConnecting -> stringResource(R.string.conn_connecting)
+                                else -> stringResource(R.string.conn_disconnected)
+                            },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
-                                color = if (isConnected) GreenOk else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "• $deviceId",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = if (isConnected) GreenOk else ( if (isConnecting) OrangeWarning else MaterialTheme.colorScheme.onSurfaceVariant)
                             )
                         }
                     }
@@ -230,33 +242,50 @@ fun DeviceDetailScreen(
                     }
                 },
                 actions = {
-                    // RSSI Signal dBm Pill
-                    if (rssi != 0) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CyanBlue.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, CyanBlue.copy(alpha = 0.3f)),
-                            modifier = Modifier.padding(end = 8.dp)
+                    // RSSI Signal (dBm) [Top] + Latency (ms) [Bottom] Right-Aligned Stacked Pill
+                    val isStale = isConnected && isStatusStale
+                    val pillColor = if (isConnected && !isStale) CyanBlue else RedError
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = pillColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, pillColor.copy(alpha = 0.3f)),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Wifi,
-                                    contentDescription = null,
-                                    tint = CyanBlue,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "$rssi dBm",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CyanBlue
-                                )
+                            // Row 1 (Top): WiFi RSSI (dBm)
+                            if (isConnected && rssi != 0) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Wifi,
+                                        contentDescription = null,
+                                        tint = if (isStale) RedError else CyanBlue,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = "$rssi dBm",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isStale) RedError else CyanBlue
+                                    )
+                                }
                             }
+
+                            // Row 2 (Bottom): Latency (ms) or 9999 (when disconnected)
+                            Text(
+                                text = if (!isConnected) "+9999ms" else (statusLatencyMs?.let { "${it}ms" } ?: "--ms"),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isConnected || isStale) RedError else CyanBlue
+                            )
                         }
                     }
                 },
@@ -268,9 +297,12 @@ fun DeviceDetailScreen(
         bottomBar = {
             if (isPump || isRemoteSwitch) {
                 NavigationBar(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .height(60.dp),
+                    windowInsets = WindowInsets(0),
                     containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.height(64.dp)
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     tabs.forEachIndexed { index, tabItem ->
                         val selected = selectedTabIndex == index
@@ -286,7 +318,10 @@ fun DeviceDetailScreen(
                             label = {
                                 Text(
                                     text = stringResource(tabItem.titleRes),
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
@@ -308,6 +343,32 @@ fun DeviceDetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ── VIEWER banner: chế độ chỉ xem ──
+            if (isViewer) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.viewer_banner),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             when (profile.lowercase()) {
                 "pump" -> {
                     Box(
@@ -315,12 +376,15 @@ fun DeviceDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        when (selectedTabIndex) {
-                            0 -> DashboardScreen(snackbarHostState = snackbarHostState)
-                            1 -> EnergyHistoryScreen()
-                            2 -> LogScreen()
-                            3 -> SettingsScreen(snackbarHostState = snackbarHostState)
-                            4 -> DeviceInfoScreen()
+                        when (currentTabRoute) {
+                            "dash" -> DashboardScreen(
+                                snackbarHostState = snackbarHostState,
+                                readOnly = isViewer
+                            )
+                            "hist" -> EnergyHistoryScreen()
+                            "log" -> LogScreen(bottomPadding = paddingValues.calculateBottomPadding())
+                            "settings" -> SettingsScreen(snackbarHostState = snackbarHostState)
+                            "sysinfo" -> DeviceInfoScreen()
                         }
                     }
                 }
@@ -330,12 +394,15 @@ fun DeviceDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        when (selectedTabIndex) {
-                            0 -> RemoteSwitchDashboardScreen(snackbarHostState = snackbarHostState)
-                            1 -> ToggleHistoryScreen()
-                            2 -> LogScreen()
-                            3 -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
-                            4 -> DeviceInfoScreen()
+                        when (currentTabRoute) {
+                            "dash" -> RemoteSwitchDashboardScreen(
+                                snackbarHostState = snackbarHostState,
+                                readOnly = isViewer
+                            )
+                            "hist" -> ToggleHistoryScreen()
+                            "log" -> LogScreen(bottomPadding = paddingValues.calculateBottomPadding())
+                            "settings" -> RemoteSwitchSettingsScreen(snackbarHostState = snackbarHostState)
+                            "sysinfo" -> DeviceInfoScreen()
                         }
                     }
                 }
@@ -345,7 +412,7 @@ fun DeviceDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Coming soon for $profile",
+                            text = stringResource(R.string.profile_coming_soon, profile),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -1,4 +1,4 @@
-package com.nndai.myhome.presentation.home
+﻿package com.nndai.myhome.presentation.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -35,21 +35,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import io.github.jan.supabase.auth.auth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nndai.myhome.R
 import com.nndai.myhome.core.theme.CyanBlue
 import com.nndai.myhome.core.theme.GreenOk
 import com.nndai.myhome.core.theme.OrangeWarning
 import com.nndai.myhome.core.theme.SecondaryText
+import com.nndai.myhome.presentation.device.components.DeviceHealthIndicator
 import com.nndai.myhome.data.model.Device
 import com.nndai.myhome.data.repository.DeviceManagerRepository
 
@@ -73,7 +79,7 @@ fun HomeDashboardScreen(
     ) {
         // Header
         Text(
-            text = "My Home",
+            text = stringResource(R.string.home_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
@@ -101,7 +107,7 @@ fun HomeDashboardScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Sign in to access your devices",
+                        text = stringResource(R.string.home_sign_in_hint),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = CyanBlue
@@ -109,6 +115,7 @@ fun HomeDashboardScreen(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Devices grid
         AnimatedVisibility(
@@ -150,13 +157,13 @@ fun HomeDashboardScreen(
                     modifier = Modifier.size(56.dp)
                 )
                 Text(
-                    text = "No devices yet",
+                    text = stringResource(R.string.devices_empty_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "Go to Devices tab to add your first device",
+                    text = stringResource(R.string.devices_empty_hint_home),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
@@ -199,6 +206,13 @@ private fun DeviceCard(
         }
     }
 
+    // Custom brand icons (multicolor vectors) — rendered without tint
+    val customIconRes = when (device.profile.lowercase()) {
+        "pump" -> R.drawable.ic_pump_device
+        "remote_switch" -> R.drawable.ic_remote_switch_device
+        else -> null
+    }
+
     val currentUserId = remember {
         try {
             com.nndai.myhome.data.remote.SupabaseConfig.client.auth.currentSessionOrNull()?.user?.id
@@ -215,28 +229,28 @@ private fun DeviceCard(
     val statusBg: androidx.compose.ui.graphics.Color
 
     if (isTransferred) {
-        statusText = "Đã đổi chủ"
+        statusText = stringResource(R.string.devices_status_transferred)
         statusColor = androidx.compose.ui.graphics.Color(0xFF9C27B0)
         statusBg = androidx.compose.ui.graphics.Color(0xFF9C27B0).copy(alpha = 0.15f)
     } else {
         when (healthState) {
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Online -> {
-                statusText = "Online"
+                statusText = stringResource(R.string.devices_status_online)
                 statusColor = GreenOk
                 statusBg = GreenOk.copy(alpha = 0.15f)
             }
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Handshaking -> {
-                statusText = "Connecting..."
+                statusText = stringResource(R.string.devices_status_connecting)
                 statusColor = OrangeWarning
                 statusBg = OrangeWarning.copy(alpha = 0.15f)
             }
             is com.nndai.myhome.data.remote.DeviceHealthStatus.Offline -> {
-                statusText = "Offline"
+                statusText = stringResource(R.string.devices_status_offline)
                 statusColor = SecondaryText
                 statusBg = SecondaryText.copy(alpha = 0.1f)
             }
             else -> {
-                statusText = "Unknown"
+                statusText = stringResource(R.string.devices_status_unknown)
                 statusColor = SecondaryText
                 statusBg = SecondaryText.copy(alpha = 0.1f)
             }
@@ -272,12 +286,21 @@ private fun DeviceCard(
                     modifier = Modifier.size(40.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = iconTint,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        if (customIconRes != null) {
+                            Icon(
+                                painter = painterResource(customIconRes),
+                                contentDescription = null,
+                                tint = androidx.compose.ui.graphics.Color.Unspecified,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                 }
                 // Dynamic Real-Time Online/Offline status badge
@@ -285,12 +308,23 @@ private fun DeviceCard(
                     shape = MaterialTheme.shapes.extraSmall,
                     color = statusBg,
                 ) {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                        color = statusColor,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        DeviceHealthIndicator(
+                            healthState = healthState,
+                            isTransferred = isTransferred,
+                            dotSize = 6.dp,
+                            iconSize = 10.dp
+                        )
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = statusColor
+                        )
+                    }
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

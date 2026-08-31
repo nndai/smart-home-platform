@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -57,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -115,10 +117,12 @@ fun LogScreen(
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             Row(
-                modifier = Modifier.padding(3.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Mode 0: Live Logs
+                // Tab 0: Live MQTT Logs
                 Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -140,7 +144,7 @@ fun LogScreen(
                     }
                 }
 
-                // Mode 1: File Log (/logs/sys/)
+                // Tab 1: File Log
                 Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -172,7 +176,7 @@ fun LogScreen(
                 bottomPadding = bottomPadding,
                 onEnableChanged = { viewModel.setLogEnabled(it) },
                 onClearLogs = { viewModel.clearLogs() },
-                onSendRawJson = { viewModel.sendRawJson(it) }
+                onSendRaw = { viewModel.sendRaw(it) }
             )
         } else {
             // Mode 1: File Log (/logs/sys/)
@@ -196,7 +200,7 @@ private fun LiveLogsContent(
     bottomPadding: Dp,
     onEnableChanged: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
-    onSendRawJson: (String) -> Unit
+    onSendRaw: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
 
@@ -262,7 +266,8 @@ private fun LiveLogsContent(
                 Spacer(modifier = Modifier.width(8.dp))
                 Switch(
                     checked = isEnabled,
-                    onCheckedChange = onEnableChanged
+                    onCheckedChange = onEnableChanged,
+                    modifier = Modifier.scale(0.8f)
                 )
             }
         }
@@ -290,61 +295,67 @@ private fun LiveLogsContent(
             }
         }
 
-        // Raw JSON Command Input Row
-        Row(
+        // Raw Command Input Row
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            var rawInput by remember { mutableStateOf("") }
+            // Input TextField and Send Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                var rawInput by remember { mutableStateOf("") }
 
-            OutlinedTextField(
-                value = rawInput,
-                onValueChange = { rawInput = it },
-                modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        text = stringResource(R.string.log_raw_json_hint),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                OutlinedTextField(
+                    value = rawInput,
+                    onValueChange = { rawInput = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            text = stringResource(R.string.log_raw_binary_hint),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    shape = MaterialTheme.shapes.small,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (rawInput.isNotBlank()) {
+                                onSendRaw(rawInput)
+                                rawInput = ""
+                            }
+                        }
                     )
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                shape = MaterialTheme.shapes.small,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
+                )
+
+                Button(
+                    onClick = {
                         if (rawInput.isNotBlank()) {
-                            onSendRawJson(rawInput)
+                            onSendRaw(rawInput)
                             rawInput = ""
                         }
-                    }
-                )
-            )
-
-            Button(
-                onClick = {
-                    if (rawInput.isNotBlank()) {
-                        onSendRawJson(rawInput)
-                        rawInput = ""
-                    }
-                },
-                modifier = Modifier.height(50.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(R.string.log_send),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.log_send), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    },
+                    modifier = Modifier.height(50.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(R.string.log_send),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.log_send), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 

@@ -22,7 +22,7 @@ public:
     void begin(MainsSwitch* mains, bool pumpMode);
     void setThresholds(uint16_t off, uint16_t noWater, uint16_t running, uint16_t overload);
     void setTimeouts(uint16_t dryTimeout, uint16_t overloadTimeout);
-    void update(float currentAmps);
+    void update(float currentAmps, float powerWatts);
     void setPumpMode(bool pumpMode);
     PumpState getState() const { return _state; }
     void turnOn();
@@ -39,10 +39,10 @@ public:
 private:
     MainsSwitch* _switch;
     PumpState _state;
-    uint16_t _threshOff;
-    uint16_t _threshNoWater;
-    uint16_t _threshRunning;
-    uint16_t _threshOverload;
+    uint16_t _threshOff;       // W (power threshold)
+    uint16_t _threshNoWater;   // W (power threshold)
+    uint16_t _threshRunning;   // W (power threshold)
+    uint16_t _threshOverload;  // mA (current threshold)
     uint16_t _dryTimeout;
     uint16_t _overloadTimeout;
     unsigned long _dryStart;

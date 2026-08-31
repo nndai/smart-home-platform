@@ -49,6 +49,7 @@ public:
     void setTime(unsigned long epoch);
     bool isTimeSynced() const;
     unsigned long getEpoch() const;
+    String dateTimeStr() const;
 
     // Data
     const DataFile& getData() const;

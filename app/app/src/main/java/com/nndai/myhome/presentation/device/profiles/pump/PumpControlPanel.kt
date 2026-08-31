@@ -80,6 +80,13 @@ import com.nndai.myhome.core.utils.formatRssi
 import com.nndai.myhome.core.utils.formatTemperature
 import com.nndai.myhome.core.utils.formatUptime
 import com.nndai.myhome.core.utils.formatVoltage
+import com.nndai.myhome.core.utils.formatDurationHms
+import android.os.SystemClock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.text.style.TextOverflow
+import kotlin.math.abs
 
 private val PurpleDryRun = Color(0xFF9C27B0)
 
@@ -87,6 +94,7 @@ private val PurpleDryRun = Color(0xFF9C27B0)
 @Composable
 fun DashboardScreen(
     snackbarHostState: SnackbarHostState,
+    readOnly: Boolean = false,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val status by viewModel.pumpStatus.collectAsStateWithLifecycle()
@@ -104,6 +112,7 @@ fun DashboardScreen(
         status = status,
         connectionState = connectionState,
         isToggling = isToggling,
+        readOnly = readOnly,
         onToggle = { viewModel.togglePump() },
         onReconnect = { viewModel.reconnect() },
         onClearFault = { viewModel.clearPumpFault() }
@@ -118,10 +127,55 @@ fun DashboardScreenContent(
     isToggling: Boolean,
     onToggle: () -> Unit,
     onReconnect: () -> Unit,
-    onClearFault: () -> Unit
+    onClearFault: () -> Unit,
+    readOnly: Boolean = false
 ) {
     var dismissedFaultState by remember { mutableStateOf<PumpState?>(null) }
     var activeFaultDialogState by remember { mutableStateOf<PumpState?>(null) }
+
+    // Smooth local ticker for relay ON duration
+    var liveOnDuration by remember { mutableLongStateOf(0L) }
+    var baseServerDuration by remember { mutableLongStateOf(0L) }
+    var syncRealtime by remember { mutableLongStateOf(0L) }
+
+    // Synchronize base duration from server status only when needed (first init or diff > 2s)
+    LaunchedEffect(status?.relay, status?.onDuration) {
+        val isRelayOn = status?.relay == true
+        val serverDuration = status?.onDuration ?: 0L
+        if (!isRelayOn) {
+            liveOnDuration = 0L
+            baseServerDuration = 0L
+            syncRealtime = 0L
+        } else {
+            val currentCalculated = if (syncRealtime > 0L) {
+                baseServerDuration + (SystemClock.elapsedRealtime() - syncRealtime) / 1000
+            } else {
+                0L
+            }
+            val diff = abs(serverDuration - currentCalculated)
+            // Initial sync or difference > 2s: re-sync base timestamp
+            if (syncRealtime == 0L || diff > 2L) {
+                baseServerDuration = serverDuration
+                syncRealtime = SystemClock.elapsedRealtime()
+                liveOnDuration = serverDuration
+            }
+        }
+    }
+
+    // Continuous local ticker without stutters
+    LaunchedEffect(status?.relay) {
+        if (status?.relay == true) {
+            while (isActive) {
+                if (syncRealtime > 0L) {
+                    val elapsedSec = (SystemClock.elapsedRealtime() - syncRealtime) / 1000
+                    liveOnDuration = baseServerDuration + elapsedSec
+                }
+                delay(200L)
+            }
+        } else {
+            liveOnDuration = 0L
+        }
+    }
 
     // Refresh status when screen becomes visible/resumed
 //    LaunchedEffect(Unit) {
@@ -204,6 +258,7 @@ fun DashboardScreenContent(
                             activeFaultDialogState = null
                             onClearFault()
                         },
+                        enabled = !readOnly,
                         colors = ButtonDefaults.buttonColors(containerColor = RedError),
                         shape = MaterialTheme.shapes.small
                     ) {
@@ -330,7 +385,10 @@ fun DashboardScreenContent(
                                 Text(
                                     text = stringResource(stateTitleRes),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -383,14 +441,10 @@ fun DashboardScreenContent(
                         modifier = Modifier.weight(1f)
                     )
                     StatusCard(
-                        icon = Icons.Filled.SignalCellularAlt,
-                        value = s.rssi.formatRssi(),
-                        label = stringResource(R.string.metric_rssi),
-                        iconTint = when {
-                            s.rssi > -50 -> CyanBlue
-                            s.rssi > -70 -> OrangeWarning
-                            else -> RedError
-                        },
+                        icon = Icons.Filled.Timer,
+                        value = liveOnDuration.formatDurationHms(),
+                        label = stringResource(R.string.metric_on_duration),
+                        iconTint = if (s.relay) GreenOk else SecondaryText,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -462,7 +516,7 @@ fun DashboardScreenContent(
 
                 PumpControlButton(
                     isOn = status?.relay == true,
-                    enabled = !isToggling,
+                    enabled = !isToggling && !readOnly,
                     isLoading = isToggling,
                     onClick = onToggle
                 )

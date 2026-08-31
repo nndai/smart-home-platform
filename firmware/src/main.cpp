@@ -8,6 +8,7 @@
 #include <WiFiUdp.h>
 
 #include "chip/io.h"
+#include "chip/scan.h"
 #include "chip/softap.h"
 #include "compat/log_capture.h"
 #include "compat/pm.h"
@@ -48,10 +49,9 @@ uint32_t taskStreamSender_cb();
 static void setupAP_WS(ProfileConfig& cfg);
 static void setupSTA_MQTT(ProfileConfig& cfg);
 static void setupDEBUG_WS(ProfileConfig& cfg);
-static void onMqttMessage(const String& topic, const String& payload);
-static void onWsMessage(const String& clientId, const String& message);
+static void onMqttBinary(const String& topic, const uint8_t* payload, size_t length);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
-static void sendResponse(const String& target, const String& json);
+static void sendBinaryResponse(const String& target, const uint8_t* payload, size_t length);
 static String mqttBaseTopic();
 
 // ── Setup ──
@@ -106,18 +106,16 @@ void setup() {
     logCaptureFlushFile(&logManager);
 
     logManager.setLogCallback([](const String& line) {
-        JsonDocument logJson;
-        logJson["cmd"] = "log";
-        logJson["msg"] = line;
-        String json;
-        serializeJson(logJson, json);
+        protocol::BinaryWriter writer(protocol::CommandId::Log);
+        writer.writeString(protocol::FieldId::Msg, line);
+
         if (g_connMode == ConnMode::DEBUG_WS || g_connMode == ConnMode::AP_WS) {
-            wsServer.broadcast(json);
+            wsServer.broadcastBinary(writer.data(), writer.size());
         }
         if (logManager.isMqttLogEnabled()) {
-            mqttClient.publish(mqttBaseTopic() + "/log", json);
+            mqttClient.publishBinary(mqttBaseTopic() + F("/log"), writer.data(), writer.size());
         }
-        });
+    });
 
     configManager.print();
 
@@ -125,35 +123,41 @@ void setup() {
     // driver
     driver = createDriver();
     driver->setServices(
-        { &logManager, [&]() { return configManager.save(); },
-        [&]() {
-            configManager.reset();
-            identity.reset();
-        },
-        [](const String& json) {
-            if (g_connMode == ConnMode::STA_MQTT) {
-                mqttClient.publish(mqttBaseTopic() + "/up", json);
-            }
-            else {
-                wsServer.broadcast(json);
-            }
-        },
-        []() {
-            return g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected();
-        },
-        [](const String& topic, const String& payload) {
-            if (g_connMode != ConnMode::STA_MQTT)
-                return false;
-            return mqttClient.publish(topic, payload);
-        },
-        [](const String& topic) {
-            mqttClient.subscribeExtra(topic); 
-        },
-        [&]() { 
-            commandHandler.publishStatusToUp(); 
-        }, 
-        identity.deviceId(),
-        &identity
+        { &logManager, 
+          [&]() { return configManager.save(); },
+          [&]() {
+              configManager.reset();
+              identity.reset();
+          },
+          [](const String& json) {
+              (void)json;
+          },
+          [](const uint8_t* payload, size_t length) {
+              if (g_connMode == ConnMode::STA_MQTT) {
+                  mqttClient.publishBinary(mqttBaseTopic() + F("/up"), payload, length);
+              } else {
+                  wsServer.broadcastBinary(payload, length);
+              }
+          },
+          []() {
+              return g_connMode == ConnMode::STA_MQTT && mqttClient.isConnected();
+          },
+          [](const String& topic, const String& payload) {
+              (void)topic; (void)payload;
+              return false;
+          },
+          [](const String& topic, const uint8_t* payload, size_t length) {
+              if (g_connMode != ConnMode::STA_MQTT) return false;
+              return mqttClient.publishBinary(topic, payload, length);
+          },
+          [](const String& topic) {
+              mqttClient.subscribeExtra(topic); 
+          },
+          [&]() { 
+              commandHandler.publishStatusToUp(); 
+          }, 
+          identity.deviceId(),
+          &identity
         });
 
     driver->begin(configManager.get(), [&]() { return configManager.save(); });
@@ -162,7 +166,7 @@ void setup() {
 
     commandHandler.begin(&configManager, &logManager, &otaManager, &identity, profileName());
     commandHandler.setDriver(driver);
-    commandHandler.setResponseCallback(sendResponse);
+    commandHandler.setBinaryResponseCallback(sendBinaryResponse);
 
     compat::pmDisableUnusedClocks();
     // ln_pm_sleep_mode_set(LIGHT_SLEEP);
@@ -202,7 +206,7 @@ void loop() {
 
 void setupWiFiSTA(ProfileConfig& cfg) {
     WiFi.mode(WIFI_STA);
-    WiFi.setHostname("iphone");
+    WiFi.setHostname(identity.deviceId());
     if (cfg.connMode == ConnMode::STA_MQTT) {
         WiFi.config(IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0),
             IPAddress(0, 0, 0, 0));
@@ -246,7 +250,7 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
 
     chip::reclaimRelayGpio();
 
-    String clientId = String("device-") + identity.deviceId();
+    String clientId = String(F("device-")) + identity.deviceId();
     if (cfg.mqttUser[0] == '\0') {
         LT_EM(NET, "MQTT: no credential (device not paired) — MQTT disabled");
         return;
@@ -254,7 +258,7 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser,
         configManager.passPlain(), clientId.c_str(),
         mqttBaseTopic().c_str());
-    mqttClient.setCallback(onMqttMessage);
+    mqttClient.setCallback(onMqttBinary);
 }
 
 static void setupDEBUG_WS(ProfileConfig& cfg) {
@@ -285,7 +289,7 @@ uint32_t taskWifiConnect_cb() {
         break;
     }
 
-    WiFi.setSleep(true);
+    compat::wifiConfigureSleep();
     return TASK_DELETE;
 }
 
@@ -294,7 +298,6 @@ uint32_t taskWsLoop_cb() {
     static bool started = false;
     if (!started) {
         wsServer.begin();
-        wsServer.setCallback(onWsMessage);
         wsServer.setBinaryCallback(onWsBinary);
         LT_IM(NET, "WebSocket server started");
         started = true;
@@ -307,6 +310,7 @@ uint32_t taskWsLoop_cb() {
         wsServer.handle();
         break;
     }
+    otaManager.handle();
     return otaManager.isRunning() ? 5 : 50;
 }
 
@@ -315,6 +319,14 @@ uint32_t taskMqttLoop_cb() {
     static bool logLostConnection = true;
 
     compat::wdtFeed();
+
+    if (otaManager.hasPending()) {
+        mqttClient.disconnect();
+        delay(100);
+        otaManager.handle();
+        return 50;
+    }
+
     bool connected = mqttClient.loop();
     if (!connected && !logLostConnection) {
         LT_E("MQTT connection lost. Attempting to reconnect...");
@@ -325,7 +337,7 @@ uint32_t taskMqttLoop_cb() {
         logLostConnection = false;
     }
 
-    return otaManager.isRunning() ? 10 : 20;
+    return otaManager.isRunning() ? 10 : 30;
 }
 
 // ── Task: NTP Update ──
@@ -343,7 +355,7 @@ uint32_t taskNtpUpdate_cb() {
     if (ntpClient.isTimeSet()) {
         logManager.setTime(ntpClient.getEpochTime());
         if (!isLogTime) {
-            LT_I("NTP time set: %s", ntpClient.getFormattedTime().c_str());
+            LT_I("NTP time set: %s", logManager.dateTimeStr().c_str());
             isLogTime = true;
         }
     }
@@ -375,7 +387,9 @@ uint32_t taskStreamSender_cb() {
     static uint32_t lastStatusUp = 0;
 
     commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_STATUS);
+    yield();
     commandHandler.sendStream(CommandHandlerT<ProfileConfig>::STREAM_SYSINFO);
+    yield();
 
     uint32_t nowMs = millis();
     if (!commandHandler.isStreamActive(
@@ -383,6 +397,7 @@ uint32_t taskStreamSender_cb() {
         if (nowMs - lastStatusUp >= 60000) {
             lastStatusUp = nowMs;
             commandHandler.publishStatusToUp();
+            yield();
         }
     }
     return 2000;
@@ -391,50 +406,37 @@ uint32_t taskStreamSender_cb() {
 
 // ── MQTT topic chuẩn: devices/{deviceId}/cmd|up|log ──
 static String mqttBaseTopic() {
-    return String("devices/") + identity.deviceId();
+    return String(F("devices/")) + identity.deviceId();
 }
 
 // ── Callbacks ──
-static void onMqttMessage(const String& topic, const String& payload) {
-    // Topic của chính mình (devices/{id}/cmd|otachunk|down) → lệnh cho
-    // CommandHandler
-    if (topic.startsWith(mqttBaseTopic() + "/")) {
-        commandHandler.handleCommand("mqtt", payload);
+static void onMqttBinary(const String& topic, const uint8_t* payload, size_t length) {
+    if (topic.startsWith(mqttBaseTopic() + F("/"))) {
+        commandHandler.handleCommandBinary(F("mqtt"), payload, length);
         return;
     }
 
-    // Topic do driver đăng ký (vd: devices/{targetId}/up của Remote Switch)
-    // → đẩy thẳng cho driver; topic lạ khác bị bỏ qua.
     if (mqttClient.isExtraTopic(topic)) {
-        if (driver) {
-            JsonDocument doc;
-            deserializeJson(doc, payload);
-            driver->handleTargetStatus(doc);
+        uint8_t targetCmd = 0;
+        const uint8_t* payloadData = nullptr;
+        size_t payloadLen = 0;
+        if (driver && protocol::parseFrame(payload, length, targetCmd, payloadData, payloadLen)) {
+            protocol::BinaryCommandRequest reqContext(payloadData, payloadLen);
+            driver->handleTargetStatus(targetCmd, reqContext);
         }
     }
 }
 
-static void onWsMessage(const String& clientId, const String& message) {
+static void onWsBinary(const String& clientId, const uint8_t* data, size_t len) {
     (void)clientId;
-    // LT_IM(WS, "Received message: %s", message.c_str());
-    commandHandler.handleCommand("ws", message);
+    commandHandler.handleCommandBinary(F("ws"), data, len);
 }
 
-static void onWsBinary(const String& clientId, const uint8_t* data,
-    size_t len) {
-    if (otaManager.isRunning()) {
-        if (!otaManager.writeChunk(data, len)) {
-            otaManager.writeError();
-        }
+static void sendBinaryResponse(const String& target, const uint8_t* payload, size_t length) {
+    if (target == F("mqtt")) {
+        mqttClient.publishBinary(mqttBaseTopic() + F("/up"), payload, length);
+    } else if (target == F("ws")) {
+        wsServer.broadcastBinary(payload, length);
     }
 }
-
-static void sendResponse(const String& target, const String& json) {
-
-    if (target == "mqtt") {
-        mqttClient.publish(mqttBaseTopic() + "/up", json);
-    }
-    if (target == "ws") {
-        wsServer.broadcast(json);
-    }
-}
+ 

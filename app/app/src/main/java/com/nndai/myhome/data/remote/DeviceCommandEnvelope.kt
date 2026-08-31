@@ -14,13 +14,11 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Ký envelope lệnh cho firmware (docs §3.2):
- *   canonical = "seq|ts|cmd|payloadJSONcompact|src"  (payload serialize compact,
+ *   canonical = "ts|cmd|payloadJSONcompact|src"  (payload serialize compact,
  *               giữ thứ tự key — khớp ArduinoJson serializeJson)
  *   hmac      = HMAC-SHA256(controlKeyRaw32B, canonical) → hex 64 thường
- *   src       = appSenderId() ổn định — thiết bị track seq tăng RIÊNG cho từng
- *               sender (app, remote switch...) nên không khóa nhau
- * Thiết bị chỉ thực thi lệnh MQTT có envelope hợp lệ (seq > last_seq của sender,
- * ts ±60s, hmac đúng).
+ *   src       = appSenderId()
+ * Thiết bị chỉ thực thi lệnh MQTT có envelope hợp lệ (ts ±60s, hmac đúng).
  */
 class DeviceCommandEnvelope(context: android.content.Context) {
     private val keyStore = ControlKeyStore(context)
@@ -48,12 +46,11 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         val payload = cmdJson["payload"] as? JsonObject ?: JsonObject(emptyMap())
 
         val src = keyStore.appSenderId()
-        val seq = keyStore.nextSeq(deviceId)
         // Firmware lấy giờ LOCAL cố định UTC+7 (NTPClient offset trong Config.h),
         // verify |ts - now| <= 60s → ts phải ở múi +7, không phải epoch UTC.
         val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
         val payloadCompact = Json.encodeToString(JsonObject.serializer(), payload)
-        val canonical = "$seq|$ts|$cmd|$payloadCompact|$src"
+        val canonical = "$ts|$cmd|$payloadCompact|$src"
         val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
 
         val reqId = cmdJson["reqId"]?.jsonPrimitive?.content
@@ -64,23 +61,100 @@ class DeviceCommandEnvelope(context: android.content.Context) {
                 put("reqId", reqId)
             }
             put("payload", payload)
-            put("seq", seq)
             put("ts", ts)
             put("src", src)
             put("hmac", hmacHex)
         }.toString()
     }
 
-    private fun hmacSha256Hex(key: ByteArray, data: String): String? {
+    fun signJson(deviceId: String, json: org.json.JSONObject): org.json.JSONObject? {
+        if (deviceId.isBlank()) return null
+        val keyHex = keyStore.get(deviceId) ?: run {
+            Log.w(TAG, "signJson(): no controlKey for $deviceId")
+            return null
+        }
+        val keyBytes = hexToBytes(keyHex) ?: run {
+            Log.e(TAG, "signJson(): bad controlKey hex length for $deviceId. Hex: '$keyHex', len: ${keyHex.length}")
+            return null
+        }
+
+        val cmd = json.optString("cmd", "")
+        if (cmd.isBlank()) {
+            Log.e(TAG, "signJson(): no cmd field")
+            return null
+        }
+
+        val src = keyStore.appSenderId()
+        val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
+        val canonical = "$ts|$cmd||$src"
+        val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
+
+        val result = org.json.JSONObject(json.toString())
+        result.put("ts", ts)
+        result.put("src", src)
+        result.put("hmac", hmacHex)
+        return result
+    }
+
+    fun signBinary(deviceId: String, rawBinary: ByteArray): ByteArray? {
+        if (deviceId.isBlank() || rawBinary.size < 6) return null
+        if (rawBinary[0] != com.nndai.myhome.protocol.BinaryProtocol.MAGIC_START ||
+            rawBinary[rawBinary.size - 1] != com.nndai.myhome.protocol.BinaryProtocol.MAGIC_END
+        ) {
+            return null
+        }
+        val keyHex = keyStore.get(deviceId) ?: run {
+            Log.w(TAG, "signBinary(): no controlKey for $deviceId")
+            return null
+        }
+        val keyBytes = hexToBytes(keyHex) ?: run {
+            Log.e(TAG, "signBinary(): bad controlKey hex length for $deviceId")
+            return null
+        }
+
+        val cmdId = rawBinary[1].toInt() and 0xFF
+        val cmdStr = com.nndai.myhome.protocol.BinaryCommandIds.commandIdToString(cmdId)
+        val src = keyStore.appSenderId()
+        val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
+        val canonical = "$ts|$cmdStr||$src"
+        val hmacBytes = hmacSha256Bytes(keyBytes, canonical) ?: return null
+
+        // Existing inner fields are between root object header (3 bytes: indices 2, 3, 4) and MAGIC_END (index size - 1)
+        val existingInnerBytes = if (rawBinary.size > 6) {
+            rawBinary.copyOfRange(5, rawBinary.size - 1)
+        } else {
+            ByteArray(0)
+        }
+
+        val writer = com.nndai.myhome.protocol.BinaryWriter()
+        val root = writer.beginObject(com.nndai.myhome.protocol.BinaryFieldIds.NONE)
+        if (existingInnerBytes.isNotEmpty()) {
+            writer.writeRaw(existingInnerBytes)
+        }
+        writer.writeU32(com.nndai.myhome.protocol.BinaryFieldIds.TS, ts)
+        writer.writeString(com.nndai.myhome.protocol.BinaryFieldIds.SRC, src)
+        writer.writeBytes(com.nndai.myhome.protocol.BinaryFieldIds.HMAC, hmacBytes)
+        root.end()
+
+        val signedFrame = com.nndai.myhome.protocol.BinaryProtocol.buildFrame(cmdId, writer.toByteArray())
+        val hexString = signedFrame.joinToString(separator = " ") { byte -> "%02X".format(byte) }
+        android.util.Log.d("BinaryProtocol", "TX Signed Binary [size=${signedFrame.size}, cmd=$cmdStr ($cmdId), ts=$ts, src=$src]: $hexString")
+        return signedFrame
+    }
+
+    private fun hmacSha256Bytes(key: ByteArray, data: String): ByteArray? {
         return runCatching {
             val mac = Mac.getInstance("HmacSHA256")
             mac.init(SecretKeySpec(key, "HmacSHA256"))
             mac.doFinal(data.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
         }.getOrElse {
             Log.e(TAG, "hmac failed: ${it.message}")
             null
         }
+    }
+
+    private fun hmacSha256Hex(key: ByteArray, data: String): String? {
+        return hmacSha256Bytes(key, data)?.joinToString("") { "%02x".format(it) }
     }
 
     private fun hexToBytes(hex: String): ByteArray? {

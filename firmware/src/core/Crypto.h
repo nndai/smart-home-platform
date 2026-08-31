@@ -16,6 +16,18 @@ namespace crypto {
 // ── 1. Hex Encoding & Decoding ──
 
 /**
+ * Compares two byte arrays in constant time to prevent timing attacks.
+ */
+inline bool constantTimeMemcmp(const uint8_t* a, const uint8_t* b, size_t len) {
+    if (!a || !b) return false;
+    uint8_t diff = 0;
+    for (size_t i = 0; i < len; i++) {
+        diff |= (a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
+/**
  * Encodes binary data into lowercase hexadecimal string.
  * @param data Pointer to source binary buffer.
  * @param len Length of source data in bytes.
@@ -114,13 +126,11 @@ inline bool hmacSha256HexKey(const char* keyHex, const char* data, size_t dataLe
 }
 
 /**
- * Builds the canonical string for MQTT envelope HMAC signing: "seq|ts|cmd|payload|src"
+ * Builds the canonical string for MQTT envelope HMAC signing: "ts|cmd|payload|src"
  */
-inline String buildCanonical(uint32_t seq, uint32_t ts, const char* cmd, const String& payloadStr, const char* src = "") {
+inline String buildCanonical(uint32_t ts, const char* cmd, const String& payloadStr, const char* src = "") {
     String canonical;
     canonical.reserve(32 + payloadStr.length() + (src ? strlen(src) : 0));
-    canonical += String(seq);
-    canonical += '|';
     canonical += String(ts);
     canonical += '|';
     if (cmd) canonical += cmd;
