@@ -5,7 +5,7 @@ import java.nio.ByteOrder
 
 /**
  * Fast allocation-free binary protocol deserializer for Kotlin.
- * Efficiently extracts the 16-bit headers (9-bit ID, 5-bit Type, 2-bit Reserved/Size-high)
+ * Efficiently extracts the 16-bit headers (9-bit ID, 4-bit Type, 3-bit Reserved/Size-high)
  * with an optional 3rd byte for variable-size types.
  */
 class BinaryReader(private val buffer: ByteBuffer) {
@@ -22,8 +22,8 @@ class BinaryReader(private val buffer: ByteBuffer) {
         val headerVal = (b0 shl 8) or b1
 
         val id = (headerVal ushr 7) and 0x1FF
-        val typeVal = (headerVal ushr 2) and 0x1F
-        val sizeHigh = headerVal and 0x03
+        val typeVal = (headerVal ushr 3) and 0x0F
+        val sizeHigh = headerVal and 0x07
 
         val type = BinaryType.fromInt(typeVal) ?: return null
         

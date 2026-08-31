@@ -49,9 +49,7 @@ uint32_t taskStreamSender_cb();
 static void setupAP_WS(ProfileConfig& cfg);
 static void setupSTA_MQTT(ProfileConfig& cfg);
 static void setupDEBUG_WS(ProfileConfig& cfg);
-static void onMqttMessage(const String& topic, const String& payload);
 static void onMqttBinary(const String& topic, const uint8_t* payload, size_t length);
-static void onWsMessage(const String& clientId, const String& message);
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len);
 static void sendBinaryResponse(const String& target, const uint8_t* payload, size_t length);
 static String mqttBaseTopic();
@@ -260,8 +258,7 @@ static void setupSTA_MQTT(ProfileConfig& cfg) {
     mqttClient.begin(cfg.mqttServer, cfg.mqttPort, cfg.mqttUser,
         configManager.passPlain(), clientId.c_str(),
         mqttBaseTopic().c_str());
-    mqttClient.setCallback(onMqttMessage);
-    mqttClient.setBinaryCallback(onMqttBinary);
+    mqttClient.setCallback(onMqttBinary);
 }
 
 static void setupDEBUG_WS(ProfileConfig& cfg) {
@@ -301,7 +298,6 @@ uint32_t taskWsLoop_cb() {
     static bool started = false;
     if (!started) {
         wsServer.begin();
-        wsServer.setCallback(onWsMessage);
         wsServer.setBinaryCallback(onWsBinary);
         LT_IM(NET, "WebSocket server started");
         started = true;
@@ -414,19 +410,7 @@ static String mqttBaseTopic() {
 }
 
 // ── Callbacks ──
-static void onMqttMessage(const String& topic, const String& payload) {
-    (void)topic;
-    (void)payload;
-}
-
 static void onMqttBinary(const String& topic, const uint8_t* payload, size_t length) {
-    if (topic == (mqttBaseTopic() + F("/otachunk")) && otaManager.isRunning()) {
-        if (!otaManager.writeChunk(payload, length)) {
-            otaManager.writeError();
-        }
-        return;
-    }
-
     if (topic.startsWith(mqttBaseTopic() + F("/"))) {
         commandHandler.handleCommandBinary(F("mqtt"), payload, length);
         return;
@@ -443,20 +427,9 @@ static void onMqttBinary(const String& topic, const uint8_t* payload, size_t len
     }
 }
 
-static void onWsMessage(const String& clientId, const String& message) {
-    (void)clientId;
-    (void)message;
-}
-
 static void onWsBinary(const String& clientId, const uint8_t* data, size_t len) {
     (void)clientId;
-    if (otaManager.isRunning()) {
-        if (!otaManager.writeChunk(data, len)) {
-            otaManager.writeError();
-        }
-    } else if (protocol::isValidFrame(data, len)) {
-        commandHandler.handleCommandBinary(F("ws"), data, len);
-    }
+    commandHandler.handleCommandBinary(F("ws"), data, len);
 }
 
 static void sendBinaryResponse(const String& target, const uint8_t* payload, size_t length) {
@@ -466,3 +439,4 @@ static void sendBinaryResponse(const String& target, const uint8_t* payload, siz
         wsServer.broadcastBinary(payload, length);
     }
 }
+ 

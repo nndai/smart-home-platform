@@ -5,7 +5,7 @@ import java.nio.ByteOrder
 
 /**
  * High-performance binary protocol serializer for Kotlin.
- * Outputs TLV fields packed in 16-bit headers (9-bit ID, 5-bit Type, 2-bit Reserved/Size-high)
+ * Outputs TLV fields packed in 16-bit headers (9-bit ID, 4-bit Type, 3-bit Reserved/Size-high)
  * with an optional 3rd byte (8-bit Size-low) for variable-size types.
  * Defaults to Big Endian ordering, enabling perfect parity with the C++ firmware.
  */
@@ -25,13 +25,13 @@ class BinaryWriter(capacity: Int = 1024) {
     fun writeHeader(id: Int, type: BinaryType, size: Int = 0) {
         if (BinaryType.isVariableSize(type)) {
             ensureCapacity(3)
-            val headerVal = (id shl 7) or (type.value shl 2) or ((size ushr 8) and 0x03)
+            val headerVal = (id shl 7) or (type.value shl 3) or ((size ushr 8) and 0x07)
             buffer.put((headerVal ushr 8).toByte())
             buffer.put(headerVal.toByte())
             buffer.put((size and 0xFF).toByte())
         } else {
             ensureCapacity(2)
-            val headerVal = (id shl 7) or (type.value shl 2)
+            val headerVal = (id shl 7) or (type.value shl 3)
             buffer.put((headerVal ushr 8).toByte())
             buffer.put(headerVal.toByte())
         }
@@ -109,14 +109,14 @@ class BinaryWriter(capacity: Int = 1024) {
 
     fun writeString(id: Int, value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
-        val size = bytes.size.coerceAtMost(1023)
+        val size = bytes.size.coerceAtMost(2047)
         writeHeader(id, BinaryType.STRING, size)
         ensureCapacity(size)
         buffer.put(bytes, 0, size)
     }
 
     fun writeBytes(id: Int, bytes: ByteArray) {
-        val size = bytes.size.coerceAtMost(1023)
+        val size = bytes.size.coerceAtMost(2047)
         writeHeader(id, BinaryType.BYTES, size)
         ensureCapacity(size)
         buffer.put(bytes, 0, size)
@@ -130,14 +130,14 @@ class BinaryWriter(capacity: Int = 1024) {
     class Container(private val writer: BinaryWriter, private val startPos: Int) {
         fun end() {
             val currentPos = writer.buffer.position()
-            val size = (currentPos - startPos - 3).coerceAtMost(1023)
+            val size = (currentPos - startPos - 3).coerceAtMost(2047)
             
             val savedPos = writer.buffer.position()
             
             // Read byte 1 of header at startPos + 1
             writer.buffer.position(startPos + 1)
             val b1 = writer.buffer.get().toInt() and 0xFF
-            val updatedB1 = (b1 and 0xFC) or ((size ushr 8) and 0x03)
+            val updatedB1 = (b1 and 0xF8) or ((size ushr 8) and 0x07)
             
             // Write back updated header byte 1 and size low byte
             writer.buffer.position(startPos + 1)

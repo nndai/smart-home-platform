@@ -74,18 +74,32 @@ const app = {
     if (mqttPass) Utils.$('mqtt-pass').value = mqttPass;
     if (mqttTopicPub) Utils.$('mqtt-topic-pub').value = mqttTopicPub;
     if (mqttTopicSub) Utils.$('mqtt-topic-sub').value = mqttTopicSub;
-    if (mqttTopicOta && Utils.$('mqtt-topic-ota')) Utils.$('mqtt-topic-ota').value = mqttTopicOta;
     if (Utils.$('control-key')) Utils.$('control-key').value = controlKey;
     if (Utils.$('sender-id')) Utils.$('sender-id').value = senderId;
 
     // Attach listeners to save on change
-    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'mqtt-topic-ota', 'control-key', 'sender-id'];
+    const inputs = ['ws-url', 'mqtt-broker', 'mqtt-port', 'mqtt-user', 'mqtt-pass', 'mqtt-topic-pub', 'mqtt-topic-sub', 'control-key', 'sender-id'];
     inputs.forEach(id => {
       const el = Utils.$(id);
       if (el) {
         el.addEventListener('change', () => this.saveSettings());
       }
     });
+
+    const pubEl = Utils.$('mqtt-topic-pub');
+    if (pubEl) {
+      pubEl.addEventListener('input', () => {
+        const val = pubEl.value.trim();
+        if (val.endsWith('/cmd')) {
+          const base = val.substring(0, val.length - 4);
+          const subEl = Utils.$('mqtt-topic-sub');
+          if (subEl && (!subEl.value || subEl.value === 'pump/log' || subEl.value.endsWith('/up') || subEl.value.endsWith('/log'))) {
+            subEl.value = `${base}/up`;
+          }
+          this.saveSettings();
+        }
+      });
+    }
 
     const keyEl = Utils.$('control-key');
     if (keyEl) {
@@ -105,7 +119,6 @@ const app = {
     localStorage.setItem('rp_mqtt_pass', Utils.$('mqtt-pass').value);
     localStorage.setItem('rp_mqtt_topic_pub', Utils.$('mqtt-topic-pub').value);
     localStorage.setItem('rp_mqtt_topic_sub', Utils.$('mqtt-topic-sub').value);
-    if (Utils.$('mqtt-topic-ota')) localStorage.setItem('rp_mqtt_topic_ota', Utils.$('mqtt-topic-ota').value);
     if (Utils.$('control-key')) localStorage.setItem('rp_control_key', Utils.$('control-key').value.trim());
     if (Utils.$('sender-id')) localStorage.setItem('rp_sender_id', Utils.$('sender-id').value.trim() || 'web-debug');
     this.updateControlKeyStatus();
@@ -200,10 +213,8 @@ const app = {
       const port = parseInt(Utils.$('mqtt-port').value.trim()) || 1883;
       const user = Utils.$('mqtt-user').value.trim();
       const password = Utils.$('mqtt-pass').value.trim();
-      const topic_pub = Utils.$('mqtt-topic-pub').value.trim() || 'pump/cmd';
-      const topic_sub = Utils.$('mqtt-topic-sub').value.trim() || 'pump/log';
-      const topic_ota_el = Utils.$('mqtt-topic-ota');
-      const topic_ota = topic_ota_el ? topic_ota_el.value.trim() : 'pump/otachunk';
+      const topic_pub = Utils.$('mqtt-topic-pub').value.trim() || 'devices/pump-ln882h/cmd';
+      const topic_sub = Utils.$('mqtt-topic-sub').value.trim() || 'devices/pump-ln882h/up';
 
       if (!broker) {
         this._logger.log(`[ERROR] Please specify MQTT Broker IP/Domain`, 'error');
@@ -222,7 +233,6 @@ const app = {
         password: password,
         topic_pub: topic_pub,
         topic_sub: topic_sub,
-        topic_ota: topic_ota,
         control_key: control_key,
         sender_id: sender_id
       }));

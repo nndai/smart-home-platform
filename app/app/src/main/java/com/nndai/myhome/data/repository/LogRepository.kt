@@ -383,7 +383,7 @@ class LogRepository(
                         if (deviceSize > 0L) {
                             Log.d(TAG, "Power log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
                             scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                                 activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                             }
                         }
@@ -391,7 +391,7 @@ class LogRepository(
                     deviceSize > savedFileSize -> {
                         Log.d(TAG, "Power log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
                         }
                     }
@@ -402,7 +402,7 @@ class LogRepository(
                             .remove(KEY_RAW_SIZE + fullPath)
                             .apply()
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                         }
                     }
@@ -429,7 +429,7 @@ class LogRepository(
                         if (deviceSize > 0L) {
                             Log.d(TAG, "Toggle log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
                             scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                                 activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                             }
                         }
@@ -437,7 +437,7 @@ class LogRepository(
                     deviceSize > savedFileSize -> {
                         Log.d(TAG, "Toggle log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
                         }
                     }
@@ -448,7 +448,7 @@ class LogRepository(
                             .remove(KEY_RAW_SIZE + fullPath)
                             .apply()
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                         }
                     }
@@ -474,7 +474,7 @@ class LogRepository(
                         if (deviceSize > 0L) {
                             Log.d(TAG, "Sys log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
                             scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                                 activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                             }
                         }
@@ -482,7 +482,7 @@ class LogRepository(
                     deviceSize > savedFileSize -> {
                         Log.d(TAG, "Sys log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
                         }
                     }
@@ -493,7 +493,7 @@ class LogRepository(
                             .remove(KEY_RAW_SIZE + fullPath)
                             .apply()
                         scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 800, encode = false)
+                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
                             activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
                         }
                     }
@@ -572,7 +572,7 @@ class LogRepository(
                 "ReadFile path=$fullPath has MORE data (total size=${event.size}). Requesting next chunk at offset=$nextOffset"
             )
             scope.launch {
-                val nextReqId = remote.readFile(fullPath, offset = nextOffset, limit = 800, encode = false)
+                val nextReqId = remote.readFile(fullPath, offset = nextOffset, limit = 1024, encode = false)
                 activeReadFileSessions[fullPath] = FileReadSession(reqId = nextReqId, expectedOffset = nextOffset)
             }
             return

@@ -413,8 +413,8 @@ class BinaryWriter {
       const hdrPos = this.containerStack[i];
       if (hdrPos + 3 <= this.offset) {
         const actualSize = this.offset - hdrPos - 3;
-        const sizeField = actualSize & 0x3FF;
-        this.buffer[hdrPos + 1] = (this.buffer[hdrPos + 1] & 0xFC) | ((sizeField >> 8) & 0x03);
+        const sizeField = actualSize & 0x7FF;
+        this.buffer[hdrPos + 1] = (this.buffer[hdrPos + 1] & 0xF8) | ((sizeField >> 8) & 0x07);
         this.buffer[hdrPos + 2] = sizeField & 0xFF;
       }
     }
@@ -423,13 +423,13 @@ class BinaryWriter {
   _writeHeader(id, type, size = 0) {
     if (BinaryType.isVariableSize(type)) {
       this._ensureCapacity(3);
-      const header = ((id & 0x1FF) << 7) | ((type & 0x1F) << 2) | ((size >> 8) & 0x03);
+      const header = ((id & 0x1FF) << 7) | ((type & 0x0F) << 3) | ((size >> 8) & 0x07);
       this.buffer[this.offset++] = (header >> 8) & 0xFF;
       this.buffer[this.offset++] = header & 0xFF;
       this.buffer[this.offset++] = size & 0xFF;
     } else {
       this._ensureCapacity(2);
-      const header = ((id & 0x1FF) << 7) | ((type & 0x1F) << 2);
+      const header = ((id & 0x1FF) << 7) | ((type & 0x0F) << 3);
       this.buffer[this.offset++] = (header >> 8) & 0xFF;
       this.buffer[this.offset++] = header & 0xFF;
     }
@@ -607,8 +607,8 @@ class BinaryReader {
     this.offset += 2;
 
     const id = (header >> 7) & 0x1FF;
-    const type = (header >> 2) & 0x1F;
-    const sizeHigh = header & 0x03;
+    const type = (header >> 3) & 0x0F;
+    const sizeHigh = header & 0x07;
 
     let size = 0;
     if (BinaryType.isVariableSize(type)) {

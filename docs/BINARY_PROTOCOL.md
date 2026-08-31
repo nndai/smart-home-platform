@@ -22,8 +22,8 @@ Mọi gói tin giao tiếp qua MQTT (`devices/{id}/cmd`, `devices/{id}/up`, `dev
 ### Định dạng từng trường TLV (Type-Length-Value)
 
 Mỗi trường dữ liệu được mã hóa header siêu nhỏ gọn:
-- **Kiểu dữ liệu cố định (Fixed-size)**: Header 2 bytes `[ID: 9-bit | Type: 5-bit | Reserved: 2-bit]` + Dữ liệu.
-- **Kiểu dữ liệu biến thiên (Variable-size: String, Bytes, Object, Array)**: Header 3 bytes `[ID: 9-bit | Type: 5-bit | LenHigh: 2-bit] [LenLow: 8-bit]` + Dữ liệu (hỗ trợ dung lượng đến 1023 bytes/field).
+- **Kiểu dữ liệu cố định (Fixed-size)**: Header 2 bytes `[ID: 9-bit | Type: 4-bit | Reserved: 3-bit]` + Dữ liệu.
+- **Kiểu dữ liệu biến thiên (Variable-size: String, Bytes, Object, Array)**: Header 3 bytes `[ID: 9-bit | Type: 4-bit | LenHigh: 3-bit] [LenLow: 8-bit]` + Dữ liệu (hỗ trợ dung lượng đến 2047 bytes/field).
 - **Phần tử không có ID (Root Object / Array Items)**: Mang `FieldId::None` (giá trị `0`).
 
 ---

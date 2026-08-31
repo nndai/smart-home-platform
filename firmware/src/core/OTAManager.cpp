@@ -56,7 +56,8 @@ bool OTAManager::startFromUrl(const String& url, ProgressCallback onProgress, Re
     int retryCount = 0;
 
     WiFiClient* client = nullptr;
-    if (url.startsWith("https://")) {
+    bool isHttps = url.startsWith("https://");
+    if (isHttps) {
         WiFiClientSecure* secureClient = new WiFiClientSecure();
         secureClient->setInsecure();
         compat::setTlsBufferSize(*secureClient, 3000, 512);
@@ -204,6 +205,13 @@ bool OTAManager::startFromUrl(const String& url, ProgressCallback onProgress, Re
         }
 
         http.end();
+        if (isHttps) {
+            compat::tlsReset(*(WiFiClientSecure*)client);
+        }
+        else {
+            client->stop();
+        }
+
 
         if (!success)
             break;

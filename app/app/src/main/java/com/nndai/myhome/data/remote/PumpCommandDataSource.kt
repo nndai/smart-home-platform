@@ -131,7 +131,7 @@ class PumpCommandDataSource(
     suspend fun readFile(
         path: String,
         offset: Long = 0,
-        limit: Long = 800,
+        limit: Long = 1024,
         encode: Boolean = false,
         customReqId: String? = null
     ): String {

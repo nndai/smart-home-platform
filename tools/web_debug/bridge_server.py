@@ -27,8 +27,75 @@ except ImportError:
     print("Please run: pip install websockets websocket-client paho-mqtt")
     sys.exit(1)
 
+import hashlib
+import hmac
+
 HTTP_PORT = 8000
 WS_PORT = 8080
+
+def create_ota_chunk_frame(chunk_bytes, control_key=None, sender_id="web-debug"):
+    """
+    Encodes an OTA Chunk binary frame (CommandId::OtaChunk = 16)
+    Field Data (ID 82, Type 13 = BYTES)
+    Envelope fields: TS (111, UINT32), SRC (113, STRING), HMAC (112, STRING)
+    """
+    data_len = len(chunk_bytes)
+    f_data_hdr = bytearray([
+        (82 >> 1) & 0xFF,
+        (((82 & 1) << 7) | (13 << 3) | ((data_len >> 8) & 0x07)) & 0xFF,
+        data_len & 0xFF
+    ])
+    payload = bytearray()
+    payload.extend(f_data_hdr)
+    payload.extend(chunk_bytes)
+
+    if control_key:
+        now_ts = int(time.time())
+        src = sender_id or "web-debug"
+        src_bytes = src.encode('utf-8')
+        src_len = len(src_bytes)
+
+        # Canonical string: ts|cmd||src
+        canonical = f"{now_ts}|otaChunk||{src}"
+        key_bytes = bytes.fromhex(control_key)
+        hmac_hex = hmac.new(key_bytes, canonical.encode('utf-8'), hashlib.sha256).hexdigest()
+        hmac_bytes = hmac_hex.encode('ascii')
+
+        # Field TS (ID 111, Type 4 = UINT32)
+        f_ts_hdr = bytearray([(111 >> 1) & 0xFF, (((111 & 1) << 7) | (4 << 3)) & 0xFF])
+        payload.extend(f_ts_hdr)
+        payload.extend(now_ts.to_bytes(4, byteorder='big'))
+
+        # Field SRC (ID 113, Type 12 = STRING)
+        f_src_hdr = bytearray([
+            (113 >> 1) & 0xFF,
+            (((113 & 1) << 7) | (12 << 3) | ((src_len >> 8) & 0x07)) & 0xFF,
+            src_len & 0xFF
+        ])
+        payload.extend(f_src_hdr)
+        payload.extend(src_bytes)
+
+        # Field HMAC (ID 112, Type 12 = STRING, len = 64)
+        f_hmac_hdr = bytearray([
+            (112 >> 1) & 0xFF,
+            (((112 & 1) << 7) | (12 << 3) | ((64 >> 8) & 0x07)) & 0xFF,
+            64
+        ])
+        payload.extend(f_hmac_hdr)
+        payload.extend(hmac_bytes)
+
+    total_payload_len = len(payload)
+    root_hdr = bytearray([
+        0x00,
+        (14 << 3) | ((total_payload_len >> 8) & 0x07),
+        total_payload_len & 0xFF
+    ])
+
+    frame = bytearray([0xB7, 0x10])
+    frame.extend(root_hdr)
+    frame.extend(payload)
+    frame.append(0xA5)
+    return bytes(frame)
 
 # --- HTTP Server (Background Thread) ---
 def run_http_server():
@@ -65,7 +132,6 @@ class BridgeManager:
         self.protocol = 'ws'
         self.mqtt = None
         self.mqtt_topic_pub = None
-        self.mqtt_topic_ota = None
         self.control_key = None
         self.sender_id = "web-debug"
         self.seq = 0
@@ -115,14 +181,13 @@ class BridgeManager:
         self.recv_thread = threading.Thread(target=run_ws, daemon=True)
         self.recv_thread.start()
 
-    def connect_mqtt(self, broker, port, user, password, topic_pub, topic_sub, topic_ota, control_key=None, sender_id=None):
+    def connect_mqtt(self, broker, port, user, password, topic_pub, topic_sub, topic_ota=None, control_key=None, sender_id=None):
         self.disconnect(quiet=True)
         self.is_connected = True
         self.connect_id += 1
         current_id = self.connect_id
         self.protocol = 'mqtt'
         self.mqtt_topic_pub = topic_pub
-        self.mqtt_topic_ota = topic_ota
         self.control_key = control_key.strip() if control_key else None
         self.sender_id = sender_id.strip() if sender_id else "web-debug"
         
@@ -247,13 +312,21 @@ class BridgeManager:
         if self.loop and not quiet:
             asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({"cmd": "bridgeDisconnected"})), self.loop)
 
+    def _send_ws_data(self, data):
+        if not self.device_ws or not self.is_connected:
+            return
+        if isinstance(data, (bytes, bytearray)):
+            if hasattr(self.device_ws, 'send_binary'):
+                self.device_ws.send_binary(data)
+            else:
+                self.device_ws.send(data, opcode=websocket.ABNF.OPCODE_BINARY)
+        else:
+            self.device_ws.send(data)
+
     def send(self, data):
         if self.protocol == 'ws' and self.device_ws and self.is_connected:
             try:
-                if isinstance(data, (bytes, bytearray)):
-                    self.device_ws.send_binary(data)
-                else:
-                    self.device_ws.send(data)
+                self._send_ws_data(data)
             except Exception as e:
                 print(f"[BRIDGE] WS send error: {e}")
                 self.disconnect()
@@ -267,21 +340,6 @@ class BridgeManager:
                 print(f"[BRIDGE] MQTT send error: {e}")
                 self.disconnect()
 
-    def send_ota_chunk(self, chunk):
-        if self.protocol == 'ws' and self.device_ws and self.is_connected:
-            try:
-                self.device_ws.send_binary(chunk)
-            except Exception as e:
-                print(f"[BRIDGE] WS send OTA error: {e}")
-                self.disconnect()
-        elif self.protocol == 'mqtt' and self.mqtt and self.is_connected:
-            try:
-                target_topic = self.mqtt_topic_ota if self.mqtt_topic_ota else self.mqtt_topic_pub
-                self.mqtt.publish(target_topic, chunk)
-            except Exception as e:
-                print(f"[BRIDGE] MQTT send OTA error: {e}")
-                self.disconnect()
-
     def start_upload(self, data_bytes):
         self.uploading = True
         self._ota_ack = threading.Event() if self.protocol == 'mqtt' else None
@@ -289,7 +347,8 @@ class BridgeManager:
         def upload_task():
             chunk_size = 1024
             total = len(data_bytes)
-            print(f"[BRIDGE] Đang nạp {total} bytes xuống chip (via {self.protocol})...")
+            target_dest = self.mqtt_topic_pub if self.protocol == 'mqtt' else 'WebSocket'
+            print(f"[BRIDGE] Đang nạp {total} bytes xuống chip qua lệnh otaChunk ({self.protocol} -> {target_dest})...")
 
             if self.protocol == 'mqtt':
                 self._mqtt_upload(data_bytes, chunk_size, total)
@@ -308,59 +367,59 @@ class BridgeManager:
                 print("[BRIDGE] Đã hủy tiến trình nạp Firmware!")
                 break
 
-            chunk = data_bytes[i:i+chunk_size]
-            self.send_ota_chunk(chunk)
+            raw_chunk = data_bytes[i:i+chunk_size]
+            chunk_frame = create_ota_chunk_frame(raw_chunk, None, self.sender_id)
+            if self.device_ws and self.is_connected:
+                try:
+                    self._send_ws_data(chunk_frame)
+                except Exception as e:
+                    print(f"[BRIDGE] WS send OTA error: {e}")
+                    self.disconnect()
             time.sleep(0.01)
 
-            pct = int(((i + len(chunk)) / total) * 100)
+            pct = int(((i + len(raw_chunk)) / total) * 100)
             if pct != pre_pct:
                 pre_pct = pct
                 asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
                     "cmd": "bridgeProgress",
                     "pct": pct,
-                    "uploaded": i + len(chunk),
+                    "uploaded": i + len(raw_chunk),
                     "total": total
                 })), self.loop)
 
     def _mqtt_upload(self, data_bytes, chunk_size, total):
-        one_pct = max(1, total // 100)
         offset = 0
-        batch_idx = 0
-
-        print(f"[BRIDGE] MQTT upload: {total} bytes, 1% = {one_pct} bytes")
+        pre_pct = -1
+        print(f"[BRIDGE] MQTT OTA streaming (Command otaChunk): {total} bytes to '{self.mqtt_topic_pub}', chunk size: {chunk_size}")
 
         while offset < total and self.uploading and self.is_connected:
-            batch_idx += 1
-            target_pct = batch_idx * 5 + 1
-            if target_pct > 100:
-                target_pct = 100
-            target_bytes = (target_pct * total + 99) // 100
+            chunk_end = min(offset + chunk_size, total)
+            raw_chunk = data_bytes[offset:chunk_end]
+            chunk_frame = create_ota_chunk_frame(raw_chunk, self.control_key, self.sender_id)
 
-            while offset < target_bytes and offset < total and self.uploading and self.is_connected:
-                chunk_end = min(offset + chunk_size, target_bytes, total)
-                self.send_ota_chunk(data_bytes[offset:chunk_end])
-                offset = chunk_end
-                time.sleep(0.4)
-                # Không broadcast bridgeProgress 100% từ bridge
-                # (chờ MCU ack mới báo 100%)
-                if offset < total:
-                    pct = int((offset / total) * 100)
-                    asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
-                        "cmd": "bridgeProgress",
-                        "pct": pct,
-                        "uploaded": offset,
-                        "total": total
-                    })), self.loop)
+            if self.mqtt and self.is_connected:
+                try:
+                    self.mqtt.publish(self.mqtt_topic_pub, chunk_frame)
+                except Exception as e:
+                    print(f"[BRIDGE] MQTT send OTA error: {e}")
+                    self.disconnect()
 
-            if offset >= total or target_pct >= 100:
-                break
+            offset = chunk_end
+            time.sleep(0.2)  # ####
 
-            milestone_pct = batch_idx * 5
-            curr_pct = int((offset / total) * 100)
+            pct = int((offset / total) * 100)
+            if pct != pre_pct:
+                pre_pct = pct
+                asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
+                    "cmd": "bridgeProgress",
+                    "pct": pct,
+                    "uploaded": offset,
+                    "total": total
+                })), self.loop)
 
         if self.uploading and offset >= total:
-            time.sleep(10)
-            print("[BRIDGE] Upload MQTT hoàn tất")
+            time.sleep(10)  # ####
+            print("[BRIDGE] Upload MQTT hoàn tất (Đã đẩy 100% chunks)")
             asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({
                 "cmd": "bridgeProgress",
                 "pct": 100,

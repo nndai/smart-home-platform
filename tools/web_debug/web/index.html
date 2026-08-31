@@ -391,20 +391,15 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex flex-col gap-1">
               <label class="text-xs text-gray-500">Publish Topic (Tx)</label>
-              <input id="mqtt-topic-pub" type="text" placeholder="pump/cmd" value="pump/cmd"
+              <input id="mqtt-topic-pub" type="text" placeholder="devices/pump-ln882h/cmd" value="devices/pump-ln882h/cmd"
                      class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-xs text-gray-500">Subscribe Topic (Rx)</label>
-              <input id="mqtt-topic-sub" type="text" placeholder="pump/log" value="pump/log"
-                     class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs text-gray-500">OTA Chunk Topic</label>
-              <input id="mqtt-topic-ota" type="text" placeholder="pump/otachunk" value="pump/otachunk"
+              <input id="mqtt-topic-sub" type="text" placeholder="devices/pump-ln882h/up" value="devices/pump-ln882h/up"
                      class="bg-surface-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-300 focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all" />
             </div>
           </div>
