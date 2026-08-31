@@ -72,11 +72,10 @@ public:
         BinaryReader reader(_data, _size);
         BinaryStringView str;
         if (reader.readString(field, str)) {
-            char* buf = new char[str.length + 1];
-            memcpy(buf, str.data, str.length);
-            buf[str.length] = '\0';
-            out = String(buf);
-            delete[] buf;
+            out = "";
+            if (str.length > 0 && str.data) {
+                out.concat((const char*)str.data, str.length);
+            }
             return true;
         }
         return false;
