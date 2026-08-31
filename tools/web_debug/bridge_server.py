@@ -50,7 +50,8 @@ def create_ota_chunk_frame(chunk_bytes, control_key=None, sender_id="web-debug")
     payload.extend(chunk_bytes)
 
     if control_key:
-        now_ts = int(time.time())
+        TZ_OFFSET_SEC = 25200
+        now_ts = int(time.time()) + TZ_OFFSET_SEC
         src = sender_id or "web-debug"
         src_bytes = src.encode('utf-8')
         src_len = len(src_bytes)
@@ -159,6 +160,19 @@ class BridgeManager:
                     try:
                         msg = self.device_ws.recv()
                         if msg:
+                            if self.uploading:
+                                if isinstance(msg, (bytes, bytearray)) and len(msg) >= 3 and msg[0] == 0xB7 and msg[-1] == 0xA5:
+                                    cmd_id = msg[1]
+                                    if b'error' in msg and cmd_id in (13, 14, 16, 51):
+                                        print(f"[BRIDGE] MCU reported OTA error on cmd {cmd_id}! Stopping upload immediately.")
+                                        self.stop_upload()
+                                        asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({"cmd": "otaError", "message": f"MCU OTA error (cmd {cmd_id})"})), self.loop)
+                                elif isinstance(msg, str) and '"error"' in msg:
+                                    if any(k in msg for k in ('ota', 'upload', 'flash', 'chunk')):
+                                        print(f"[BRIDGE] MCU reported OTA error in JSON! Stopping upload immediately.")
+                                        self.stop_upload()
+                                        asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({"cmd": "otaError", "message": "MCU OTA error"})), self.loop)
+
                             asyncio.run_coroutine_threadsafe(self.broadcast(msg), self.loop)
                     except websocket.WebSocketTimeoutException:
                         continue
@@ -243,11 +257,17 @@ class BridgeManager:
                             # 1. Binary Protocol Frame
                             if payload and len(payload) >= 3 and payload[0] == 0xB7 and payload[-1] == 0xA5:
                                 cmd_id = payload[1]
+                                if self.uploading and b'error' in payload and cmd_id in (13, 14, 16, 51):
+                                    print(f"[BRIDGE] MCU reported OTA error on MQTT cmd {cmd_id}! Stopping upload immediately.")
+                                    self.stop_upload()
+                                    asyncio.run_coroutine_threadsafe(self.broadcast(json.dumps({"cmd": "otaError", "message": f"MCU OTA error (cmd {cmd_id})"})), self.loop)
+
                                 if cmd_id == 50:  # OtaProgress
                                     if self._ota_ack:
                                         self._ota_ack.set()
                                 elif cmd_id == 16:  # OtaChunk
-                                    return
+                                    if b'error' not in payload:
+                                        return
                                 asyncio.run_coroutine_threadsafe(self.broadcast(payload), self.loop)
                                 return
 
@@ -466,12 +486,12 @@ def get_build_targets():
                 fw_file = None
                 fw_path = None
                 
-                if os.path.exists(bin_path):
-                    fw_file = "firmware.bin"
-                    fw_path = bin_path
-                elif os.path.exists(uf2_path):
+                if os.path.exists(uf2_path):
                     fw_file = "firmware.uf2"
                     fw_path = uf2_path
+                elif os.path.exists(bin_path):
+                    fw_file = "firmware.bin"
+                    fw_path = bin_path
                 
                 if fw_path and os.path.exists(fw_path):
                     st = os.stat(fw_path)

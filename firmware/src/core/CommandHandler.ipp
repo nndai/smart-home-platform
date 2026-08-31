@@ -652,6 +652,7 @@ void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const protocol::Comm
     }
     bool ok = _ota->writeChunk(chunkData, chunkLen);
     if (!ok) {
+        _ota->writeError();
         resp.setString(protocol::FieldId::Status, "error");
         resp.setString(protocol::FieldId::Message, "Write chunk failed");
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
