@@ -27,14 +27,14 @@ bool SwitchDriver::handleCmd(const char* cmd, const protocol::CommandRequest& pa
     if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
         bool on = false;
         if (!payload.getBool(protocol::FieldId::State, on)) {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Missing or invalid 'state' field");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Missing or invalid 'state' field"));
             return true;
         }
         setRelay(on);
         _persistRelayState();
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::State, on ? "on" : "off");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::State, on ? F("on") : F("off"));
         LT_IM(CMD, "Relay %s", on ? "ON" : "OFF");
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;

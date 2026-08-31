@@ -354,16 +354,16 @@ bool RemoteSwitchDriver::handleCmd(const char* cmd, const protocol::CommandReque
     if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
         bool on = false;
         if (!payload.getBool(protocol::FieldId::State, on)) {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Missing or invalid 'state' field");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Missing or invalid 'state' field"));
             return true;
         }
         sendRelayCommand(on);
         if (_services.log) {
             _services.log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         }
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::State, on ? "on" : "off");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::State, on ? F("on") : F("off"));
         LT_IM(CMD, "Forward relay %s to target %s", on ? "ON" : "OFF", _cfg->targetId);
         return true;
     }
@@ -381,7 +381,7 @@ void RemoteSwitchDriver::getStatus(protocol::CommandResponse& resp) {
 void RemoteSwitchDriver::getConfig(protocol::CommandResponse& resp) {
     resp.setString(protocol::FieldId::TargetId, _cfg->targetId);
     resp.setString(protocol::FieldId::TargetType, _cfg->targetType);
-    resp.setString(protocol::FieldId::TargetKey, _cfg->targetKey[0] != '\0' ? "********" : "");
+    resp.setString(protocol::FieldId::TargetKey, _cfg->targetKey[0] != '\0' ? F("********") : F(""));
 }
 
 bool RemoteSwitchDriver::setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {

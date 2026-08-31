@@ -390,6 +390,20 @@ bool BinaryWriter::writeString(FieldId id, const String& data) {
     return writeString(static_cast<uint16_t>(id), data.c_str(), data.length());
 }
 
+bool BinaryWriter::writeString(uint16_t id, const __FlashStringHelper* data) {
+    if (!data) return writeString(id, "", 0);
+    PGM_P p = reinterpret_cast<PGM_P>(data);
+    size_t len = strlen_P(p);
+    if (!_writeHeader(id, BinaryType::STRING, static_cast<uint16_t>(len))) return false;
+    if (len > 0) {
+        if (!_ensureCapacity(len)) return false;
+        memcpy_P(_buffer + _offset, p, len);
+        _offset += len;
+    }
+    _syncContainersAndEndByte();
+    return true;
+}
+
 bool BinaryWriter::writeBytes(uint16_t id, const uint8_t* data, uint16_t size) {
     return writeField(id, BinaryType::BYTES, data, size);
 }

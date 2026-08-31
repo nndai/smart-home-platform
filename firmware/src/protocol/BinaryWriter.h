@@ -118,6 +118,10 @@ public:
     }
     bool writeString(FieldId id, const char* data);
     bool writeString(FieldId id, const String& data);
+    bool writeString(uint16_t id, const __FlashStringHelper* data);
+    bool writeString(FieldId id, const __FlashStringHelper* data) {
+        return writeString(static_cast<uint16_t>(id), data);
+    }
 
     bool writeBytes(uint16_t id, const uint8_t* data, uint16_t size);
     bool writeBytes(FieldId id, const uint8_t* data, uint16_t size) {

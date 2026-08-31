@@ -154,6 +154,10 @@ public:
     void setString(FieldId id, const char* value) override {
         _writer->writeString(id, value);
     }
+
+    void setString(FieldId id, const __FlashStringHelper* value) override {
+        _writer->writeString(id, value);
+    }
     
     void setString(FieldId id, const String& value) override {
         _writer->writeString(id, value);
@@ -189,6 +193,10 @@ public:
     }
     
     void addString(const char* value) override {
+        _writer->writeString(FieldId::None, value);
+    }
+
+    void addString(const __FlashStringHelper* value) override {
         _writer->writeString(FieldId::None, value);
     }
     

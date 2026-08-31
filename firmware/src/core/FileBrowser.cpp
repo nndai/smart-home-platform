@@ -7,13 +7,13 @@
 void FileBrowser::listDir(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
     File dir = LITTLEFS.open(path, "r");
     if (!dir) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Not a directory");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not a directory"));
         resp.setString(protocol::FieldId::Path, path);
         return;
     }
 
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setString(protocol::FieldId::Path, path);
 
     if (limit == 0) {
@@ -26,9 +26,9 @@ void FileBrowser::listDir(const String& path, size_t offset, size_t limit, proto
             auto e = entries->addBeginObject();
             e->setString(protocol::FieldId::Name, name);
             if (isDir) {
-                e->setString(protocol::FieldId::Type, "dir");
+                e->setString(protocol::FieldId::Type, F("dir"));
             } else {
-                e->setString(protocol::FieldId::Type, "file");
+                e->setString(protocol::FieldId::Type, F("file"));
                 e->setU32(protocol::FieldId::Size, (uint32_t)size);
             }
             entries->endObject(e);
@@ -110,13 +110,13 @@ void FileBrowser::readFile(const String& path, size_t offset, size_t limit, prot
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "File not found");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("File not found"));
         return;
     }
 
     size_t fileSize = f.size();
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setU32(protocol::FieldId::Size, (uint32_t)fileSize);
 
     if (offset >= fileSize) {
@@ -135,8 +135,8 @@ void FileBrowser::readFile(const String& path, size_t offset, size_t limit, prot
 
     uint8_t* buf = (uint8_t*)malloc(toRead);
     if (!buf) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Out of memory");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Out of memory"));
         f.close();
         return;
     }
@@ -153,13 +153,13 @@ void FileBrowser::fileInfo(const String& path, protocol::CommandResponse& resp) 
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Not found");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not found"));
         return;
     }
 
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Type, f.isDirectory() ? "dir" : "file");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Type, f.isDirectory() ? F("dir") : F("file"));
     resp.setU32(protocol::FieldId::Size, (uint32_t)f.size());
     f.close();
 }
@@ -169,8 +169,8 @@ void FileBrowser::deleteItem(const String& path, protocol::CommandResponse& resp
 
     File f = LITTLEFS.open(path, "r");
     if (!f) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Not found");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Not found"));
         return;
     }
     bool isDir = f.isDirectory();
@@ -194,15 +194,15 @@ void FileBrowser::deleteItem(const String& path, protocol::CommandResponse& resp
     }
 
     if (ok) {
-        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Status, F("ok"));
     } else {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Delete failed");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Delete failed"));
     }
 }
 
 void FileBrowser::fsInfo(protocol::CommandResponse& resp) {
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setU32(protocol::FieldId::TotalBytes, (uint32_t)compat::fsTotalBytes());
     resp.setU32(protocol::FieldId::UsedBytes, (uint32_t)compat::fsUsedBytes());
 }

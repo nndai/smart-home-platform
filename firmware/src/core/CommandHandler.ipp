@@ -206,8 +206,8 @@ void CommandHandlerT<T>::handleCommandBinary(const String& source, const uint8_t
             _handleFileCommand(source, commandId, req, resp);
             break;
         default:
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Unknown command");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Unknown command"));
             _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
             break;
     }
@@ -262,7 +262,7 @@ void CommandHandlerT<T>::publishStatusToUp() {
 
 template <typename T>
 void CommandHandlerT<T>::_cmdGetStatus(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setU32(protocol::FieldId::Timestamp, _log ? _log->getEpoch() : 0);
     resp.setI32(protocol::FieldId::Rssi, WiFi.RSSI());
 
@@ -282,29 +282,29 @@ template <typename T>
 void CommandHandlerT<T>::_cmdGetConfig(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)payload;
     T& c = _cfg->get();
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
 
     resp.setI32(protocol::FieldId::ConnMode, (int)c.connMode);
     resp.setString(protocol::FieldId::MqttServer, c.mqttServer);
     resp.setU16(protocol::FieldId::MqttPort, c.mqttPort);
     resp.setString(protocol::FieldId::MqttUser, c.mqttUser);
-    resp.setString(protocol::FieldId::MqttPass, strlen(_cfg->passPlain()) > 0 ? "********" : "");
+    resp.setString(protocol::FieldId::MqttPass, strlen(_cfg->passPlain()) > 0 ? F("********") : F(""));
     if (_identity) {
         resp.setString(protocol::FieldId::MqttTopic, String(F("devices/")) + _identity->deviceId());
         resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
         resp.setString(protocol::FieldId::ApSSID, _identity->apSSID());
-        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? F("provisioned") : F("unprovisioned"));
     } else {
-        resp.setString(protocol::FieldId::MqttTopic, "");
-        resp.setString(protocol::FieldId::DeviceId, "");
-        resp.setString(protocol::FieldId::ApSSID, "");
-        resp.setString(protocol::FieldId::PairingState, "unprovisioned");
+        resp.setString(protocol::FieldId::MqttTopic, F(""));
+        resp.setString(protocol::FieldId::DeviceId, F(""));
+        resp.setString(protocol::FieldId::ApSSID, F(""));
+        resp.setString(protocol::FieldId::PairingState, F("unprovisioned"));
     }
 
     resp.setString(protocol::FieldId::WifiSSID, c.wifiSSID);
-    resp.setString(protocol::FieldId::WifiPass, strlen(c.wifiPass) > 0 ? "********" : "");
+    resp.setString(protocol::FieldId::WifiPass, strlen(c.wifiPass) > 0 ? F("********") : F(""));
     resp.setString(protocol::FieldId::DebugSSID, c.debugSSID);
-    resp.setString(protocol::FieldId::DebugPass, strlen(c.debugPass) > 0 ? "********" : "");
+    resp.setString(protocol::FieldId::DebugPass, strlen(c.debugPass) > 0 ? F("********") : F(""));
     resp.setString(protocol::FieldId::Profile, _profile);
 
     char ipBuf[16];
@@ -421,13 +421,13 @@ void CommandHandlerT<T>::_cmdSetConfig(const String& source, const protocol::Com
 
     if (changed) {
         _cfg->save(c);
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::Message, needReboot ? "Config saved. Reboot required." : "Config saved.");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, needReboot ? F("Config saved. Reboot required.") : F("Config saved."));
         resp.setBool(protocol::FieldId::NeedReboot, needReboot);
         LT_IM(CMD, "Config updated%s", needReboot ? " (reboot needed)" : "");
     } else {
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::Message, "No changes");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("No changes"));
     }
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
@@ -439,12 +439,12 @@ void CommandHandlerT<T>::_cmdGetLog(const String& source, const protocol::Comman
     (void)payload;
     String logContent;
     if (_log->readSysLog(logContent, 4096)) {
-        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Status, F("ok"));
         resp.setString(protocol::FieldId::Log, logContent);
         resp.setU32(protocol::FieldId::LogSize, (uint32_t)_log->getSysLogSize());
     } else {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "No log available");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("No log available"));
     }
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
@@ -455,8 +455,8 @@ void CommandHandlerT<T>::_cmdClearSysLog(const String& source, const protocol::C
     (void)source;
     (void)payload;
     _log->clearSysLog();
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "Sys log cleared");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("Sys log cleared"));
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
 }
@@ -465,14 +465,14 @@ template <typename T>
 void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     String url;
     if (!payload.getString(protocol::FieldId::Url, url) || url.length() == 0) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Missing URL");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Missing URL"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
 
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "OTA started from URL");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("OTA started from URL"));
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
 
     static int lastPct = -1;
@@ -495,8 +495,8 @@ void CommandHandlerT<T>::_cmdOtaUrl(const String& source, const protocol::Comman
 template <typename T>
 void CommandHandlerT<T>::_cmdReboot(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)payload;
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "Rebooting...");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("Rebooting..."));
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
     LT_IM(CMD, "Rebooting...");
     delay(1000);
@@ -513,8 +513,8 @@ void CommandHandlerT<T>::_cmdFactoryReset(const String& source, const protocol::
         _scanResultBuf = nullptr;
         _scanResultLen = 0;
     }
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "Factory reset. Rebooting...");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("Factory reset. Rebooting..."));
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
     LT_IM(CMD, "Factory reset (config + identity)");
     delay(1000);
@@ -527,7 +527,7 @@ void CommandHandlerT<T>::_cmdSetLogMqtt(const String& source, const protocol::Co
     bool en = false;
     payload.getBool(protocol::FieldId::Enabled, en);
     _log->setMqttLogEnabled(en);
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setBool(protocol::FieldId::Enabled, en);
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
@@ -537,7 +537,7 @@ template <typename T>
 void CommandHandlerT<T>::_cmdGetLogMqtt(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)source;
     (void)payload;
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setBool(protocol::FieldId::Enabled, _log->isMqttLogEnabled());
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
@@ -547,7 +547,7 @@ template <typename T>
 void CommandHandlerT<T>::_cmdGetLogStats(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)source;
     (void)payload;
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setU32(protocol::FieldId::SysLogSize, (uint32_t)_log->getSysLogSize());
     resp.setU32(protocol::FieldId::ToggleLogSize, (uint32_t)_log->getToggleLogSize());
     resp.setU32(protocol::FieldId::PowerLogSize, (uint32_t)_log->getPowerLogSize());
@@ -562,8 +562,8 @@ template <typename T>
 void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     uint32_t size = 0;
     if (!payload.getUint(protocol::FieldId::Size, size) || size == 0) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Missing size");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Missing size"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -579,7 +579,7 @@ void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const pro
                 LT_IM(OTA, "OTA Progress: %d%%", pct);
                 if (isMqtt) {
                     protocol::BinaryWriter progWriter(protocol::CommandId::OtaProgress);
-                    progWriter.writeString(protocol::FieldId::Status, "ok", 2);
+                    progWriter.writeString(protocol::FieldId::Status, F("ok"));
                     progWriter.writeU32(protocol::FieldId::Progress, (uint32_t)progress);
                     progWriter.writeU32(protocol::FieldId::Total, (uint32_t)total);
                     progWriter.writeI32(protocol::FieldId::Pct, pct);
@@ -590,16 +590,16 @@ void CommandHandlerT<T>::_cmdUploadFirmwareStart(const String& source, const pro
         [this, source](bool success, const char* msg) {
             LT_IM(OTA, "OTA upload %s: %s", success ? "success" : "failed", msg);
             protocol::BinaryWriter resultWriter(protocol::CommandId::OtaResult);
-            resultWriter.writeString(protocol::FieldId::Status, success ? "ok" : "error", success ? 2 : 5);
+            resultWriter.writeString(protocol::FieldId::Status, success ? F("ok") : F("error"));
             resultWriter.writeString(protocol::FieldId::Message, msg, strlen(msg));
             _sendBinaryResponse(source, resultWriter.data(), resultWriter.size());
         });
     if (ok) {
-        resp.setString(protocol::FieldId::Status, "ok");
+        resp.setString(protocol::FieldId::Status, F("ok"));
         LT_IM(OTA, "stream started, size=%u", size);
     } else {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "OTA already running or update begin failed");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("OTA already running or update begin failed"));
         LT_IM(OTA, "stream start failed");
     }
 
@@ -611,8 +611,8 @@ void CommandHandlerT<T>::_cmdUploadFirmwareEnd(const String& source, const proto
     (void)source;
     (void)payload;
     if (!_ota->isRunning()) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "No OTA in progress");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("No OTA in progress"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -637,24 +637,24 @@ template <typename T>
 void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)source;
     if (!_ota->isRunning()) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "No OTA in progress");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("No OTA in progress"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
     const uint8_t* chunkData = nullptr;
     size_t chunkLen = 0;
     if (!payload.getBytes(protocol::FieldId::Data, chunkData, chunkLen) || chunkLen == 0) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Missing data");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Missing data"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
     bool ok = _ota->writeChunk(chunkData, chunkLen);
     if (!ok) {
         _ota->writeError();
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Write chunk failed");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Write chunk failed"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
     }
 }
@@ -662,7 +662,7 @@ void CommandHandlerT<T>::_cmdOtaChunk(const String& source, const protocol::Comm
 template <typename T>
 void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)source;
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
 
     bool all = true;
     String fields;
@@ -719,12 +719,12 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol:
                 t->setU32(protocol::FieldId::Priority, taskArray[i].uxCurrentPriority);
                 t->setU32(protocol::FieldId::StackWaterMark, taskArray[i].usStackHighWaterMark);
                 switch (taskArray[i].eCurrentState) {
-                case eRunning:   t->setString(protocol::FieldId::State, "running"); break;
-                case eReady:     t->setString(protocol::FieldId::State, "ready"); break;
-                case eBlocked:   t->setString(protocol::FieldId::State, "blocked"); break;
-                case eSuspended: t->setString(protocol::FieldId::State, "suspended"); break;
-                case eDeleted:   t->setString(protocol::FieldId::State, "deleted"); break;
-                default:         t->setString(protocol::FieldId::State, "other"); break;
+                case eRunning:   t->setString(protocol::FieldId::State, F("running")); break;
+                case eReady:     t->setString(protocol::FieldId::State, F("ready")); break;
+                case eBlocked:   t->setString(protocol::FieldId::State, F("blocked")); break;
+                case eSuspended: t->setString(protocol::FieldId::State, F("suspended")); break;
+                case eDeleted:   t->setString(protocol::FieldId::State, F("deleted")); break;
+                default:         t->setString(protocol::FieldId::State, F("other")); break;
                 }
                 tasks->endObject(t);
             }
@@ -745,9 +745,9 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol:
             w->setString(protocol::FieldId::Mac, WiFi.macAddress());
             w->setI32(protocol::FieldId::Channel, WiFi.channel());
             switch (_cfg->get().connMode) {
-            case ConnMode::AP_WS:     w->setString(protocol::FieldId::ConnMode, "ap_ws"); break;
-            case ConnMode::STA_MQTT:  w->setString(protocol::FieldId::ConnMode, "sta_mqtt"); break;
-            case ConnMode::DEBUG_WS:  w->setString(protocol::FieldId::ConnMode, "debug_ws"); break;
+            case ConnMode::AP_WS:     w->setString(protocol::FieldId::ConnMode, F("ap_ws")); break;
+            case ConnMode::STA_MQTT:  w->setString(protocol::FieldId::ConnMode, F("sta_mqtt")); break;
+            case ConnMode::DEBUG_WS:  w->setString(protocol::FieldId::ConnMode, F("debug_ws")); break;
             }
             w->setFloat(protocol::FieldId::Temperature, chip::readWifiTempC());
             resp.endObject(w);
@@ -759,14 +759,13 @@ void CommandHandlerT<T>::_cmdGetSystemInfo(const String& source, const protocol:
         if (s) {
             s->setU32(protocol::FieldId::FlashSize, ESP.getFlashChipSize());
             s->setU32(protocol::FieldId::FsTotal, (uint32_t)compat::fsTotalBytes());
-            const char* modeStr = "UNKNOWN";
             switch (chip::getFlashChipMode()) {
-                case 0: modeStr = "QIO"; break;
-                case 1: modeStr = "QOUT"; break;
-                case 2: modeStr = "DIO"; break;
-                case 3: modeStr = "DOUT"; break;
+                case 0: s->setString(protocol::FieldId::FlashMode, F("QIO")); break;
+                case 1: s->setString(protocol::FieldId::FlashMode, F("QOUT")); break;
+                case 2: s->setString(protocol::FieldId::FlashMode, F("DIO")); break;
+                case 3: s->setString(protocol::FieldId::FlashMode, F("DOUT")); break;
+                default: s->setString(protocol::FieldId::FlashMode, F("UNKNOWN")); break;
             }
-            s->setString(protocol::FieldId::FlashMode, modeStr);
             s->setU32(protocol::FieldId::FlashSpeed, chip::getFlashChipSpeed());
             resp.endObject(s);
         }
@@ -794,7 +793,7 @@ void CommandHandlerT<T>::_onScanDone() {
     int16_t count = compat::scanComplete();
     if (count >= 0) {
         protocol::BinaryWriter writer(protocol::CommandId::GetScanWifiData);
-        writer.writeString(protocol::FieldId::Status, "ok", 2);
+        writer.writeString(protocol::FieldId::Status, F("ok"));
         
         auto nets = writer.beginArray(protocol::FieldId::Networks);
         chip::ScanResult results[40];
@@ -821,8 +820,8 @@ void CommandHandlerT<T>::_onScanDone() {
         }
     } else {
         protocol::BinaryWriter writer(protocol::CommandId::GetScanWifiData);
-        writer.writeString(protocol::FieldId::Status, "error", 5);
-        writer.writeString(protocol::FieldId::Message, "Scan failed", 11);
+        writer.writeString(protocol::FieldId::Status, F("error"));
+        writer.writeString(protocol::FieldId::Message, F("Scan failed"));
 
         if (_scanResultBuf) free(_scanResultBuf);
         _scanResultBuf = (uint8_t*)malloc(writer.size());
@@ -837,7 +836,7 @@ void CommandHandlerT<T>::_onScanDone() {
 
     // Async notify scan completion
     protocol::BinaryWriter notifyWriter(protocol::CommandId::ScanWifi);
-    notifyWriter.writeString(protocol::FieldId::Status, "completed", 9);
+    notifyWriter.writeString(protocol::FieldId::Status, F("completed"));
     _sendBinaryResponse(_scanSource, notifyWriter.data(), notifyWriter.size());
 }
 
@@ -850,8 +849,8 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const protocol::Comm
             LT_IM(CMD, "Scan watchdog: previous scan timed out, allowing restart");
             _scanPending = false;
         } else {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Scan already in progress");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Scan already in progress"));
             _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
             return;
         }
@@ -863,8 +862,8 @@ void CommandHandlerT<T>::_cmdScanWifi(const String& source, const protocol::Comm
 
     LT_IM(CMD, "Starting async WiFi scan...");
 
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "Scan started");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("Scan started"));
     resp.setBool(protocol::FieldId::WifiDrop, false);
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
 
@@ -881,20 +880,20 @@ void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const protoco
         if (millis() - _scanStartMs >= kScanTimeoutMs) {
             LT_IM(CMD, "Scan watchdog: timeout while waiting for scan results");
             _scanPending = false;
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Scan failed");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Scan failed"));
             _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
             return;
         }
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Scan still in progress");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Scan still in progress"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
 
     if (!_scanResultReady || !_scanResultBuf || _scanResultLen == 0) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "No scan data available");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("No scan data available"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -909,23 +908,23 @@ void CommandHandlerT<T>::_cmdGetScanWifiData(const String& source, const protoco
 template <typename T>
 void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     if (_cfg->get().connMode != ConnMode::AP_WS) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Pairing only allowed in AP mode");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Pairing only allowed in AP mode"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
 
     String ssid;
     if (!payload.getString(protocol::FieldId::WifiSSID, ssid) || ssid.length() == 0) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Missing or invalid 'wifiSsid'");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Missing or invalid 'wifiSsid'"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
 
     if (!_identity) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Identity unavailable");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Identity unavailable"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -933,8 +932,8 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
     String ck;
     payload.getString(protocol::FieldId::ControlKey, ck);
     if (ck.length() == 0 || !_identity->setControlKeyHex(ck.c_str())) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Missing or invalid 'controlKey' (need 64 hex chars)");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Missing or invalid 'controlKey' (need 64 hex chars)"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -963,11 +962,11 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
     c.connMode = ConnMode::STA_MQTT;
     _cfg->save(c);
 
-    resp.setString(protocol::FieldId::Status, "ok");
-    resp.setString(protocol::FieldId::Message, "Pairing saved. Rebooting...");
+    resp.setString(protocol::FieldId::Status, F("ok"));
+    resp.setString(protocol::FieldId::Message, F("Pairing saved. Rebooting..."));
     if (_identity) {
         resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
-        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? F("provisioned") : F("unprovisioned"));
     }
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
@@ -980,14 +979,14 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
 template <typename T>
 void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     if (_cfg->get().connMode != ConnMode::AP_WS) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Provision only allowed in AP mode");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Provision only allowed in AP mode"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
     if (!_identity) {
-        resp.setString(protocol::FieldId::Status, "error");
-        resp.setString(protocol::FieldId::Message, "Identity unavailable");
+        resp.setString(protocol::FieldId::Status, F("error"));
+        resp.setString(protocol::FieldId::Message, F("Identity unavailable"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -995,17 +994,17 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::Com
     String ck;
     if (payload.getString(protocol::FieldId::ControlKey, ck) && ck.length() > 0) {
         if (!_identity->setControlKeyHex(ck.c_str())) {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Invalid controlKey (need 64 hex chars)");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Invalid controlKey (need 64 hex chars)"));
             _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
             return;
         }
     }
 
-    resp.setString(protocol::FieldId::Status, "ok");
+    resp.setString(protocol::FieldId::Status, F("ok"));
     if (_identity) {
         resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
-        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? "provisioned" : "unprovisioned");
+        resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? F("provisioned") : F("unprovisioned"));
         String curKey;
         if (_identity->controlKeyHex(curKey)) resp.setString(protocol::FieldId::ControlKey, curKey);
     }

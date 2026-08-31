@@ -78,41 +78,41 @@ void PumpDriver::loop(uint32_t nowMs) {
 }
 
 bool PumpDriver::handleCmd(const char* cmd, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
-    if (strcmp(cmd, "setRelay") == 0) {
+    if (strcmp_P(cmd, PSTR("setRelay")) == 0) {
         bool on = false;
         if (!payload.getBool(protocol::FieldId::State, on)) {
-            resp.setString(protocol::FieldId::Status, "error");
-            resp.setString(protocol::FieldId::Message, "Missing or invalid 'state' field");
+            resp.setString(protocol::FieldId::Status, F("error"));
+            resp.setString(protocol::FieldId::Message, F("Missing or invalid 'state' field"));
             return true;
         }
         setRelay(on);
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::State, on ? "on" : "off");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::State, on ? F("on") : F("off"));
         if (_log) _log->logToggle(LogManager::ToggleSource::TOGGLE_ONLINE, on);
         return true;
     }
-    if (strcmp(cmd, "calibrate") == 0) {
+    if (strcmp_P(cmd, PSTR("calibrate")) == 0) {
         _handleCalibrate(payload, resp);
         return true;
     }
-    if (strcmp(cmd, "resetCalibration") == 0) {
+    if (strcmp_P(cmd, PSTR("resetCalibration")) == 0) {
         _current.resetCalibration();
         _cfg->cCal = _current.getCurrentMultiplier();
         _cfg->vCal = _current.getVoltageMultiplier();
         _cfg->pCal = _current.getPowerMultiplier();
         if (_saveFn) _saveFn();
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::Message, "Calibration reset to HW defaults");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Calibration reset to HW defaults"));
         resp.setDouble(protocol::FieldId::CCal, _cfg->cCal);
         resp.setDouble(protocol::FieldId::VCal, _cfg->vCal);
         resp.setDouble(protocol::FieldId::PCal, _cfg->pCal);
         LT_IM(CMD, "Calibration reset");
         return true;
     }
-    if (strcmp(cmd, "clearPumpFault") == 0) {
+    if (strcmp_P(cmd, PSTR("clearPumpFault")) == 0) {
         _pump.clearPumpFault();
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::Message, "Pump fault cleared");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Pump fault cleared"));
         LT_IM(CMD, "Clear pump fault");
         return true;
     }
@@ -135,27 +135,27 @@ void PumpDriver::getStatus(protocol::CommandResponse& resp) {
     resp.setBool(protocol::FieldId::PumpMode, _cfg->pumpMode);
     switch (_pump.getState()) {
     case PumpState::OFF:
-        resp.setString(protocol::FieldId::PumpStateStr, "OFF");
+        resp.setString(protocol::FieldId::PumpStateStr, F("OFF"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::OFF);
         break;
     case PumpState::RUNNING_OK:
-        resp.setString(protocol::FieldId::PumpStateStr, "RUNNING OK");
+        resp.setString(protocol::FieldId::PumpStateStr, F("RUNNING OK"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::RUNNING_OK);
         break;
     case PumpState::DRY_RUN:
-        resp.setString(protocol::FieldId::PumpStateStr, "DRY RUN");
+        resp.setString(protocol::FieldId::PumpStateStr, F("DRY RUN"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::DRY_RUN);
         break;
     case PumpState::HIGH_CURRENT:
-        resp.setString(protocol::FieldId::PumpStateStr, "HIGH CURRENT");
+        resp.setString(protocol::FieldId::PumpStateStr, F("HIGH CURRENT"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::HIGH_CURRENT);
         break;
     case PumpState::CRITICAL_CURRENT:
-        resp.setString(protocol::FieldId::PumpStateStr, "CRITICAL CURRENT");
+        resp.setString(protocol::FieldId::PumpStateStr, F("CRITICAL CURRENT"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::CRITICAL_CURRENT);
         break;
     case PumpState::OVERLOAD:
-        resp.setString(protocol::FieldId::PumpStateStr, "OVERLOAD");
+        resp.setString(protocol::FieldId::PumpStateStr, F("OVERLOAD"));
         resp.setI32(protocol::FieldId::PumpState, (int)PumpState::OVERLOAD);
         break;
     }
@@ -255,22 +255,22 @@ void PumpDriver::getSysInfo(protocol::CommandResponse& resp) {
     p->setFloat(protocol::FieldId::Temperature, _temp.readCelsius());
     switch (_pump.getState()) {
     case PumpState::OFF:
-        p->setString(protocol::FieldId::PumpState, "off");
+        p->setString(protocol::FieldId::PumpState, F("off"));
         break;
     case PumpState::RUNNING_OK:
-        p->setString(protocol::FieldId::PumpState, "running");
+        p->setString(protocol::FieldId::PumpState, F("running"));
         break;
     case PumpState::DRY_RUN:
-        p->setString(protocol::FieldId::PumpState, "dry_run");
+        p->setString(protocol::FieldId::PumpState, F("dry_run"));
         break;
     case PumpState::HIGH_CURRENT:
-        p->setString(protocol::FieldId::PumpState, "high_current");
+        p->setString(protocol::FieldId::PumpState, F("high_current"));
         break;
     case PumpState::CRITICAL_CURRENT:
-        p->setString(protocol::FieldId::PumpState, "critical_current");
+        p->setString(protocol::FieldId::PumpState, F("critical_current"));
         break;
     case PumpState::OVERLOAD:
-        p->setString(protocol::FieldId::PumpState, "overload");
+        p->setString(protocol::FieldId::PumpState, F("overload"));
         break;
     }
     resp.endObject(p);
@@ -291,9 +291,10 @@ void PumpDriver::_handleCalibrate(const protocol::CommandRequest& payload, proto
         LT_IM(CMD, "Calibrated voltage to %.1f V", ef);
         didCalib = true;
     }
-    if (payload.getFloat(protocol::FieldId::Power, ef)) {
-        _current.calibratePower(ef);
-        LT_IM(CMD, "Calibrated power to %.1f W", ef);
+    float ep = 0;
+    if (payload.getFloat(protocol::FieldId::Power, ep)) {
+        _current.calibratePower(ep);
+        LT_IM(CMD, "Calibrated power to %.1f W", ep);
         didCalib = true;
     }
 
@@ -302,8 +303,8 @@ void PumpDriver::_handleCalibrate(const protocol::CommandRequest& payload, proto
         _cfg->vCal = _current.getVoltageMultiplier();
         _cfg->pCal = _current.getPowerMultiplier();
         if (_saveFn) _saveFn();
-        resp.setString(protocol::FieldId::Status, "ok");
-        resp.setString(protocol::FieldId::Message, "Calibrated");
+        resp.setString(protocol::FieldId::Status, F("ok"));
+        resp.setString(protocol::FieldId::Message, F("Calibrated"));
     }
     resp.setDouble(protocol::FieldId::CCal, _current.getCurrentMultiplier());
     resp.setDouble(protocol::FieldId::VCal, _current.getVoltageMultiplier());

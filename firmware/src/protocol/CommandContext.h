@@ -35,6 +35,7 @@ public:
     virtual void setDouble(FieldId id, double value) = 0;
     
     virtual void setString(FieldId id, const char* value) = 0;
+    virtual void setString(FieldId id, const __FlashStringHelper* value) = 0;
     virtual void setString(FieldId id, const String& value) = 0;
     virtual void setBytes(FieldId id, const uint8_t* data, size_t len) = 0;
     
@@ -45,6 +46,7 @@ public:
     
     // Add raw array element appending
     virtual void addString(const char* value) = 0;
+    virtual void addString(const __FlashStringHelper* value) = 0;
     virtual CommandResponse* addBeginObject() = 0;
 
     // Buffer access
