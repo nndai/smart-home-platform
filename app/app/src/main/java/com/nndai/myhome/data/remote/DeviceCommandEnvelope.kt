@@ -117,7 +117,7 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         val src = keyStore.appSenderId()
         val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
         val canonical = "$ts|$cmdStr||$src"
-        val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
+        val hmacBytes = hmacSha256Bytes(keyBytes, canonical) ?: return null
 
         // Existing inner fields are between root object header (3 bytes: indices 2, 3, 4) and MAGIC_END (index size - 1)
         val existingInnerBytes = if (rawBinary.size > 6) {
@@ -133,7 +133,7 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         }
         writer.writeU32(com.nndai.myhome.protocol.BinaryFieldIds.TS, ts)
         writer.writeString(com.nndai.myhome.protocol.BinaryFieldIds.SRC, src)
-        writer.writeString(com.nndai.myhome.protocol.BinaryFieldIds.HMAC, hmacHex)
+        writer.writeBytes(com.nndai.myhome.protocol.BinaryFieldIds.HMAC, hmacBytes)
         root.end()
 
         val signedFrame = com.nndai.myhome.protocol.BinaryProtocol.buildFrame(cmdId, writer.toByteArray())
@@ -142,16 +142,19 @@ class DeviceCommandEnvelope(context: android.content.Context) {
         return signedFrame
     }
 
-    private fun hmacSha256Hex(key: ByteArray, data: String): String? {
+    private fun hmacSha256Bytes(key: ByteArray, data: String): ByteArray? {
         return runCatching {
             val mac = Mac.getInstance("HmacSHA256")
             mac.init(SecretKeySpec(key, "HmacSHA256"))
             mac.doFinal(data.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
         }.getOrElse {
             Log.e(TAG, "hmac failed: ${it.message}")
             null
         }
+    }
+
+    private fun hmacSha256Hex(key: ByteArray, data: String): String? {
+        return hmacSha256Bytes(key, data)?.joinToString("") { "%02x".format(it) }
     }
 
     private fun hexToBytes(hex: String): ByteArray? {

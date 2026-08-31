@@ -37,7 +37,7 @@ def create_ota_chunk_frame(chunk_bytes, control_key=None, sender_id="web-debug")
     """
     Encodes an OTA Chunk binary frame (CommandId::OtaChunk = 16)
     Field Data (ID 82, Type 13 = BYTES)
-    Envelope fields: TS (111, UINT32), SRC (113, STRING), HMAC (112, STRING)
+    Envelope fields: TS (111, UINT32), SRC (113, STRING), HMAC (112, BYTES)
     """
     data_len = len(chunk_bytes)
     f_data_hdr = bytearray([
@@ -59,8 +59,7 @@ def create_ota_chunk_frame(chunk_bytes, control_key=None, sender_id="web-debug")
         # Canonical string: ts|cmd||src
         canonical = f"{now_ts}|otaChunk||{src}"
         key_bytes = bytes.fromhex(control_key)
-        hmac_hex = hmac.new(key_bytes, canonical.encode('utf-8'), hashlib.sha256).hexdigest()
-        hmac_bytes = hmac_hex.encode('ascii')
+        hmac_raw = hmac.new(key_bytes, canonical.encode('utf-8'), hashlib.sha256).digest()
 
         # Field TS (ID 111, Type 4 = UINT32)
         f_ts_hdr = bytearray([(111 >> 1) & 0xFF, (((111 & 1) << 7) | (4 << 3)) & 0xFF])
@@ -76,14 +75,14 @@ def create_ota_chunk_frame(chunk_bytes, control_key=None, sender_id="web-debug")
         payload.extend(f_src_hdr)
         payload.extend(src_bytes)
 
-        # Field HMAC (ID 112, Type 12 = STRING, len = 64)
+        # Field HMAC (ID 112, Type 13 = BYTES, len = 32)
         f_hmac_hdr = bytearray([
             (112 >> 1) & 0xFF,
-            (((112 & 1) << 7) | (12 << 3) | ((64 >> 8) & 0x07)) & 0xFF,
-            64
+            (((112 & 1) << 7) | (13 << 3) | ((32 >> 8) & 0x07)) & 0xFF,
+            32
         ])
         payload.extend(f_hmac_hdr)
-        payload.extend(hmac_bytes)
+        payload.extend(hmac_raw)
 
     total_payload_len = len(payload)
     root_hdr = bytearray([

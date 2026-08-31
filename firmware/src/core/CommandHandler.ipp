@@ -46,23 +46,23 @@ void CommandHandlerT<T>::_sendBinaryResponse(const String& source, const uint8_t
 // ── Envelope verify (docs §3.2) ──
 template <typename T>
 bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protocol::CommandRequest& req) {
-    if (!_identity) {
-        LT_EM(CMD, "Envelope: identity unavailable");
+    if (!_identity || !_identity->isProvisioned()) {
+        LT_EM(CMD, "Envelope: identity unavailable or unprovisioned");
         return false;
     }
 
     uint32_t ts = 0;
-    String hmacHex;
     String src;
 
-    if (!req.getUint(protocol::FieldId::Ts, ts) ||
-        !req.getString(protocol::FieldId::Hmac, hmacHex)) {
-        LT_EM(CMD, "Envelope: missing ts/hmac");
+    if (!req.getUint(protocol::FieldId::Ts, ts)) {
+        LT_EM(CMD, "Envelope: missing ts");
         return false;
     }
 
-    if (hmacHex.length() != 64) {
-        LT_EM(CMD, "Envelope: bad hmac length");
+    const uint8_t* hmacBytes = nullptr;
+    size_t hmacLen = 0;
+    if (!req.getBytes(protocol::FieldId::Hmac, hmacBytes, hmacLen) || hmacLen != 32) {
+        LT_EM(CMD, "Envelope: missing or invalid hmac (need 32 raw bytes)");
         return false;
     }
 
@@ -80,8 +80,8 @@ bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protoc
         }
     }
 
-    String keyHex;
-    if (!_identity->controlKeyHex(keyHex)) {
+    const uint8_t* rawKey = _identity->controlKey();
+    if (!rawKey) {
         LT_EM(CMD, "Envelope: no controlKey");
         return false;
     }
@@ -89,12 +89,13 @@ bool CommandHandlerT<T>::_verifyEnvelope(protocol::CommandId cmdId, const protoc
     const char* cmdStr = protocol::commandIdToString(static_cast<uint8_t>(cmdId));
     const String canonical = crypto::buildCanonical(ts, cmdStr, "", src.c_str());
 
-    char expectedHex[65];
-    if (!crypto::hmacSha256HexKey(keyHex.c_str(), canonical.c_str(), canonical.length(), expectedHex)) {
+    uint8_t expectedHmac[32];
+    if (!crypto::hmacSha256(rawKey, 32, (const uint8_t*)canonical.c_str(), canonical.length(), expectedHmac)) {
         LT_EM(CMD, "Envelope: hmac compute failed");
         return false;
     }
-    if (strcmp(expectedHex, hmacHex.c_str()) != 0) {
+
+    if (!crypto::constantTimeMemcmp(expectedHmac, hmacBytes, 32)) {
         LT_EM(CMD, "Envelope: hmac mismatch (cmd=%s)", cmdStr);
         return false;
     }
@@ -929,11 +930,19 @@ void CommandHandlerT<T>::_cmdPair(const String& source, const protocol::CommandR
         return;
     }
 
-    String ck;
-    payload.getString(protocol::FieldId::ControlKey, ck);
-    if (ck.length() == 0 || !_identity->setControlKeyHex(ck.c_str())) {
+    const uint8_t* ckBytes = nullptr;
+    size_t ckLen = 0;
+    bool ckOk = false;
+
+    if (payload.getBytes(protocol::FieldId::ControlKey, ckBytes, ckLen)) {
+        if (ckLen == 32 && _identity->setControlKey(ckBytes)) {
+            ckOk = true;
+        }
+    }
+
+    if (!ckOk) {
         resp.setString(protocol::FieldId::Status, F("error"));
-        resp.setString(protocol::FieldId::Message, F("Missing or invalid 'controlKey' (need 64 hex chars)"));
+        resp.setString(protocol::FieldId::Message, F("Missing or invalid 'controlKey' (need 32 bytes)"));
         _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
         return;
     }
@@ -991,11 +1000,12 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::Com
         return;
     }
 
-    String ck;
-    if (payload.getString(protocol::FieldId::ControlKey, ck) && ck.length() > 0) {
-        if (!_identity->setControlKeyHex(ck.c_str())) {
+    const uint8_t* ckBytes = nullptr;
+    size_t ckLen = 0;
+    if (payload.getBytes(protocol::FieldId::ControlKey, ckBytes, ckLen)) {
+        if (ckLen != 32 || !_identity->setControlKey(ckBytes)) {
             resp.setString(protocol::FieldId::Status, F("error"));
-            resp.setString(protocol::FieldId::Message, F("Invalid controlKey (need 64 hex chars)"));
+            resp.setString(protocol::FieldId::Message, F("Invalid controlKey (need 32 bytes)"));
             _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
             return;
         }
@@ -1005,8 +1015,8 @@ void CommandHandlerT<T>::_cmdProvision(const String& source, const protocol::Com
     if (_identity) {
         resp.setString(protocol::FieldId::DeviceId, _identity->deviceId());
         resp.setString(protocol::FieldId::PairingState, _identity->isProvisioned() ? F("provisioned") : F("unprovisioned"));
-        String curKey;
-        if (_identity->controlKeyHex(curKey)) resp.setString(protocol::FieldId::ControlKey, curKey);
+        const uint8_t* curKey = _identity->controlKey();
+        if (curKey) resp.setBytes(protocol::FieldId::ControlKey, curKey, 32);
     }
     LT_IM(CMD, "Provision: deviceId=%s state=%s", _identity->deviceId(), _identity->isProvisioned() ? "provisioned" : "unprovisioned");
 

@@ -43,12 +43,12 @@
 
 // ── Default Protection Thresholds (W for power check, mA for overload) ──
 #define DEFAULT_THRESH_OFF          1       // < 1W       = not running / idle
-#define DEFAULT_THRESH_NO_WATER     400     // < 400W     = no water (dry run)
-#define DEFAULT_THRESH_RUNNING      1000    // < 1000W    = normal running (>= 1000W is high power)
+#define DEFAULT_THRESH_NO_WATER     350     // < 350W     = no water (dry run)
+#define DEFAULT_THRESH_RUNNING      850     // < 850W     = normal running (>= 850W is high power)
 #define DEFAULT_THRESH_OVERLOAD     20000   // >= 20000mA = overload/short (mA)
 
 // ── Default Timeouts (ms) ──
-#define DEFAULT_NO_WATER_TIMEOUT    7000   // 7s dry run => auto off
+#define DEFAULT_NO_WATER_TIMEOUT    5000    // 5s dry run  => auto off
 #define DEFAULT_OVERLOAD_TIMEOUT    1000    // 1s overload => auto off
 
 // ── Default Pump Mode ──

@@ -208,14 +208,14 @@ const Utils = {
   },
 
   /**
-   * HMAC-SHA256 calculation.
+   * HMAC-SHA256 calculation returning raw 32 bytes.
    * @param {string|Uint8Array} key Hex string (64 chars) or Uint8Array
    * @param {string|Uint8Array} message Text string or Uint8Array
-   * @returns {string} 64-char lowercase hex digest
+   * @returns {Uint8Array} 32-byte digest
    */
-  hmacSha256Hex(key, message) {
+  hmacSha256Bytes(key, message) {
     let keyBytes = typeof key === 'string' ? Utils.hexToBytes(key) : key;
-    if (!keyBytes) return '';
+    if (!keyBytes) return new Uint8Array(0);
 
     const msgBytes = typeof message === 'string' ? Utils.stringToUtf8Bytes(message) : message;
 
@@ -238,7 +238,21 @@ const Utils = {
     const innerHash = Utils.sha256Bytes(ipad);
     opad.set(innerHash, blockSize);
 
-    const outerHash = Utils.sha256Bytes(opad);
-    return Utils.bytesToHex(outerHash);
+    return Utils.sha256Bytes(opad);
+  },
+
+  /**
+   * HMAC-SHA256 calculation.
+   * @param {string|Uint8Array} key Hex string (64 chars) or Uint8Array
+   * @param {string|Uint8Array} message Text string or Uint8Array
+   * @returns {string} 64-char lowercase hex digest
+   */
+  hmacSha256Hex(key, message) {
+    const raw = this.hmacSha256Bytes(key, message);
+    return raw.length === 32 ? Utils.bytesToHex(raw) : '';
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Utils;
+}

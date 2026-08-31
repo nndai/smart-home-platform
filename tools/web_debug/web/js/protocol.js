@@ -792,6 +792,19 @@ const BinaryProtocolParser = {
         writer.writeFloat32(id, val);
       }
     } else if (typeof val === 'string') {
+      if ((id === BinaryFieldIds.HMAC || id === BinaryFieldIds.CONTROL_KEY) && val.length === 64 && typeof Utils !== 'undefined' && Utils.hexToBytes) {
+        const bytes = Utils.hexToBytes(val);
+        if (bytes && bytes.length === 32) {
+          writer.writeBytes(id, bytes);
+          return;
+        }
+      } else if (id === BinaryFieldIds.TARGET_KEY && (val.length === 64 || val.length === 128) && typeof Utils !== 'undefined' && Utils.hexToBytes) {
+        const bytes = Utils.hexToBytes(val);
+        if (bytes && (bytes.length === 32 || bytes.length === 64)) {
+          writer.writeBytes(id, bytes);
+          return;
+        }
+      }
       writer.writeString(id, val);
     } else if (val instanceof Uint8Array || ArrayBuffer.isView(val)) {
       writer.writeBytes(id, val);
@@ -834,8 +847,11 @@ const BinaryProtocolParser = {
       const header = reader.readHeader();
       if (!header) break;
       const key = BinaryFieldIds.getName(header.id);
-      const val = this._readValue(reader, header.type, header.size);
+      let val = this._readValue(reader, header.type, header.size);
       if (val !== undefined) {
+        if (val instanceof Uint8Array && (header.id === BinaryFieldIds.CONTROL_KEY || header.id === BinaryFieldIds.TARGET_KEY || header.id === BinaryFieldIds.HMAC) && typeof Utils !== 'undefined' && Utils.bytesToHex) {
+          val = Utils.bytesToHex(val);
+        }
         obj[key] = val;
       }
     }
@@ -906,13 +922,17 @@ const BinaryProtocolParser = {
 
     // Canonical format matching firmware: "ts|cmd||src"
     const canonical = `${ts}|${cmdStr}||${src}`;
-    const hmacHex = typeof Utils !== 'undefined' && Utils.hmacSha256Hex
-      ? Utils.hmacSha256Hex(controlKeyHex, canonical)
-      : "";
+    const hmacBytes = typeof Utils !== 'undefined' && Utils.hmacSha256Bytes
+      ? Utils.hmacSha256Bytes(controlKeyHex, canonical)
+      : (typeof Utils !== 'undefined' && Utils.hmacSha256Hex ? Utils.hexToBytes(Utils.hmacSha256Hex(controlKeyHex, canonical)) : null);
+
+    if (!hmacBytes || hmacBytes.length !== 32) {
+      return rawBinary;
+    }
 
     parsed.ts = ts;
     parsed.src = src;
-    parsed.hmac = hmacHex;
+    parsed.hmac = hmacBytes;
 
     return this.serialize(parsed);
   }

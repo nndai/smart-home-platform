@@ -201,17 +201,20 @@ void RemoteSwitchDriver::sendRelayCommand(bool on) {
     uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
     const char* src = _services.deviceId ? _services.deviceId : "";
 
-    char hmacHex[65] = {0};
-    if (_cfg->targetKey[0] != '\0') {
+    uint8_t hmacBytes[32];
+    bool hasHmac = false;
+    if (_cfg->hasTargetKey) {
         const String canonical = crypto::buildCanonical(ts, "setRelay", "", src);
-        crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex);
+        if (crypto::hmacSha256(_cfg->targetKey, 32, (const uint8_t*)canonical.c_str(), canonical.length(), hmacBytes)) {
+            hasHmac = true;
+        }
     }
 
     protocol::BinaryWriter writer(protocol::CommandId::SetRelay);
     writer.writeBool(protocol::FieldId::State, on);
     writer.writeU32(protocol::FieldId::Ts, ts);
     if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
-    if (hmacHex[0] != '\0') writer.writeString(protocol::FieldId::Hmac, hmacHex);
+    if (hasHmac) writer.writeBytes(protocol::FieldId::Hmac, hmacBytes, 32);
 
     String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
     LT_IM(CMD, "Sending binary setRelay(%s) to %s", on ? "ON" : "OFF", _cfg->targetId);
@@ -228,17 +231,20 @@ void RemoteSwitchDriver::requestStatusStream() {
     uint32_t ts = _services.log ? _services.log->getEpoch() : 0;
     const char* src = _services.deviceId ? _services.deviceId : "";
 
-    char hmacHex[65] = {0};
-    if (_cfg->targetKey[0] != '\0') {
+    uint8_t hmacBytes[32];
+    bool hasHmac = false;
+    if (_cfg->hasTargetKey) {
         const String canonical = crypto::buildCanonical(ts, "getStatus", "", src);
-        crypto::hmacSha256HexKey(_cfg->targetKey, canonical.c_str(), canonical.length(), hmacHex);
+        if (crypto::hmacSha256(_cfg->targetKey, 32, (const uint8_t*)canonical.c_str(), canonical.length(), hmacBytes)) {
+            hasHmac = true;
+        }
     }
 
     protocol::BinaryWriter writer(protocol::CommandId::GetStatus);
     writer.writeBool(protocol::FieldId::Stream, true);
     writer.writeU32(protocol::FieldId::Ts, ts);
     if (src[0] != '\0') writer.writeString(protocol::FieldId::Src, src);
-    if (hmacHex[0] != '\0') writer.writeString(protocol::FieldId::Hmac, hmacHex);
+    if (hasHmac) writer.writeBytes(protocol::FieldId::Hmac, hmacBytes, 32);
 
     String topic = String(F("devices/")) + _cfg->targetId + F("/cmd");
     LT_IM(CMD, "Requesting binary status stream from %s", _cfg->targetId);
@@ -367,7 +373,7 @@ bool RemoteSwitchDriver::handleCmd(const char* cmd, const protocol::CommandReque
 void RemoteSwitchDriver::getStatus(protocol::CommandResponse& resp) {
     resp.setString(protocol::FieldId::TargetId, _cfg->targetId);
     resp.setString(protocol::FieldId::TargetType, _cfg->targetType);
-    resp.setBool(protocol::FieldId::TargetPaired, _cfg->targetKey[0] != '\0');
+    resp.setBool(protocol::FieldId::TargetPaired, _cfg->hasTargetKey);
     resp.setBool(protocol::FieldId::Relay, _targetOn);
     resp.setBool(protocol::FieldId::TargetError, _targetError);
 }
@@ -375,7 +381,7 @@ void RemoteSwitchDriver::getStatus(protocol::CommandResponse& resp) {
 void RemoteSwitchDriver::getConfig(protocol::CommandResponse& resp) {
     resp.setString(protocol::FieldId::TargetId, _cfg->targetId);
     resp.setString(protocol::FieldId::TargetType, _cfg->targetType);
-    resp.setString(protocol::FieldId::TargetKey, _cfg->targetKey[0] != '\0' ? F("********") : F(""));
+    resp.setString(protocol::FieldId::TargetKey, _cfg->hasTargetKey ? F("********") : F(""));
 }
 
 bool RemoteSwitchDriver::setConfig(const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
@@ -392,49 +398,81 @@ bool RemoteSwitchDriver::setConfig(const protocol::CommandRequest& payload, prot
         changed = true;
         subscribeTargetTopic();
     }
-    String k;
-    if (payload.getString(protocol::FieldId::TargetKey, k)) {
-        size_t klen = k.length();
-        if (klen == 0) {
-            _cfg->targetKey[0] = '\0';
-            changed = true;
-        } else if (klen == 64) {
-            strlcpy(_cfg->targetKey, k.c_str(), sizeof(_cfg->targetKey));
-            changed = true;
-        } else if (klen == 128) {
-            // E2E Encrypted targetKey: 64 bytes blob [ IV(16) | ciphertext(32) | tag(16) ]
-            uint8_t blob[64];
-            if (!crypto::hexDecode(k.c_str(), blob, sizeof(blob))) {
-                LT_EM(CMD, "setConfig: invalid hex in targetKeyEnc");
-                return false;
-            }
 
-            if (!_services.identity) {
-                LT_EM(CMD, "setConfig: identity service unavailable for E2E decrypt");
-                return false;
-            }
-
-            String myKeyHex;
-            uint8_t myKey[32];
-            if (!_services.identity->controlKeyHex(myKeyHex) || !crypto::hexDecode(myKeyHex.c_str(), myKey, sizeof(myKey))) {
+    const uint8_t* rawKeyBytes = nullptr;
+    size_t rawKeyLen = 0;
+    if (payload.getBytes(protocol::FieldId::TargetKey, rawKeyBytes, rawKeyLen)) {
+        if (rawKeyLen == 0) {
+            _cfg->hasTargetKey = false;
+            memset(_cfg->targetKey, 0, sizeof(_cfg->targetKey));
+            changed = true;
+        } else if (rawKeyLen == 32) {
+            memcpy(_cfg->targetKey, rawKeyBytes, 32);
+            _cfg->hasTargetKey = true;
+            changed = true;
+            LT_IM(CMD, "setConfig: targetKey set via 32 raw bytes");
+        } else if (rawKeyLen == 64) {
+            // E2E Encrypted blob [IV(16) | ciphertext(32) | tag(16)]
+            const uint8_t* myKey = _services.identity ? _services.identity->controlKey() : nullptr;
+            if (!myKey) {
                 LT_EM(CMD, "setConfig: cannot retrieve my controlKey for decrypt");
                 return false;
             }
-
             uint8_t plainTargetKey[32];
-            if (!crypto::decryptKey(myKey, blob, plainTargetKey)) {
+            if (!crypto::decryptKey(myKey, rawKeyBytes, plainTargetKey)) {
                 LT_EM(CMD, "setConfig: targetKey E2E decrypt failed (bad tag/key)");
                 return false;
             }
-
-            crypto::hexEncode(plainTargetKey, sizeof(plainTargetKey), _cfg->targetKey);
+            memcpy(_cfg->targetKey, plainTargetKey, 32);
+            _cfg->hasTargetKey = true;
             changed = true;
-            LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM");
-        } else {
-            LT_EM(CMD, "setConfig: targetKey must be 64 (plain) or 128 (encrypted) hex chars or empty");
-            return false;
+            LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM (raw blob)");
+        }
+    } else {
+        String k;
+        if (payload.getString(protocol::FieldId::TargetKey, k)) {
+            size_t klen = k.length();
+            if (klen == 0) {
+                _cfg->hasTargetKey = false;
+                memset(_cfg->targetKey, 0, sizeof(_cfg->targetKey));
+                changed = true;
+            } else if (klen == 64) {
+                if (crypto::hexDecode(k.c_str(), _cfg->targetKey, 32)) {
+                    _cfg->hasTargetKey = true;
+                    changed = true;
+                    LT_IM(CMD, "setConfig: targetKey set via 64 hex chars");
+                }
+            } else if (klen == 128) {
+                // E2E Encrypted targetKey: 64 bytes blob [ IV(16) | ciphertext(32) | tag(16) ]
+                uint8_t blob[64];
+                if (!crypto::hexDecode(k.c_str(), blob, sizeof(blob))) {
+                    LT_EM(CMD, "setConfig: invalid hex in targetKeyEnc");
+                    return false;
+                }
+
+                const uint8_t* myKey = _services.identity ? _services.identity->controlKey() : nullptr;
+                if (!myKey) {
+                    LT_EM(CMD, "setConfig: cannot retrieve my controlKey for decrypt");
+                    return false;
+                }
+
+                uint8_t plainTargetKey[32];
+                if (!crypto::decryptKey(myKey, blob, plainTargetKey)) {
+                    LT_EM(CMD, "setConfig: targetKey E2E decrypt failed (bad tag/key)");
+                    return false;
+                }
+
+                memcpy(_cfg->targetKey, plainTargetKey, 32);
+                _cfg->hasTargetKey = true;
+                changed = true;
+                LT_IM(CMD, "setConfig: targetKey successfully decrypted via E2E AES-GCM");
+            } else {
+                LT_EM(CMD, "setConfig: targetKey must be 64 (plain) or 128 (encrypted) hex chars or empty");
+                return false;
+            }
         }
     }
+
     String t;
     if (payload.getString(protocol::FieldId::TargetType, t)) {
         if (t.length() > 0 && t != "pump" && t != "switch") {

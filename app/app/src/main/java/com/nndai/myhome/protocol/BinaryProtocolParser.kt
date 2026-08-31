@@ -73,9 +73,45 @@ object BinaryProtocolParser {
             is Long -> writer.writeI64(id, value)
             is Float -> writer.writeFloat32(id, value)
             is Double -> writer.writeFloat64(id, value)
-            is String -> writer.writeString(id, value)
+            is ByteArray -> writer.writeBytes(id, value)
+            is String -> {
+                // Auto-convert cryptographic hex strings to raw binary bytes on the wire
+                if (id == BinaryFieldIds.HMAC && value.length == 64) {
+                    val bytes = hexToBytes(value)
+                    if (bytes != null) {
+                        writer.writeBytes(id, bytes)
+                        return
+                    }
+                } else if (id == BinaryFieldIds.CONTROL_KEY && value.length == 64) {
+                    val bytes = hexToBytes(value)
+                    if (bytes != null) {
+                        writer.writeBytes(id, bytes)
+                        return
+                    }
+                } else if (id == BinaryFieldIds.TARGET_KEY && (value.length == 64 || value.length == 128)) {
+                    val bytes = hexToBytes(value)
+                    if (bytes != null) {
+                        writer.writeBytes(id, bytes)
+                        return
+                    }
+                }
+                writer.writeString(id, value)
+            }
             is JSONObject -> writeObject(writer, id, value)
             is JSONArray -> writeArray(writer, id, value)
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray? {
+        if (hex.length % 2 != 0) return null
+        return try {
+            val out = ByteArray(hex.length / 2)
+            for (i in out.indices) {
+                out[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+            }
+            out
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -132,7 +168,11 @@ object BinaryProtocolParser {
             val key = BinaryFieldIds.getName(id)
             val value = readValue(reader, type, elementSize)
             if (value != null) {
-                obj.put(key, value)
+                if (value is ByteArray && (id == BinaryFieldIds.CONTROL_KEY || id == BinaryFieldIds.TARGET_KEY || id == BinaryFieldIds.HMAC)) {
+                    obj.put(key, value.joinToString("") { "%02x".format(it) })
+                } else {
+                    obj.put(key, value)
+                }
             }
             bytesRead += elementSize
         }

@@ -54,6 +54,13 @@ bool DeviceIdentity::controlKeyHex(String& out) const {
     return true;
 }
 
+bool DeviceIdentity::setControlKey(const uint8_t key[32]) {
+    if (!key) return false;
+    memcpy(_controlKey, key, KEY_LEN);
+    _hasControlKey = true;
+    return _save();
+}
+
 bool DeviceIdentity::setControlKeyHex(const char* hex) {
     size_t n = 0;
     if (!crypto::hexDecode(hex, _controlKey, KEY_LEN, &n) || n != KEY_LEN) return false;
