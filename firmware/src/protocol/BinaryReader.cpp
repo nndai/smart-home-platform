@@ -29,8 +29,8 @@ bool BinaryReader::next(FieldView& field) {
                       _data[_offset + 1];
 
     field.id = (header >> 7) & 0x1FF;
-    field.type = static_cast<BinaryType>((header >> 2) & 0x1F);
-    uint8_t sizeHigh = header & 0x03;
+    field.type = static_cast<BinaryType>((header >> 3) & 0x0F);
+    uint8_t sizeHigh = header & 0x07;
 
     _offset += 2;
 

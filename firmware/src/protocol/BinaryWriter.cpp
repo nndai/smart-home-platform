@@ -105,9 +105,10 @@ void BinaryWriter::initFrame(uint8_t cmdId) {
     _buffer[_offset++] = cmdId;                      // [1]
 
     // Root Object Header (ID = None = 0, Type = OBJECT = 14, Size = 0)
-    uint16_t rootHdr = (static_cast<uint16_t>(BinaryType::OBJECT) << 2);
+    // 14 << 3 = 112 = 0x70
+    uint16_t rootHdr = (static_cast<uint16_t>(BinaryType::OBJECT) << 3);
     _buffer[_offset++] = (rootHdr >> 8) & 0xFF;      // [2] = 0x00
-    _buffer[_offset++] = rootHdr & 0xFF;             // [3] = 0x38
+    _buffer[_offset++] = rootHdr & 0xFF;             // [3] = 0x70
     _buffer[_offset++] = 0x00;                       // [4] = 0x00
 
     _containerStack[0] = 2;
@@ -144,12 +145,12 @@ void BinaryWriter::_syncContainersAndEndByte() {
         size_t hdrPos = _containerStack[i];
         if (hdrPos + 3 <= _offset) {
             size_t actualSize = _offset - hdrPos - 3;
-            if (actualSize > 1023) {
+            if (actualSize > 2047) {
                 _error = BinaryError::InvalidSize;
                 return;
             }
             uint16_t sizeField = static_cast<uint16_t>(actualSize);
-            _buffer[hdrPos + 1] = (_buffer[hdrPos + 1] & 0xFC) | ((sizeField >> 8) & 0x03);
+            _buffer[hdrPos + 1] = (_buffer[hdrPos + 1] & 0xF8) | ((sizeField >> 8) & 0x07);
             _buffer[hdrPos + 2] = sizeField & 0xFF;
         }
     }
@@ -194,20 +195,20 @@ bool BinaryWriter::_ensureCapacity(size_t needed) {
 bool BinaryWriter::_writeHeader(uint16_t id, BinaryType type, uint16_t size) {
     if (_error != BinaryError::None) return false;
     
-    if (id > 511 || static_cast<uint8_t>(type) > 31) {
+    if (id > 511 || static_cast<uint8_t>(type) > 15) {
         _error = BinaryError::InvalidValue;
         return false;
     }
 
     if (isVariableSize(type)) {
-        if (size > 1023) {
+        if (size > 2047) {
             _error = BinaryError::InvalidValue;
             return false;
         }
 
         if (!_ensureCapacity(3)) return false;
 
-        uint16_t header = (id << 7) | (static_cast<uint16_t>(type) << 2) | ((size >> 8) & 0x03);
+        uint16_t header = (id << 7) | (static_cast<uint16_t>(type) << 3) | ((size >> 8) & 0x07);
 
         _buffer[_offset++] = (header >> 8) & 0xFF;
         _buffer[_offset++] = header & 0xFF;
@@ -215,7 +216,7 @@ bool BinaryWriter::_writeHeader(uint16_t id, BinaryType type, uint16_t size) {
     } else {
         if (!_ensureCapacity(2)) return false;
 
-        uint16_t header = (id << 7) | (static_cast<uint16_t>(type) << 2);
+        uint16_t header = (id << 7) | (static_cast<uint16_t>(type) << 3);
 
         _buffer[_offset++] = (header >> 8) & 0xFF;
         _buffer[_offset++] = header & 0xFF;

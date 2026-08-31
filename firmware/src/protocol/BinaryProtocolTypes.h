@@ -5,7 +5,7 @@ namespace protocol {
 
 /**
  * Data types supported by the TLV (Type-Length-Value) binary protocol.
- * Limits to 5 bits (0-31 max).
+ * Limits to 4 bits (0-15 max).
  */
 enum class BinaryType : uint8_t {
     NULL_TYPE = 0,
