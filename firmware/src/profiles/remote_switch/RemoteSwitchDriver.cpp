@@ -492,7 +492,7 @@ void RemoteSwitchDriver::_onButtonClick() {
     if (_cfg->targetId[0] == '\0') return;
 
     // Nút bị khóa khi đang chờ phản hồi (long-press menu vẫn hoạt động)
-    if (_visualState == TargetVisualState::WAITING) return;
+    //if (_visualState == TargetVisualState::WAITING) return;
 
     if (_visualState == TargetVisualState::ERROR) {
         _targetError = false;
