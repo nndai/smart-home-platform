@@ -102,8 +102,8 @@ void FileBrowser::listDir(const String& path, size_t offset, size_t limit, proto
 }
 
 void FileBrowser::readFile(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
-    if (limit == 0 || limit > 1000) {
-        limit = 1000;
+    if (limit == 0 || limit > 800) {
+        limit = 800;
     }
     resp.setString(protocol::FieldId::Path, path);
     resp.setU32(protocol::FieldId::Offset, (uint32_t)offset);

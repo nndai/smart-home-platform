@@ -104,8 +104,6 @@ fun LogScreen(
         }
     }
 
-    val isBinaryMode by viewModel.isBinaryMode.collectAsStateWithLifecycle()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -174,11 +172,9 @@ fun LogScreen(
             LiveLogsContent(
                 isEnabled = isEnabled,
                 logs = logs,
-                isBinaryMode = isBinaryMode,
                 bottomPadding = bottomPadding,
                 onEnableChanged = { viewModel.setLogEnabled(it) },
                 onClearLogs = { viewModel.clearLogs() },
-                onBinaryModeChanged = { viewModel.setBinaryMode(it) },
                 onSendRaw = { viewModel.sendRaw(it) }
             )
         } else {
@@ -200,11 +196,9 @@ fun LogScreen(
 private fun LiveLogsContent(
     isEnabled: Boolean,
     logs: List<String>,
-    isBinaryMode: Boolean,
     bottomPadding: Dp,
     onEnableChanged: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
-    onBinaryModeChanged: (Boolean) -> Unit,
     onSendRaw: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -300,57 +294,13 @@ private fun LiveLogsContent(
             }
         }
 
-        // Raw Command Protocol Selector + Input Row
+        // Raw Command Input Row
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Mode selector pills
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Raw Protocol:",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
-
-                // Toggle Button 1: Binary
-                Surface(
-                    onClick = { onBinaryModeChanged(true) },
-                    shape = MaterialTheme.shapes.extraSmall,
-                    color = if (isBinaryMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (isBinaryMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Text(
-                        text = stringResource(R.string.log_format_binary),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isBinaryMode) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-
-                // Toggle Button 2: JSON
-                Surface(
-                    onClick = { onBinaryModeChanged(false) },
-                    shape = MaterialTheme.shapes.extraSmall,
-                    color = if (!isBinaryMode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (!isBinaryMode) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Text(
-                        text = stringResource(R.string.log_format_json),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (!isBinaryMode) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
             // Input TextField and Send Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -365,7 +315,7 @@ private fun LiveLogsContent(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            text = if (isBinaryMode) stringResource(R.string.log_raw_binary_hint) else stringResource(R.string.log_raw_json_hint),
+                            text = stringResource(R.string.log_raw_binary_hint),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )

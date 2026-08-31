@@ -97,16 +97,49 @@ class DeviceCommandEnvelope(context: android.content.Context) {
     }
 
     fun signBinary(deviceId: String, rawBinary: ByteArray): ByteArray? {
-        if (deviceId.isBlank() || rawBinary.size < 3) return null
-        val parsedJson = com.nndai.myhome.protocol.BinaryProtocolParser.parse(rawBinary) ?: run {
-            Log.w(TAG, "signBinary(): cannot parse binary frame")
+        if (deviceId.isBlank() || rawBinary.size < 6) return null
+        if (rawBinary[0] != com.nndai.myhome.protocol.BinaryProtocol.MAGIC_START ||
+            rawBinary[rawBinary.size - 1] != com.nndai.myhome.protocol.BinaryProtocol.MAGIC_END
+        ) {
             return null
         }
-        if (parsedJson.has("hmac")) {
-            return rawBinary
+        val keyHex = keyStore.get(deviceId) ?: run {
+            Log.w(TAG, "signBinary(): no controlKey for $deviceId")
+            return null
         }
-        val signedJson = signJson(deviceId, parsedJson) ?: return null
-        return com.nndai.myhome.protocol.BinaryProtocolParser.serialize(signedJson)
+        val keyBytes = hexToBytes(keyHex) ?: run {
+            Log.e(TAG, "signBinary(): bad controlKey hex length for $deviceId")
+            return null
+        }
+
+        val cmdId = rawBinary[1].toInt() and 0xFF
+        val cmdStr = com.nndai.myhome.protocol.BinaryCommandIds.commandIdToString(cmdId)
+        val src = keyStore.appSenderId()
+        val ts = (System.currentTimeMillis() / 1000) + TZ_OFFSET_SEC
+        val canonical = "$ts|$cmdStr||$src"
+        val hmacHex = hmacSha256Hex(keyBytes, canonical) ?: return null
+
+        // Existing inner fields are between root object header (3 bytes: indices 2, 3, 4) and MAGIC_END (index size - 1)
+        val existingInnerBytes = if (rawBinary.size > 6) {
+            rawBinary.copyOfRange(5, rawBinary.size - 1)
+        } else {
+            ByteArray(0)
+        }
+
+        val writer = com.nndai.myhome.protocol.BinaryWriter()
+        val root = writer.beginObject(com.nndai.myhome.protocol.BinaryFieldIds.NONE)
+        if (existingInnerBytes.isNotEmpty()) {
+            writer.writeRaw(existingInnerBytes)
+        }
+        writer.writeU32(com.nndai.myhome.protocol.BinaryFieldIds.TS, ts)
+        writer.writeString(com.nndai.myhome.protocol.BinaryFieldIds.SRC, src)
+        writer.writeString(com.nndai.myhome.protocol.BinaryFieldIds.HMAC, hmacHex)
+        root.end()
+
+        val signedFrame = com.nndai.myhome.protocol.BinaryProtocol.buildFrame(cmdId, writer.toByteArray())
+        val hexString = signedFrame.joinToString(separator = " ") { byte -> "%02X".format(byte) }
+        android.util.Log.d("BinaryProtocol", "TX Signed Binary [size=${signedFrame.size}, cmd=$cmdStr ($cmdId), ts=$ts, src=$src]: $hexString")
+        return signedFrame
     }
 
     private fun hmacSha256Hex(key: ByteArray, data: String): String? {

@@ -131,7 +131,7 @@ class PumpCommandDataSource(
     suspend fun readFile(
         path: String,
         offset: Long = 0,
-        limit: Long = 1000,
+        limit: Long = 800,
         encode: Boolean = false,
         customReqId: String? = null
     ): String {
@@ -168,25 +168,21 @@ class PumpCommandDataSource(
         sendBinary(json)
     }
 
-    suspend fun sendRaw(rawInput: String, useBinary: Boolean = true): Boolean {
-        Log.d(TAG, "sendRaw payload=${rawInput.take(200)} useBinary=$useBinary")
-        val bytesToSend: ByteArray = if (useBinary) {
-            try {
-                val json = JSONObject(rawInput)
-                com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
-            } catch (e: Exception) {
-                // If input is already raw hex string like "B7 01 00 00 A5"
-                val hexClean = rawInput.replace(" ", "").replace("0x", "")
-                if (hexClean.matches(Regex("^[0-9a-fA-F]+$")) && hexClean.length % 2 == 0) {
-                    hexToByteArray(hexClean)
-                } else {
-                    Log.e(TAG, "sendRaw: cannot parse JSON to binary: ${e.message}")
-                    _events.tryEmit(PumpCommandEvent.Failure("Invalid JSON for Binary mode: ${e.message}"))
-                    return false
-                }
+    suspend fun sendRaw(rawInput: String): Boolean {
+        Log.d(TAG, "sendRaw payload=${rawInput.take(200)}")
+        val bytesToSend: ByteArray = try {
+            val json = JSONObject(rawInput)
+            com.nndai.myhome.protocol.BinaryProtocolParser.serialize(json)
+        } catch (e: Exception) {
+            // If input is already raw hex string like "B7 01 00 00 A5"
+            val hexClean = rawInput.replace(" ", "").replace("0x", "")
+            if (hexClean.matches(Regex("^[0-9a-fA-F]+$")) && hexClean.length % 2 == 0) {
+                hexToByteArray(hexClean)
+            } else {
+                Log.e(TAG, "sendRaw: cannot parse JSON to binary: ${e.message}")
+                _events.tryEmit(PumpCommandEvent.Failure("Invalid JSON for Binary mode: ${e.message}"))
+                return false
             }
-        } else {
-            rawInput.toByteArray(Charsets.UTF_8)
         }
 
         val sent = withContext(dispatcher) {
@@ -199,7 +195,7 @@ class PumpCommandDataSource(
     }
 
     suspend fun sendRawJson(rawJson: String): Boolean {
-        return sendRaw(rawJson, useBinary = false)
+        return sendRaw(rawJson)
     }
 
     private suspend fun sendBinary(json: JSONObject) {
@@ -508,7 +504,11 @@ class PumpCommandDataSource(
         val status = json.optString("status", "")
         val success = status == "ok"
         val path = json.optString("path", "")
-        val data = json.optString("data", "")
+        val data: ByteArray = when (val rawData = json.opt("data")) {
+            is ByteArray -> rawData
+            is String -> rawData.toByteArray(Charsets.UTF_8)
+            else -> ByteArray(0)
+        }
         val offset = json.optLong("offset", 0L)
         val size = json.optLong("size", 0L)
         val more = json.optBoolean("more", false)

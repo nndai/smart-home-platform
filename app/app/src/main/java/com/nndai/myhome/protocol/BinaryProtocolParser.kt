@@ -32,7 +32,13 @@ object BinaryProtocolParser {
         writeObject(contentWriter, BinaryFieldIds.NONE, jsonCopy)
         
         val contentBytes = contentWriter.toByteArray()
-        return BinaryProtocol.buildFrame(cmdId, contentBytes)
+        val finalFrame = BinaryProtocol.buildFrame(cmdId, contentBytes)
+
+        val hexString = finalFrame.joinToString(separator = " ") { byte -> "%02X".format(byte) }
+        android.util.Log.d("BinaryProtocol", "TX Binary [size=${finalFrame.size}, cmd=$cmdStr ($cmdId)]: $hexString")
+        android.util.Log.d("BinaryProtocol", "TX JSON: ${json.toString(2)}")
+
+        return finalFrame
     }
 
     private fun writeObject(writer: BinaryWriter, id: Int, obj: JSONObject) {
@@ -95,9 +101,21 @@ object BinaryProtocolParser {
             obj.put("cmd", cmdStr)
         }
         
-        android.util.Log.d("BinaryProtocol", "Parsed JSON: ${obj.toString(2)}")
+        android.util.Log.d("BinaryProtocol", "Parsed JSON: ${jsonForLog(obj).toString(2)}")
         
         return obj
+    }
+
+    private fun jsonForLog(obj: JSONObject): JSONObject {
+        val copy = JSONObject()
+        obj.keys().forEach { key ->
+            when (val v = obj.get(key)) {
+                is ByteArray -> copy.put(key, "<binary bytes: size=${v.size}>")
+                is JSONObject -> copy.put(key, jsonForLog(v))
+                else -> copy.put(key, v)
+            }
+        }
+        return copy
     }
 
     private fun readObject(reader: BinaryReader, size: Int): JSONObject {

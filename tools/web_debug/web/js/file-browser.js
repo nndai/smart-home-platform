@@ -45,7 +45,7 @@ class FileBrowser {
   }
 
   cmdReadFile(path, offset, limit) {
-    this._send(JSON.stringify({ cmd: 'readFile', payload: { path, offset: offset || 0, limit: limit || 1000 } }));
+    this._send(JSON.stringify({ cmd: 'readFile', payload: { path, offset: offset || 0, limit: limit || 800 } }));
   }
 
   cmdDelete(path) {
@@ -113,7 +113,7 @@ class FileBrowser {
       this._downloadState.chunks.push(chunkBytes);
       this._downloadState.nextOffset = offset + chunkBytesLength;
       if (more) {
-        this.cmdReadFile(this._downloadState.path, this._downloadState.nextOffset, 1000);
+        this.cmdReadFile(this._downloadState.path, this._downloadState.nextOffset, 800);
       } else {
         this._finishDownload();
       }
@@ -242,7 +242,7 @@ class FileBrowser {
     if (!this._selectedEntry) return;
     this._showSpinnerForSelected();
     const path = this._path.replace(/\/$/, '') + '/' + this._selectedEntry.name;
-    this.cmdReadFile(path, 0, 1000);
+    this.cmdReadFile(path, 0, 800);
   }
 
   goBack() {
@@ -284,7 +284,7 @@ class FileBrowser {
       chunks: [],
       nextOffset: 0,
     };
-    this.cmdReadFile(path, 0, 1000);
+    this.cmdReadFile(path, 0, 800);
   }
 
   // ── Rendering ──
@@ -424,7 +424,7 @@ class FileBrowser {
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
       this._viewing.loading = true;
       const nextOffset = this._viewing.nextOffset || 0;
-      this.cmdReadFile(this._viewing.path, nextOffset, 1000);
+      this.cmdReadFile(this._viewing.path, nextOffset, 800);
     }
   }
 

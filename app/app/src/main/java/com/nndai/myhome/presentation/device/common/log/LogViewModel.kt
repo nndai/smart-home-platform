@@ -89,25 +89,15 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
         logs.clear()
     }
 
-    // Raw command format mode: true = Binary, false = JSON
-    private val _isBinaryMode = MutableStateFlow(true)
-    val isBinaryMode: StateFlow<Boolean> = _isBinaryMode.asStateFlow()
-
-    fun setBinaryMode(isBinary: Boolean) {
-        _isBinaryMode.value = isBinary
-    }
-
     fun sendRaw(rawInput: String) {
         val trimmed = rawInput.trim()
         if (trimmed.isBlank()) return
-        val useBinary = _isBinaryMode.value
-        val prefix = if (useBinary) "[TX BINARY]" else "[TX JSON]"
         if (logs.size >= 2000) {
             logs.removeAt(0)
         }
-        logs.add("$prefix $trimmed")
+        logs.add("[TX] $trimmed")
         viewModelScope.launch {
-            repository.sendRaw(trimmed, useBinary = useBinary)
+            repository.sendRaw(trimmed)
         }
     }
 

@@ -1036,7 +1036,7 @@ void CommandHandlerT<T>::_handleFileCommand(const String& source, protocol::Comm
     } else if (cmdId == protocol::CommandId::FsInfo) {
         FileBrowser::fsInfo(resp);
     } else if (cmdId == protocol::CommandId::DownloadFile || cmdId == protocol::CommandId::ReadFile) {
-        if (limit == 0 || limit > 1000) limit = 1000;
+        if (limit == 0 || limit > 800) limit = 800;
         FileBrowser::readFile(path, offset, limit, resp);
     }
 

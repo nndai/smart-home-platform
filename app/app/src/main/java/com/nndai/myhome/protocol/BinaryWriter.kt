@@ -122,6 +122,11 @@ class BinaryWriter(capacity: Int = 1024) {
         buffer.put(bytes, 0, size)
     }
 
+    fun writeRaw(bytes: ByteArray) {
+        ensureCapacity(bytes.size)
+        buffer.put(bytes)
+    }
+
     class Container(private val writer: BinaryWriter, private val startPos: Int) {
         fun end() {
             val currentPos = writer.buffer.position()
