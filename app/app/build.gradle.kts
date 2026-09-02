@@ -15,6 +15,10 @@ val websocketUrl = localProps.getProperty("WEBSOCKET_URL", "")
 val supabaseUrl = localProps.getProperty("SUPABASE_URL", "")
 val supabaseKey = localProps.getProperty("SUPABASE_KEY", "")
 val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
+val releaseStorePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
+val releaseKeyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
+val releaseKeyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
+
 android {
     namespace = "com.nndai.myhome"
     compileSdk = 36
@@ -23,8 +27,8 @@ android {
         applicationId = "com.nndai.myhome"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -37,13 +41,29 @@ android {
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = file("../release-key.jks")
+            if (keystoreFile.exists() && releaseStorePassword.isNotEmpty()) {
+                storeFile = keystoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
