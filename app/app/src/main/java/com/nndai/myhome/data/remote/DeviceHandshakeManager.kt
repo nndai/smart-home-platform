@@ -82,9 +82,8 @@ class DeviceHandshakeManager(
         }
 
         scope.launch(dispatcher) {
-            // Subscribe to device's status and log topics
-            connectionManager.subscribe("devices/$deviceId/up")
-            connectionManager.subscribe("devices/$deviceId/log")
+            // Subscribe to device's status and log topics in a single batch
+            connectionManager.subscribe("devices/$deviceId/up", "devices/$deviceId/log")
 
             // If transport is already connected, initiate handshake probe
             if (connectionManager.transportState.value is MqttTransportState.Connected) {

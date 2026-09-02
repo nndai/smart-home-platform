@@ -69,7 +69,7 @@ class MqttConnectionManager(
     private var client: MqttClient? = null
     private var connectJob: Job? = null
     private val connectMutex = Mutex()
-    private val subscribedTopics = mutableSetOf<String>()
+    private val subscribedTopics = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     @Volatile
     private var isExplicitlyStopped = false
@@ -77,9 +77,9 @@ class MqttConnectionManager(
     private val callback = object : MqttCallbackExtended {
         override fun connectComplete(reconnect: Boolean, serverURI: String?) {
             Log.d(TAG, "MQTT connectComplete: reconnect=$reconnect uri=$serverURI")
+            _transportState.value = MqttTransportState.Connected(serverURI ?: "")
             scope.launch(dispatcher) {
                 resubscribeAllTopics()
-                _transportState.value = MqttTransportState.Connected(serverURI ?: "")
             }
         }
 
@@ -160,19 +160,28 @@ class MqttConnectionManager(
     }
 
     /**
-     * Subscribes to a specific MQTT topic filter with QoS 1.
+     * Subscribes to one or more MQTT topic filters with QoS 1 in a single batch.
      */
-    suspend fun subscribe(topic: String) {
+    suspend fun subscribe(vararg topics: String) {
         withContext(dispatcher) {
-            subscribedTopics.add(topic)
-            client?.let {
-                if (it.isConnected) {
-                    runCatching { it.subscribe(topic, 1) }
-                        .onSuccess { Log.d(TAG, "Subscribed to topic: $topic") }
-                        .onFailure { e -> Log.e(TAG, "Failed to subscribe to $topic: ${e.message}") }
+            val newTopics = synchronized(subscribedTopics) {
+                topics.filter { subscribedTopics.add(it) }.toTypedArray()
+            }
+            if (newTopics.isNotEmpty()) {
+                client?.let {
+                    if (it.isConnected) {
+                        val qos = IntArray(newTopics.size) { 1 }
+                        runCatching { it.subscribe(newTopics, qos) }
+                            .onSuccess { Log.d(TAG, "Subscribed in batch to ${newTopics.size} topic(s): ${newTopics.joinToString()}") }
+                            .onFailure { e -> Log.e(TAG, "Failed to subscribe in batch: ${e.message}") }
+                    }
                 }
             }
         }
+    }
+
+    suspend fun subscribe(topic: String) {
+        subscribe(*arrayOf(topic))
     }
 
     /**
@@ -180,7 +189,7 @@ class MqttConnectionManager(
      */
     suspend fun unsubscribe(topic: String) {
         withContext(dispatcher) {
-            subscribedTopics.remove(topic)
+            synchronized(subscribedTopics) { subscribedTopics.remove(topic) }
             client?.let {
                 if (it.isConnected) {
                     runCatching { it.unsubscribe(topic) }
@@ -263,12 +272,16 @@ class MqttConnectionManager(
             val mqttClient = MqttClient(uri, buildClientId(), MemoryPersistence()).apply {
                 setCallback(callback)
             }
-            mqttClient.connect(buildOptions())
             client = mqttClient
+            mqttClient.connect(buildOptions())
 
-            resubscribeAllTopics()
             Log.d(TAG, "attemptSingleConnect() SUCCESS. Broker connected.")
             _transportState.value = MqttTransportState.Connected(uri)
+
+            // Resubscribe topics in background batch without blocking the handshake probe
+            scope.launch(dispatcher) {
+                resubscribeAllTopics()
+            }
             true
         } catch (e: Exception) {
             Log.e(TAG, "attemptSingleConnect() failed: ${e.message}")
@@ -293,8 +306,14 @@ class MqttConnectionManager(
     private fun resubscribeAllTopics() {
         val currentClient = client ?: return
         if (!currentClient.isConnected) return
-        subscribedTopics.forEach { topic ->
-            runCatching { currentClient.subscribe(topic, 1) }
+        val topics = synchronized(subscribedTopics) { subscribedTopics.toTypedArray() }
+        if (topics.isEmpty()) return
+        val qos = IntArray(topics.size) { 1 }
+        runCatching {
+            currentClient.subscribe(topics, qos)
+            Log.d(TAG, "resubscribeAllTopics() batch subscribed ${topics.size} topic(s): ${topics.joinToString()}")
+        }.onFailure { e ->
+            Log.e(TAG, "resubscribeAllTopics() failed: ${e.message}")
         }
     }
 
