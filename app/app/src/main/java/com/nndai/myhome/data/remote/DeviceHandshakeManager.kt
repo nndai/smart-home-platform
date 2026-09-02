@@ -297,8 +297,8 @@ class DeviceHandshakeManager(
     companion object {
         private const val TAG = "DeviceHandshakeMgr"
         private const val MAX_FAILED_HANDSHAKE_ATTEMPTS = 3
-        private const val ONLINE_IDLE_CHECK_INTERVAL_MS = 30_000L // 30 seconds idle check
-        private const val PROBE_RESPONSE_TIMEOUT_MS = 5_000L     // 5 seconds wait for probe reply
-        private const val OFFLINE_PROBE_INTERVAL_MS = 15_000L     // 15 seconds retry while offline
+        private const val ONLINE_IDLE_CHECK_INTERVAL_MS = 15_000L // seconds idle check
+        private const val PROBE_RESPONSE_TIMEOUT_MS = 5_000L     // seconds wait for probe reply
+        private const val OFFLINE_PROBE_INTERVAL_MS = 15_000L     // seconds retry while offline
     }
 }

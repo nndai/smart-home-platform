@@ -334,7 +334,7 @@ class MqttConnectionManager(
 
     companion object {
         private const val TAG = "MqttConnectionMgr"
-        private const val INITIAL_RETRY_INTERVAL_MS = 2_000L
-        private const val MAX_RETRY_INTERVAL_MS = 15_000L
+        private const val INITIAL_RETRY_INTERVAL_MS = 1_000L
+        private const val MAX_RETRY_INTERVAL_MS = 10_000L
     }
 }

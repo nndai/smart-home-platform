@@ -26,6 +26,8 @@ import com.nndai.myhome.presentation.device.DeviceDetailScreen
 import com.nndai.myhome.presentation.device.share.MemberManageScreen
 import com.nndai.myhome.presentation.main.MainScreen
 import com.nndai.myhome.presentation.pairing.PairingFlowScreen
+import com.nndai.myhome.presentation.update.AppUpdateDialog
+import com.nndai.myhome.presentation.update.AppUpdateViewModel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -36,12 +38,20 @@ fun AppNavigation(
 ) {
     val isLoggedIn by authRepository.isLoggedIn.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val appUpdateViewModel = remember { AppUpdateViewModel() }
 
     // Register for the session listener (purges control keys + device cache on sign-out)
     com.nndai.myhome.data.di.PumpRepositoryProvider.deviceManagerRepository = deviceRepository
 
     // Start directly with the main screen (which contains the bottom navigation)
     val startDestination = "main_screen"
+    
+    // Check for updates globally
+    LaunchedEffect(Unit) {
+        appUpdateViewModel.checkForUpdates()
+    }
+    
+    AppUpdateDialog(viewModel = appUpdateViewModel)
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable("login") {
