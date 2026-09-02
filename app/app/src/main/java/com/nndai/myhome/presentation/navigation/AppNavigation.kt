@@ -130,6 +130,7 @@ fun AppNavigation(
         }
 
         composable("main_screen") {
+            val context = LocalContext.current
             LaunchedEffect(isLoggedIn) {
                 if (isLoggedIn) {
                     deviceRepository.fetchDevices()
@@ -139,7 +140,10 @@ fun AppNavigation(
                 parentNavController = navController,
                 authRepository = authRepository,
                 deviceRepository = deviceRepository,
-                isLoggedIn = isLoggedIn
+                isLoggedIn = isLoggedIn,
+                onCheckUpdate = {
+                    appUpdateViewModel.checkForUpdates(isManual = true, context = context)
+                }
             )
         }
 

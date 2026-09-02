@@ -56,6 +56,7 @@ import com.nndai.myhome.core.utils.LocaleHelper
 import io.github.jan.supabase.auth.auth
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import com.nndai.myhome.BuildConfig
 import com.nndai.myhome.data.repository.AuthRepository
 import kotlinx.coroutines.launch
 
@@ -63,7 +64,8 @@ import kotlinx.coroutines.launch
 fun ProfileScreen(
     authRepository: AuthRepository,
     isLoggedIn: Boolean,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    onCheckUpdate: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -256,8 +258,8 @@ fun ProfileScreen(
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     label = stringResource(R.string.profile_about),
-                    value = stringResource(R.string.profile_version, "1.0.0"),
-                    onClick = {}
+                    value = stringResource(R.string.profile_version, BuildConfig.VERSION_NAME),
+                    onClick = onCheckUpdate
                 )
             }
         }

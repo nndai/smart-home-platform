@@ -35,16 +35,39 @@ class AppUpdateViewModel(
 
     private var downloadId: Long = -1
 
-    fun checkForUpdates() {
+    fun checkForUpdates(isManual: Boolean = false, context: Context? = null) {
         if (_state.value is AppUpdateState.Checking || _state.value is AppUpdateState.UpdateAvailable) return
 
         _state.value = AppUpdateState.Checking
+        if (isManual && context != null) {
+            android.widget.Toast.makeText(
+                context,
+                "Đang kiểm tra bản cập nhật...",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+
         viewModelScope.launch {
             val latestVersion = repository.getLatestVersion()
             if (latestVersion != null && latestVersion.version_code > BuildConfig.VERSION_CODE) {
                 _state.value = AppUpdateState.UpdateAvailable(latestVersion)
             } else {
                 _state.value = AppUpdateState.Idle
+                if (isManual && context != null) {
+                    if (latestVersion != null) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Bạn đang ở phiên bản mới nhất (${BuildConfig.VERSION_NAME})",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Không thể kiểm tra bản cập nhật",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
         }
     }

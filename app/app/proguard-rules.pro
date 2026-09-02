@@ -30,3 +30,21 @@
     public static int e(...);
     public static int wtf(...);
 }
+
+# ── Fix lỗi MQTT: Error locating the logging class ──
+# Thư viện Eclipse Paho MQTT dùng reflection để load Logger, cần giữ lại toàn bộ class
+-keep class org.eclipse.paho.client.mqttv3.** { *; }
+-dontwarn org.eclipse.paho.client.mqttv3.**
+
+# ── Supabase, Ktor & Kotlinx Serialization ──
+-keepattributes *Annotation*, Signature, Exception, InnerClasses
+-keep class io.github.jan.supabase.** { *; }
+-keep class io.ktor.** { *; }
+-keep class kotlinx.serialization.** { *; }
+-dontwarn io.github.jan.supabase.**
+-dontwarn io.ktor.**
+-dontwarn kotlinx.serialization.**
+
+# ── Google Sign-In & Play Services ──
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.common.** { *; }

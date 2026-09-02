@@ -65,7 +65,8 @@ fun MainScreen(
     parentNavController: NavHostController,
     authRepository: AuthRepository,
     deviceRepository: DeviceManagerRepository,
-    isLoggedIn: Boolean
+    isLoggedIn: Boolean,
+    onCheckUpdate: () -> Unit = {}
 ) {
     val bottomNavController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -170,7 +171,8 @@ fun MainScreen(
                 ProfileScreen(
                     authRepository = authRepository,
                     isLoggedIn = isLoggedIn,
-                    onNavigateToLogin = { parentNavController.navigate("login") }
+                    onNavigateToLogin = { parentNavController.navigate("login") },
+                    onCheckUpdate = onCheckUpdate
                 )
             }
         }
