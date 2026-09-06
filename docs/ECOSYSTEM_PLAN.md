@@ -8,32 +8,36 @@
 graph TB
     subgraph Cloud_Infra["Hạ tầng Cloud (miễn phí)"]
         HIVEMQ["HiveMQ Cloud Serverless<br/>100 connections / 10GB / tháng<br/>TLS 8883"]
-        SUPA["Supabase Free<br/>Auth + Postgres 500MB + Storage 1GB"]
-        EF["Supabase Edge Function (MQTT bridge)<br/>server-side — giữ credential app-family<br/>(không bao giờ trong APK / repo)"]
+        SUPA["Supabase Free<br/>Auth + Postgres 500MB + Storage 1GB<br/>(Bảng app_versions, firmware_releases, devices...)"]
     end
 
-    subgraph Devices["Thiết bị (LN882H / ESP32)"]
+    subgraph Devices["Thiết bị (LN882H / ESP32 / ESP8266)"]
         PUMP["Bơm LN882H<br/>(profile: PUMP)"]
-        LIGHT["Đèn ESP32<br/>(profile: SWITCH/DIMMER)"]
+        LIGHT["Đèn / Công tắc ESP32<br/>(profile: SWITCH)"]
+        REMOTE["Remote Switch ESP8266<br/>(profile: REMOTE_SWITCH)"]
         FAN["Quạt ESP32<br/>(profile: FAN)"]
     end
 
     subgraph Apps["Ứng dụng"]
-        APP["App Android<br/>(nhiều thiết bị)"]
+        APP["App Android (Kotlin / Compose)<br/>MqttConnectionManager + Supabase SDK"]
     end
 
-    PUMP -- "MQTT+TLS (credential riêng)" --> HIVEMQ
-    LIGHT -- "MQTT+TLS (credential riêng)" --> HIVEMQ
-    FAN -- "MQTT+TLS (credential riêng)" --> HIVEMQ
-    EF -- "MQTT+WS/TLS (credential app-family)" --> HIVEMQ
-    APP -- "REST+JWT (đăng nhập, danh bạ, điều khiển)" --> SUPA
-    EF --> SUPA
-    PUMP -- "HTTPS (OTA firmware)" --> SUPA
+    PUMP -- "MQTT+TLS 8883 (shared credential)" --> HIVEMQ
+    LIGHT -- "MQTT+TLS 8883 (shared credential)" --> HIVEMQ
+    REMOTE -- "MQTT+TLS 8883 (shared credential)" --> HIVEMQ
+    FAN -- "MQTT+TLS 8883 (shared credential)" --> HIVEMQ
+    APP <-->|"MQTT+TLS 8883 (Điều khiển trực tiếp realtime,<br/>credential từ Android Keystore)"| HIVEMQ
+    APP -- "REST+JWT (Auth, danh bạ, RPC get_mqtt_credential)" --> SUPA
+    APP -- "Tải APK In-App Update" --> SUPA
+    PUMP -- "HTTPS (OTA firmware .bin)" --> SUPA
 ```
 
-**Nguyên tắc tách lớp quan trọng:** thiết bị chỉ phụ thuộc MQTT (HiveMQ — không bao giờ pause). Supabase chỉ phục vụ app (tài khoản, danh bạ, phân quyền). Nếu Supabase free bị pause sau 7 ngày không hoạt động, thiết bị vẫn hoạt động bình thường.
+**Nguyên tắc tách lớp quan trọng:** thiết bị chỉ phụ thuộc MQTT (HiveMQ — không bao giờ pause). Supabase chỉ phục vụ app (tài khoản, danh bạ, phân quyền, lưu trữ OTA/APK). Nếu Supabase free bị pause sau 7 ngày không hoạt động, thiết bị và các nút điều khiển từ xa vẫn giao tiếp MQTT bình thường.
 
-**App KHÔNG kết nối MQTT trực tiếp** (project open-source → credential không bao giờ nằm trong APK/repo). Mọi lệnh/trạng thái đi qua Supabase: app gọi RPC `send_command`/`get_device_state` → **Edge Function bridge** (chạy trong Supabase, giữ credential `app-family` ở Function Secrets) → HiveMQ ↔ thiết bị.
+**Cơ chế kết nối của App:**
+- **App kết nối MQTT trực tiếp** với HiveMQ Cloud qua TLS 8883 (`MqttConnectionManager.kt`) để đảm bảo độ trễ siêu thấp (<50ms) và phản hồi trạng thái realtime.
+- **Bảo mật mã nguồn mở:** Credential MQTT `device-family` không bao giờ hardcode trong APK hay Git. Khi đăng nhập, app gọi RPC `get_mqtt_credential()` (chỉ `authenticated` user mới được gọi) để lấy credential, sau đó mã hóa lưu an toàn vào **Android Keystore**.
+- **Kế hoạch mở rộng (Phase 6):** Đối với kịch bản chia sẻ thiết bị cho bên thứ ba hạn chế quyền (Viewer/Member không được nắm giữ `controlKey`), hệ thống chuẩn bị sẵn kiến trúc **Supabase Edge Function bridge** để ký HMAC thay server-side.
 
 ## 2. Danh tính & xác thực thiết bị (lõi bảo mật)
 
@@ -252,26 +256,43 @@ graph TD
 
 ## 8. App Android — kiến trúc
 
-```
-Màn hình:
+```text
+Màn hình (Jetpack Compose / Material 3):
   Login/Register (Supabase Auth)
-  Device List  ──►  [＋ Thêm thiết bị] ──► Pairing Wizard (mục 4)
-  Device Dashboard (render theo profile: PumpCard/SwitchCard/DimmerSlider/FanCard)
+  Device List  ──►  [＋ Thêm thiết bị] ──► Pairing Wizard (WifiNetworkSpecifier)
+  Device Dashboard (render theo profile: PumpCard / SwitchCard / RemoteSwitchCard / FanCard)
   Device Management (đổi tên, xóa, chuyển nhượng, chia sẻ, xoay khóa)
   Invite Screen (tạo/nhập mã, quản lý member)
+  In-App Update Dialog (kiểm tra và tải bản cập nhật APK mới nhất)
 
-Data:
-  Room (danh bạ cache) + Supabase REST (danh bạ, quyền)
-  Điều khiển/trạng thái qua MQTT trực tiếp (credential device-family cached trong Android Keystore)
-  MQTT credential: Keystore → connect nhanh; background sync với Supabase RPC get_mqtt_credential()
+Data & Communication Layer:
+  Room DB (cache danh bạ cục bộ) + Supabase PostgREST (đồng bộ danh bạ, quyền RLS)
+  Kênh truyền thông Hybrid (HybridDeviceChannel):
+    - MqttDeviceChannel: Điều khiển trực tiếp realtime qua MQTT TLS (HiveMQ 8883)
+    - WebSocketDeviceChannel: Kết nối trực tiếp qua LAN/SoftAP khi ghép nối
+  Mã hóa & Xác thực:
+    - Android Keystore: Lưu trữ an toàn credential device-family và controlKey
+    - HMAC-SHA256 signer: Ký envelope bảo vệ chống replay lệnh
+  Protocol Engine:
+    - Binary Protocol Parser / Writer (com.nndai.myhome.protocol) tối ưu hóa băng thông
+    - JSON Envelope fallback
+  In-App Update:
+    - AppUpdateRepository: Gọi RPC get_latest_app_version() và tải APK qua Android DownloadManager
 ```
 
-## 9. OTA
+## 9. OTA & Cập Nhật Hệ Thống
 
+### 9.1. Firmware OTA
 - Firmware binary (`.bin`) upload → **Supabase Storage** (bucket `firmwares`, 1GB free) → URL HTTPS trực tiếp.
 - Metadata (version, profile, env, chip, checksum SHA-256/MD5, changelog) lưu tại bảng **`public.firmware_releases`** (`supabase/migrations/0009_firmware_releases.sql`).
-- Script tự động build & upload: `tools/upload_firmware.py` (hoặc `.ps1`). Chi tiết xem `docs/OTA_FIRMWARE_GUIDE.md`.
+- Script tự động build & upload: [tools/upload_firmware.py](file:///d:/projects/smart-home-platform/tools/upload_firmware.py). Chi tiết xem [docs/OTA_FIRMWARE_GUIDE.md](./OTA_FIRMWARE_GUIDE.md).
 - Giữ nguyên cơ chế OTA an toàn (stream timeout, abort khi ngắt mạng, reboot flash swap).
+
+### 9.2. In-App Updates (Android APK)
+- APK binary (`.apk`) upload → **Supabase Storage** (bucket `app-releases`, public download).
+- Metadata (version_code, version_name, download_url, release_notes, is_mandatory) lưu tại bảng **`public.app_versions`** (`supabase/migrations/0010_app_releases.sql`).
+- Script phát hành bản cập nhật: [tools/upload_app_update.py](file:///d:/projects/smart-home-platform/tools/upload_app_update.py).
+- App Android tự động kiểm tra phiên bản mới khi khởi động thông qua RPC `get_latest_app_version()`.
 
 ## 10. Lộ trình triển khai
 

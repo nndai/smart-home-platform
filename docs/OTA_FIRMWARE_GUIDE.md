@@ -32,43 +32,31 @@ Tài liệu hướng dẫn quy trình build, upload firmware `.bin` lên **Supab
 
 ---
 
-## 3. Hướng Dẫn Sử Dụng CLI Upload
+## 3. Hướng Dẫn Sử Dụng CLI Upload Firmware
 
-Công cụ hỗ trợ cả **Python** (không cần cài pip ngoài) và **PowerShell** (Windows native).
+Công cụ [tools/upload_firmware.py](file:///d:/projects/smart-home-platform/tools/upload_firmware.py) được xây dựng hoàn toàn bằng thư viện tiêu chuẩn của Python (`urllib.request`, `hashlib`, `configparser`), không cần cài đặt thêm bất kỳ package bên ngoài nào và chạy mượt mà trên cả **Windows (PowerShell, CMD)** và **Linux / macOS**.
 
-### Cách 1: Sử dụng Python CLI (`tools/upload_firmware.py`)
+### Các lệnh phổ biến:
 
-```bash
-# 1. Liệt kê các environment có sẵn:
+```powershell
+# 1. Liệt kê các environment có sẵn trong platformio.ini:
 python tools/upload_firmware.py --list
 
 # 2. Build và upload firmware cho một môi trường cụ thể:
+python tools/upload_firmware.py -e pump-ln882h --build
 python tools/upload_firmware.py -e remote_switch_esp8266 --build
 
 # 3. Upload tất cả các môi trường cùng lúc:
 python tools/upload_firmware.py -e all --build
 
 # 4. Chỉ định Version hoặc Changelog tùy biến:
-python tools/upload_firmware.py -e remote_switch_esp8266 --build -v "1.2.0" -c "Sửa lỗi kết nối MQTT"
+python tools/upload_firmware.py -e pump-ln882h --build -v "1.2.0" -c "Tối ưu hóa thuật toán đo dòng BL0937"
 
-# 5. Chạy thử nghiệm (không upload):
-python tools/upload_firmware.py -e remote_switch_esp8266 --dry-run
+# 5. Chạy thử nghiệm (không upload lên Supabase):
+python tools/upload_firmware.py -e pump-ln882h --dry-run
 
 # 6. Chế độ chọn trực quan (Interactive Menu):
 python tools/upload_firmware.py
-```
-
-### Cách 2: Sử dụng PowerShell (`tools/upload_firmware.ps1`)
-
-```powershell
-# 1. Liệt kê các môi trường:
-powershell -ExecutionPolicy Bypass -File tools/upload_firmware.ps1 -List
-
-# 2. Build và upload:
-powershell -ExecutionPolicy Bypass -File tools/upload_firmware.ps1 -Env remote_switch_esp8266 -Build
-
-# 3. Upload tất cả:
-powershell -ExecutionPolicy Bypass -File tools/upload_firmware.ps1 -Env all -Build
 ```
 
 ---
@@ -108,3 +96,24 @@ Khi phát hiện phiên bản mới hơn phiên bản đang chạy trên thiết
 - Thiết bị sau khi tải binary sẽ tự động ghi vào flash OTA partition.
 - Nếu quá trình tải bị đứt quãng hoặc lỗi mạng, thiết bị sẽ hủy (`abort`) và tiếp tục chạy firmware hiện tại mà không bị brick.
 - Sau khi tải và verify thành công, thiết bị khởi động lại và nạp phân vùng mới.
+
+---
+
+## 6. Cập Nhật Ứng Dụng Android (In-App Updates)
+
+Song song với Firmware OTA, hệ thống cung cấp giải pháp **In-App Update** cho App Android thông qua Supabase:
+
+- **Storage Bucket (`app-releases`)**: Lưu trữ các file APK (`3_app-release.apk`...).
+- **Database Table (`public.app_versions`)**: Lưu `version_code`, `version_name`, `download_url`, `release_notes`, `is_mandatory`.
+- **RPC `get_latest_app_version()`**: Trả về phiên bản phát hành mới nhất cho Android App.
+- **CLI Upload ([tools/upload_app_update.py](file:///d:/projects/smart-home-platform/tools/upload_app_update.py))**:
+
+```powershell
+python tools/upload_app_update.py `
+  --apk "app/app/release/app-release.apk" `
+  --version-code 3 `
+  --version-name "1.0.2" `
+  --notes "Cải thiện kết nối MQTT và sửa lỗi hiển thị" `
+  --mandatory false
+```
+

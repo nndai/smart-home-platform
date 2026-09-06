@@ -4,43 +4,54 @@
 
 ## 1. Tổng quan repo (monorepo)
 
-```
-RemotePumpLN882H/
-├── app/                          # Android app (Kotlin/Compose)
+```text
+smart-home-platform/
+├── app/                          # Android app (Kotlin / Jetpack Compose / Material 3)
 ├── firmware/                     # 1 source tree cho MỌI thiết bị
-│   ├── include/  src/
-│   ├── boards/                   # định nghĩa board (nếu cần custom)
-│   ├── profiles/                 # N folder "device model" — chỉ chứa PHẦN KHÁC NHAU
-│   │   ├── pump/                 #   + BL0937, NTC, relay, auto-dry-run/overload
-│   │   ├── switch/               #   + relay đơn
-│   │   └── fan/                  #   + triac/PWM, speed
-│   ├── lib/                      # vendor libs (1 bản duy nhất, đã portable)
-│   └── platformio.ini            # env: pump_ln882h / switch_esp32 / fan_esp32 ...
-├── tools/                        # provisioning script, bridge, dumper
-└── docs/
+│   ├── include/                  # Header dùng chung
+│   ├── src/
+│   │   ├── main.cpp              # Điểm khởi chạy (BẤT BIẾN, không chứa #ifdef)
+│   │   ├── core/                 # Logic lõi: MqttClient, CommandHandler, OTA, Pairing, Identity
+│   │   ├── compat/               # kv.h, tls.h, rt.h, pm.h (nơi chứa #ifdef duy nhất)
+│   │   ├── chip/                 # anchor.cpp, softap.cpp, io.cpp (SDK riêng theo từng chip)
+│   │   ├── protocol/             # Binary Protocol: BinaryWriter, BinaryReader, TLV Frame...
+│   │   └── profiles/             # N folder "device model" — chỉ chứa PHẦN KHÁC NHAU
+│   │       ├── pump/             #   + BL0937, NTC, relay, auto-dry-run/overload
+│   │       ├── switch/           #   + relay đơn
+│   │       ├── remote_switch/    #   + nút bấm điều khiển từ xa
+│   │       └── fan/              #   + triac/PWM, speed
+│   ├── boards/                   # Định nghĩa board (custom_board.json...)
+│   ├── lib/                      # Vendor libs (ArduinoJson, PubSubClient, WebSockets...)
+│   └── platformio.ini            # env: pump-ln882h, pump-esp32, switch_esp32...
+├── supabase/
+│   └── migrations/               # SQL migrations (0001_init.sql đến 0010_app_releases.sql)
+├── tools/                        # upload_app_update.py, upload_firmware.py, seed_mqtt_credential.ps1...
+└── docs/                         # Tài liệu kỹ thuật chi tiết
 ```
 
-**Nguyên tắc**: 1 source tree dùng chung ~90% (DeviceIdentity, MQTT+TLS, envelope ts/hmac, Pairing Portal, OTA, capability registry). Không tách "n folder device model" thành n project — sẽ nhân bản toàn bộ phần dùng chung.
+**Nguyên tắc**: 1 source tree dùng chung ~90% (DeviceIdentity, MQTT+TLS, envelope ts/hmac, Binary Protocol, Pairing Portal, OTA, capability registry). Không tách "n folder device model" thành n project — sẽ nhân bản toàn bộ phần dùng chung.
 
 ## 2. Mental model — 1 source, N binary
 
 Cùng 1 file `.cpp`, PlatformIO compile **N lần với N toolchain khác nhau** — khác nhau ở include path (framework nào) và define (profile nào):
 
 ```
-src/core/*.cpp ──┬─→ [gcc LibreTiny  ] ── -DPROFILE_PUMP   ──→ firmware_pump_ln882h.bin
+src/core/*.cpp ──┬─→ [gcc LibreTiny  ] ── -DPROFILE_PUMP   ──→ firmware_pump-ln882h.bin
                  ├─→ [gcc arduino-esp32 ] ── -DPROFILE_SWITCH ──→ firmware_switch_esp32.bin
-                 └─→ [gcc arduino-esp8266] ── -DPROFILE_FAN    ──→ firmware_fan_esp8266.bin
+                 └─→ [gcc arduino-esp8266] ── -DPROFILE_REMOTE_SWITCH ──→ firmware_remote_switch_esp8266.bin
 ```
 
 Ví dụ: `#include <Update.h>` — cả 3 framework đều có file này với **cùng API** (`begin/write/end/abort`). Mỗi env lấy bản hiện thực của riêng framework. → **Cứ viết API chuẩn, framework nào cũng có bản hiện thực của nó.**
 
-## 3. Quy tắc 3 tầng (quan trọng nhất)
+## 3. Quy tắc phân tầng (quan trọng nhất)
 
 | Tầng | Chứa gì | Quy tắc |
 |---|---|---|
 | **core/** | MqttClient, CommandHandler, OTA, Pairing Portal, identity | Chỉ dùng Arduino-standard API (`WiFi.h`, `WiFiClientSecure`, `Update.h`, `LittleFS`, `ArduinoJson`, `PubSubClient`, `WebSockets`). **KHÔNG BAO GIỜ `#ifdef`** |
+| **protocol/** | `BinaryWriter`, `BinaryReader`, `CommandContextBinary` | Giao thức nhị phân tối ưu heap/bandwidth, độc lập phần cứng |
 | **compat/** | `kv.h`, `tls.h`, `rt.h`, `pm.h`, `wifi_compat.h` | **Nơi chứa `#ifdef` duy nhất** — gói mọi khác biệt include/API |
 | **chip/** | `anchor.cpp`, `softap.cpp`, `io.cpp` | Hiện thực per-chip (SDK riêng), mọi profile dùng chung |
+| **profiles/** | `pump/`, `switch/`, `remote_switch/`, `fan/` | Triển khai `DeviceDriver` cho từng thiết bị cụ thể |
 
 Thêm **chip mới** = thêm impl trong `chip/` + có thể 1 file `compat/`. Core bất biến.
 
