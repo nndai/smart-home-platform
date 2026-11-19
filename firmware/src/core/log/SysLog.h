@@ -26,22 +26,7 @@ public:
     static constexpr const char* DIR = "/logs/sys/";
 
 private:
-    struct LogQueueEntry {
-        char* line;
-    };
-
-    QueueHandle_t _queue = nullptr;
-    SysTaskHandle _writerTaskHandle = nullptr;
     bool _fileEnabled = true;
     uint8_t _fileLevel = LT_LEVEL_INFO;
     LogCallback _cb;
-
-    static uint32_t _writerTaskCb();
-    void _writeLine(const char* line);
-    void _rotate();
-
-    static constexpr size_t QUEUE_SIZE = SYSLOG_QUEUE_SIZE;
-    static constexpr size_t MAX_FILE_SIZE = SYSLOG_MAX_FILE_SIZE;
-    static constexpr size_t MAX_LINE_LEN = SYSLOG_MAX_LINE_LEN;
-    static constexpr size_t MAX_FILES = SYSLOG_MAX_FILES;
 };

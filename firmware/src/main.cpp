@@ -73,13 +73,9 @@ void setup() {
         LT_IM(SYS, "Watchdog not supported");
     }
 
-    // LITTLEFS.format();
-    if (!LITTLEFS.begin()) {
-        LT_IM(SYS, "LittleFS mount failed, formatting...");
-        LITTLEFS.format();
-        if (!LITTLEFS.begin()) {
-            LT_IM(SYS, "LittleFS still failed!");
-        }
+    if (!compat::mountStorage()) {
+        // Preserve config and history when mounting fails; device control may still start.
+        LT_IM(SYS, "LittleFS mount failed; storage disabled without formatting");
     }
 
     identity.begin(profileName());

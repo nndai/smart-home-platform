@@ -7,6 +7,7 @@ class FileBrowser {
     this._send = sendFn;
     this._path = '/';
     this._entries = [];
+    this._pendingDirectory = null;
     this._selectedEntry = null; // { name, type, size }
     this._viewing = null;       // { path, data, size, offset, more, loading }
     this._downloadState = null; // { path, fname, chunks, nextOffset }
@@ -40,8 +41,9 @@ class FileBrowser {
 
   // ── Protocol commands ──
 
-  cmdListDir(path) {
-    this._send(JSON.stringify({ cmd: 'listDir', payload: { path } }));
+  cmdListDir(path, offset = 0) {
+    if (offset === 0) this._pendingDirectory = { path, offset: 0, entries: [] };
+    this._send(JSON.stringify({ cmd: 'listDir', payload: { path, offset, limit: 20 } }));
   }
 
   cmdReadFile(path, offset, limit) {
@@ -68,6 +70,16 @@ class FileBrowser {
 
   _onListDir(data) {
     if (data.status !== 'ok') return;
+    const pending = this._pendingDirectory;
+    if (!pending || pending.path !== data.path) return;
+    pending.entries.push(...(data.entries || []));
+    if (data.more && pending.offset < 4096) {
+      pending.offset += 20;
+      this.cmdListDir(pending.path, pending.offset);
+      return;
+    }
+    data.entries = pending.entries;
+    this._pendingDirectory = null;
     const oldSelName = this._selectedEntry?.name;
     this._path = data.path || '/';
     this._entries = data.entries || [];

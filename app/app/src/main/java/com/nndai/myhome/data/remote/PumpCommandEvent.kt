@@ -19,6 +19,8 @@ data class WifiNetwork(
  * Mỗi response JSON từ firmware được parse thành một event cụ thể.
  */
 sealed interface PumpCommandEvent {
+    data class LogStorageResponse(val command: String, val json: org.json.JSONObject) : PumpCommandEvent
+
 
     /** Nhận được trạng thái pump realtime. */
     data class StatusUpdate(val status: PumpStatus) : PumpCommandEvent

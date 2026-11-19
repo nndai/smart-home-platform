@@ -40,6 +40,11 @@ enum class CommandId : uint8_t {
     FsInfo = 34,
     DownloadFile = 35,
 
+    GetLogState = 36,
+    SyncLog = 37,
+    ListLogSegments = 38,
+    DeleteLogSegment = 39,
+
     // Response commands
     OtaProgress = 50,
     OtaResult = 51,
@@ -95,6 +100,10 @@ inline const char* commandIdToString(uint8_t id) {
         case CommandId::OtaResult: return "otaResult";
         case CommandId::BeginUploadFirmwareSuccess: return "beginUploadFirmwareSuccess";
         case CommandId::BeginUploadFirmwareFailed: return "beginUploadFirmwareFailed";
+        case CommandId::GetLogState: return "getLogState";
+        case CommandId::SyncLog: return "syncLog";
+        case CommandId::ListLogSegments: return "listLogSegments";
+        case CommandId::DeleteLogSegment: return "deleteLogSegment";
         default: return "unknown";
     }
 }
@@ -142,6 +151,10 @@ inline uint8_t stringToCommandId(const char* str) {
     if (strcmp(str, "calibrate") == 0) return static_cast<uint8_t>(CommandId::Calibrate);
     if (strcmp(str, "resetCalibration") == 0) return static_cast<uint8_t>(CommandId::ResetCalibration);
     if (strcmp(str, "clearPumpFault") == 0) return static_cast<uint8_t>(CommandId::ClearPumpFault);
+    if (strcmp(str, "getLogState") == 0) return static_cast<uint8_t>(CommandId::GetLogState);
+    if (strcmp(str, "syncLog") == 0) return static_cast<uint8_t>(CommandId::SyncLog);
+    if (strcmp(str, "listLogSegments") == 0) return static_cast<uint8_t>(CommandId::ListLogSegments);
+    if (strcmp(str, "deleteLogSegment") == 0) return static_cast<uint8_t>(CommandId::DeleteLogSegment);
     return 0;
 }
 

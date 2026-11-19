@@ -1,0 +1,3 @@
+#pragma once
+#define TASK_LOGWRITER_STACK 2048
+#define TASK_LOGWRITER_PRIO 1

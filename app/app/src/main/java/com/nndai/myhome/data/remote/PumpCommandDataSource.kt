@@ -153,6 +153,10 @@ class PumpCommandDataSource(
         return reqId
     }
 
+    suspend fun logCommand(command: String, payload: JSONObject, reqId: String) {
+        sendCommand(command, payload, reqId)
+    }
+
     // ── Private helpers ──
 
     private suspend fun sendCommand(cmd: String, payload: JSONObject? = null, reqId: String? = null) {
@@ -270,6 +274,8 @@ class PumpCommandDataSource(
                 "log" -> emitLog(json)
                 "getLogMqtt" -> _events.tryEmit(PumpCommandEvent.LogMqttStatus(json.optBoolean("enabled", false)))
                 "scanWifi", "getScanWifiData" -> emitWifiScanResult(json)
+                "getLogState", "syncLog", "listLogSegments", "deleteLogSegment" ->
+                    _events.tryEmit(PumpCommandEvent.LogStorageResponse(cmd, json))
                 "listDir" -> emitListDirResult(json)
                 "readFile", "downloadFile" -> emitReadFileResult(json)
                 "deleteItem" -> emitDeleteItemResult(json)

@@ -13,9 +13,4 @@ public:
 
     static constexpr const char* DIR = "/logs/power/";
 
-private:
-    void _rotate();
-    String _path();
-
-    static constexpr size_t MAX_FOLDER = POWERLOG_MAX_FOLDER;
 };

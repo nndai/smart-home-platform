@@ -1,107 +1,58 @@
-#include "core/FileBrowser.h"
+#include "FileBrowser.h"
 #include "compat/fs.h"
-#include "core/Crypto.h"
-#include <vector>
 #include <algorithm>
 
+namespace {
+bool allowedPath(const String& path, bool listing = false) {
+    if (!path.startsWith("/") || path.indexOf("..") >= 0 || path.indexOf('\\') >= 0 ||
+        path.indexOf("//") >= 0 || path.length() > 120) return false;
+    if (listing && (path == "/" || path == "/logs" || path == "/logs/")) return true;
+    return path.startsWith("/logs/power/") || path.startsWith("/logs/toggle/") ||
+        path.startsWith("/logs/sys/") || path == "/logs/power" || path == "/logs/toggle" || path == "/logs/sys";
+}
+bool deny(protocol::CommandResponse& response, const String& path, bool listing = false) {
+    if (allowedPath(path, listing)) return false;
+    response.setString(protocol::FieldId::Status, "invalid_path");
+    response.setString(protocol::FieldId::Message, "Only legacy log paths are exposed; use the log API for v2");
+    return true;
+}
+}
+
 void FileBrowser::listDir(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
-    File dir = LITTLEFS.open(path, "r");
-    if (!dir) {
-        resp.setString(protocol::FieldId::Status, F("error"));
-        resp.setString(protocol::FieldId::Message, F("Not a directory"));
-        resp.setString(protocol::FieldId::Path, path);
-        return;
-    }
-
-    resp.setString(protocol::FieldId::Status, F("ok"));
     resp.setString(protocol::FieldId::Path, path);
-
-    if (limit == 0) {
-        auto entries = resp.beginArray(protocol::FieldId::Entries);
-        compat::DirIterator it(path.c_str());
-        String name;
-        size_t size;
-        bool isDir;
-        while (it.next(name, size, isDir)) {
-            auto e = entries->addBeginObject();
-            e->setString(protocol::FieldId::Name, name);
-            if (isDir) {
-                e->setString(protocol::FieldId::Type, F("dir"));
-            } else {
-                e->setString(protocol::FieldId::Type, F("file"));
-                e->setU32(protocol::FieldId::Size, (uint32_t)size);
-            }
-            entries->endObject(e);
-        }
-        it.close();
-        resp.endArray(entries);
+    if (deny(resp, path, true)) return;
+    if (offset > 4096) {
+        resp.setString(protocol::FieldId::Status, "invalid_cursor");
         return;
     }
-
-    struct DirEntry {
-        String name;
-        String type;
-        unsigned long size;
-    };
-    std::vector<DirEntry> all;
-    {
-        compat::DirIterator it(path.c_str());
-        String name;
-        size_t size;
-        bool isDir;
-        while (it.next(name, size, isDir)) {
-            DirEntry e;
-            e.name = name;
-            if (isDir) {
-                e.type = "dir";
-                e.size = 0;
-            } else {
-                e.type = "file";
-                e.size = (unsigned long)size;
-            }
-            all.push_back(e);
-        }
-        it.close();
+    limit = std::min(limit ? limit : size_t(20), size_t(20));
+    resp.setString(protocol::FieldId::Status, "ok");
+    auto entries = resp.beginArray(protocol::FieldId::Entries);
+    compat::DirIterator it(path.c_str());
+    String name; size_t size; bool dir;
+    size_t visited = 0, emitted = 0;
+    bool more = false;
+    // Offset pagination still scans the prefix, but RAM and response size stay bounded.
+    while (it.next(name, size, dir)) {
+        name = name.substring(name.lastIndexOf('/') + 1);
+        if (name == "v2") continue;
+        if (path == "/" && name != "logs") continue;
+        if (visited++ < offset) continue;
+        if (emitted >= limit) { more = true; break; }
+        auto e = entries->addBeginObject();
+        e->setString(protocol::FieldId::Name, name);
+        e->setString(protocol::FieldId::Type, dir ? "dir" : "file");
+        if (!dir) e->setU32(protocol::FieldId::Size, size);
+        entries->endObject(e); ++emitted;
     }
-
-    std::sort(all.begin(), all.end(), [](const DirEntry& a, const DirEntry& b) {
-        int da, ma, ya, db, mb, yb;
-        bool aOk = sscanf(a.name.c_str(), "%d-%d-%d", &da, &ma, &ya) == 3;
-        bool bOk = sscanf(b.name.c_str(), "%d-%d-%d", &db, &mb, &yb) == 3;
-        if (!aOk && !bOk) return a.name < b.name;
-        if (!aOk) return true;
-        if (!bOk) return false;
-        if (ya != yb) return ya < yb;
-        if (ma != mb) return ma < mb;
-        return da < db;
-    });
-
-    size_t total = all.size();
-    resp.setU32(protocol::FieldId::Total, (uint32_t)total);
-
-    if (offset >= total) {
-        auto entries = resp.beginArray(protocol::FieldId::Entries);
-        resp.endArray(entries);
-        resp.setBool(protocol::FieldId::More, false);
-    } else {
-        size_t end = offset + limit;
-        if (end > total) end = total;
-        resp.setBool(protocol::FieldId::More, (end < total));
-        auto entries = resp.beginArray(protocol::FieldId::Entries);
-        for (size_t i = offset; i < end; i++) {
-            auto e = entries->addBeginObject();
-            e->setString(protocol::FieldId::Name, all[i].name);
-            e->setString(protocol::FieldId::Type, all[i].type);
-            if (all[i].type == "file") {
-                e->setU32(protocol::FieldId::Size, (uint32_t)all[i].size);
-            }
-            entries->endObject(e);
-        }
-        resp.endArray(entries);
-    }
+    it.close(); resp.endArray(entries);
+    resp.setBool(protocol::FieldId::More, more);
+    // Total is unknown without a full scan. Clients should follow More.
+    resp.setU32(protocol::FieldId::Total, more ? 0 : offset + emitted);
 }
 
 void FileBrowser::readFile(const String& path, size_t offset, size_t limit, protocol::CommandResponse& resp) {
+    if (deny(resp, path)) return;
     if (limit == 0 || limit > 1500) {
         limit = 1500;
     }
@@ -149,6 +100,7 @@ void FileBrowser::readFile(const String& path, size_t offset, size_t limit, prot
 }
 
 void FileBrowser::fileInfo(const String& path, protocol::CommandResponse& resp) {
+    if (deny(resp, path)) return;
     resp.setString(protocol::FieldId::Path, path);
 
     File f = LITTLEFS.open(path, "r");
@@ -165,6 +117,7 @@ void FileBrowser::fileInfo(const String& path, protocol::CommandResponse& resp) 
 }
 
 void FileBrowser::deleteItem(const String& path, protocol::CommandResponse& resp) {
+    if (deny(resp, path)) return;
     resp.setString(protocol::FieldId::Path, path);
 
     File f = LITTLEFS.open(path, "r");
@@ -176,22 +129,12 @@ void FileBrowser::deleteItem(const String& path, protocol::CommandResponse& resp
     bool isDir = f.isDirectory();
     f.close();
 
-    bool ok;
     if (isDir) {
-        // Remove all files inside first
-        compat::DirIterator it(path.c_str());
-        String name;
-        size_t size;
-        bool childIsDir;
-        while (it.next(name, size, childIsDir)) {
-            String childPath = path + "/" + name;
-            LITTLEFS.remove(childPath);
-        }
-        it.close();
-        ok = LITTLEFS.rmdir(path);
-    } else {
-        ok = LITTLEFS.remove(path);
+        resp.setString(protocol::FieldId::Status, "error");
+        resp.setString(protocol::FieldId::Message, "Delete individual legacy files only");
+        return;
     }
+    bool ok = LITTLEFS.remove(path);
 
     if (ok) {
         resp.setString(protocol::FieldId::Status, F("ok"));

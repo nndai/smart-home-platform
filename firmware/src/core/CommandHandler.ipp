@@ -198,6 +198,13 @@ void CommandHandlerT<T>::handleCommandBinary(const String& source, const uint8_t
         case protocol::CommandId::Provision:
             _cmdProvision(source, req, resp);
             break;
+        case protocol::CommandId::GetLogState:
+        case protocol::CommandId::SyncLog:
+        case protocol::CommandId::ListLogSegments:
+        case protocol::CommandId::DeleteLogSegment:
+            LogStorageManager::instance().handle(commandId, req, resp);
+            _sendBinaryResponse(source, resp.rawData(), resp.rawSize());
+            break;
         case protocol::CommandId::ListDir:
         case protocol::CommandId::ReadFile:
         case protocol::CommandId::FileInfo:
@@ -455,8 +462,8 @@ template <typename T>
 void CommandHandlerT<T>::_cmdClearSysLog(const String& source, const protocol::CommandRequest& payload, protocol::CommandResponse& resp) {
     (void)source;
     (void)payload;
-    _log->clearSysLog();
-    resp.setString(protocol::FieldId::Status, F("ok"));
+    const bool cleared = LogStorageManager::instance().clear(logv2::Sys);
+    resp.setString(protocol::FieldId::Status, cleared ? F("ok") : F("busy"));
     resp.setString(protocol::FieldId::Message, F("Sys log cleared"));
 
     _sendBinaryResponse(source, resp.rawData(), resp.rawSize());

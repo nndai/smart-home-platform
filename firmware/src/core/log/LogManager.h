@@ -4,6 +4,7 @@
 #include "SysLog.h"
 #include "ToggleLog.h"
 #include "PowerLog.h"
+#include "LogStorageManager.h"
 
 class LogManager {
 public:

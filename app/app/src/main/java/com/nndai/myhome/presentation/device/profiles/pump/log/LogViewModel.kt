@@ -29,6 +29,10 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
     val availableSysDates: StateFlow<List<String>> = logRepository.availableSysDates
     val dailySysLogs: StateFlow<Map<String, String>> = logRepository.dailySysLogs
     val isSyncing: StateFlow<Boolean> = logRepository.isSyncing
+    val sysSegments = logRepository.sysSegments
+    fun loadSysSegments() = logRepository.loadSysSegments()
+    fun deleteSegment(segment: com.nndai.myhome.data.model.LogSegment) = logRepository.deleteSegment(segment)
+
 
     // Keep the latest logs (max 2000)
     val logs = mutableStateListOf<String>()

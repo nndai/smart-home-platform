@@ -18,9 +18,4 @@ public:
 
     static constexpr const char* DIR = "/logs/toggle/";
 
-private:
-    void _rotate();
-    String _path();
-
-    static constexpr size_t MAX_FOLDER = TOGGLELOG_MAX_FOLDER;
 };

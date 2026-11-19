@@ -42,6 +42,11 @@ object BinaryCommandIds {
     const val RESET_CALIBRATION: Int = 102
     const val CLEAR_PUMP_FAULT: Int = 103
 
+    const val GET_LOG_STATE: Int = 36
+    const val SYNC_LOG: Int = 37
+    const val LIST_LOG_SEGMENTS: Int = 38
+    const val DELETE_LOG_SEGMENT: Int = 39
+
     fun commandIdToString(id: Int): String {
         return when (id) {
             GET_STATUS -> "getStatus"
@@ -79,6 +84,10 @@ object BinaryCommandIds {
             CALIBRATE -> "calibrate"
             RESET_CALIBRATION -> "resetCalibration"
             CLEAR_PUMP_FAULT -> "clearPumpFault"
+            GET_LOG_STATE -> "getLogState"
+            SYNC_LOG -> "syncLog"
+            LIST_LOG_SEGMENTS -> "listLogSegments"
+            DELETE_LOG_SEGMENT -> "deleteLogSegment"
             else -> "unknown"
         }
     }
@@ -120,6 +129,10 @@ object BinaryCommandIds {
             "calibrate" -> CALIBRATE
             "resetCalibration" -> RESET_CALIBRATION
             "clearPumpFault" -> CLEAR_PUMP_FAULT
+            "getLogState" -> GET_LOG_STATE
+            "syncLog" -> SYNC_LOG
+            "listLogSegments" -> LIST_LOG_SEGMENTS
+            "deleteLogSegment" -> DELETE_LOG_SEGMENT
             else -> UNKNOWN
         }
     }

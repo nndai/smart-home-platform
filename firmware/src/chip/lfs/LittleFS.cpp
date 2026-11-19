@@ -50,7 +50,7 @@ bool LittleFSImpl::begin() {
     if (_mounted) return true;
     if (_blockSize == 0 || _size == 0) return false;
     if (_tryMount()) return true;
-    if (format()) return _tryMount();
+    // Mount failure must preserve existing data; formatting is an explicit maintenance action.
     return false;
 }
 

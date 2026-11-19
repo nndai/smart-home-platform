@@ -28,21 +28,6 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Session theo dõi yêu cầu đọc file chủ động của thiết bị hiện tại.
- */
-private data class FileReadSession(
-    val reqId: String,
-    val expectedOffset: Long,
-    val requestedAt: Long = System.currentTimeMillis()
-)
-
-private data class DirListPageState(
-    val pendingEntries: MutableList<RemoteFileEntry> = mutableListOf(),
-    var currentOffset: Int = 0,
-    var expectedTotal: Int = 0
-)
-
-/**
  * Repository quản lý dữ liệu Lịch sử Năng Lượng (Power Logs) và Lịch sử Bật/Tắt (Toggle Logs).
  * Hỗ trợ xác thực reqId và offset để tránh xung đột khi nhiều thiết bị dùng chung 1 máy chủ MQTT.
  */
@@ -75,19 +60,78 @@ class LogRepository(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    private val pendingFileBuffers = mutableMapOf<String, java.io.ByteArrayOutputStream>()
+    private val segmentCache = com.nndai.myhome.data.local.SegmentLogCache(context, deviceId)
+    private val segmentReader = com.nndai.myhome.data.local.SegmentLogReader(segmentCache)
+    private val coordinator = LogSyncCoordinator(remote, segmentCache) {
+        _userMessages.emit("Một phần lịch sử trên thiết bị đã bị xóa. Dữ liệu đã tải vẫn còn trong bộ nhớ đệm.")
+    }
+    private val legacySync = LegacyLogSync(remote, prefs)
+    private val syncRequests = kotlinx.coroutines.channels.Channel<Pair<List<Int>, Boolean>>(
+        capacity = 1, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    private var supportsV2 = false
+    @Volatile private var v2SysDates: Set<String> = emptySet()
+    private val _sysSegments = MutableStateFlow<List<com.nndai.myhome.data.model.LogSegment>>(emptyList())
+    val sysSegments: StateFlow<List<com.nndai.myhome.data.model.LogSegment>> = _sysSegments.asStateFlow()
 
-    private val activeListDirReqIds = mutableSetOf<String>()
-    private val pendingDirPages = mutableMapOf<String, DirListPageState>()
-    private val activeReadFileSessions = mutableMapOf<String, FileReadSession>()
+    fun loadSysSegments() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try { fetchSysSegments() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { _userMessages.emit(error.message ?: "Không thể tải danh sách segment") }
+        }
+    }
+
+    private suspend fun fetchSysSegments() {
+        val segments = mutableListOf<com.nndai.myhome.data.model.LogSegment>()
+        var offset = 0
+        var revision: Long? = null
+        var boot: Long? = null
+        do {
+            val result = coordinator.request("listLogSegments", JSONObject().apply {
+                put("stream", 2); put("offset", offset)
+                revision?.let { put("catalogRevision", it) }
+                boot?.let { put("bootId", it) }
+            })
+            check(result.optString("status") == "ok") { "Danh sách segment đã thay đổi hoặc thiết bị chưa hỗ trợ. Hãy tải lại." }
+            revision = result.getLong("catalogRevision"); boot = result.getLong("bootId")
+            val entries = result.getJSONArray("entries")
+            for (i in 0 until entries.length()) {
+                val entry = entries.getJSONObject(i)
+                segments += com.nndai.myhome.data.model.LogSegment(2, result.getLong("generation"),
+                    entry.getLong("segmentId"), entry.getLong("size"), entry.getLong("minEpoch"),
+                    entry.getLong("maxEpoch"), entry.getBoolean("sealed"))
+            }
+            offset += entries.length()
+            check(offset <= 16 && (!result.optBoolean("more") || entries.length() > 0))
+        } while (result.optBoolean("more"))
+        _sysSegments.value = segments
+    }
+
+    fun deleteSegment(segment: com.nndai.myhome.data.model.LogSegment) {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val result = coordinator.request("deleteLogSegment", JSONObject().apply {
+                    put("stream", segment.stream); put("generation", segment.generation); put("segmentId", segment.id)
+                })
+                check(result.optString("status") == "ok") { "Không thể xóa segment: ${result.optString("status")}" }
+                _userMessages.emit("Đã xóa segment trên thiết bị. Bản đã tải vẫn còn trong bộ nhớ đệm.")
+                fetchSysSegments()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { _userMessages.emit(error.message ?: "Không thể xóa segment") }
+        }
+    }
+
 
     init {
         loadCachedData()
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { refreshSegmentData() }.onFailure { Log.w(TAG, "Cannot load segment cache", it) }
+            for ((streams, force) in syncRequests) performSync(streams, force)
+        }
         scope.launch {
             remote.events.collect { event ->
                 when (event) {
-                    is PumpCommandEvent.ListDirResult -> handleListDirResult(event)
-                    is PumpCommandEvent.ReadFileResult -> handleReadFileResult(event)
                     is PumpCommandEvent.DeleteItemResult -> handleDeleteItemResult(event)
                     is PumpCommandEvent.StatusUpdate -> handleStatusUpdate(event)
                     else -> {}
@@ -129,7 +173,9 @@ class LogRepository(
             if (key.startsWith(KEY_RAW_CONTENT) && value is String && value.isNotEmpty()) {
                 val fullPath = key.removePrefix(KEY_RAW_CONTENT)
                 val filename = fullPath.substringAfterLast("/")
-                val dateStr = filename.removeSuffix(".log")
+                val dateStr = filename.removeSuffix(".log").let {
+                    if (it == "nosync" || it == "01-01-1970") "Chưa xác định" else it
+                }
                 if (dateStr.isNotBlank()) {
                     if (fullPath.contains("/power/")) {
                         if (!powerMap.containsKey(dateStr)) {
@@ -158,104 +204,78 @@ class LogRepository(
         _availableSysDates.value = sortDates(sysDatesSet.toList())
     }
 
-    /**
-     * Bắt đầu đồng bộ danh sách file từ thiết bị (/logs/power/ và /logs/toggle/).
-     * Hỗ trợ pagination: tự động lấy các trang tiếp theo nếu response có more=true.
-     * Tự động restart nếu total thay đổi giữa các trang.
-     */
-    fun syncLogs(force: Boolean = false) {
-        scope.launch {
-            if (_isSyncing.value) return@launch
-            _isSyncing.value = true
+    fun syncLogs(force: Boolean = false) = startSync(listOf(0, 1), force)
+    fun syncSysLogs(force: Boolean = true) = startSync(listOf(2), force)
 
-            // Đặt timeout 30s để tự động tắt trạng thái quay (isSyncing) nếu không nhận được phản hồi
-            scope.launch {
-                kotlinx.coroutines.delay(30_000)
-                if (_isSyncing.value) {
-                    Log.w(TAG, "Sync timeout! Resetting isSyncing to false.")
-                    _isSyncing.value = false
-                    activeListDirReqIds.clear()
-                    pendingDirPages.clear()
-                }
+    private fun startSync(streams: List<Int>, force: Boolean) {
+        syncRequests.trySend(streams to force)
+    }
+
+    private suspend fun performSync(streams: List<Int>, force: Boolean) {
+        _isSyncing.value = true
+        try {
+            supportsV2 = coordinator.sync(streams, force)
+            val importKey = "legacy_imported_v2"
+            val pendingLegacy = streams.filter { !supportsV2 || !prefs.getBoolean("$importKey$it", false) }
+            if (pendingLegacy.isNotEmpty()) {
+                legacySync.sync(pendingLegacy)
+                if (supportsV2) prefs.edit().apply {
+                    pendingLegacy.forEach { putBoolean("$importKey$it", true) }
+                }.commit()
+                loadCachedData()
             }
-
-            if (force) {
-                Log.d(TAG, "syncLogs() - FORCE SYNC for both power and toggle")
-                requestDirPage("/logs/toggle/", 0)
-                requestDirPage("/logs/power/", 0)
-                return@launch
-            }
-
-            val lastCheckDateStr = prefs.getString(KEY_LAST_POWER_CHECK_DATE, "") ?: ""
-            val lastCheckHour = prefs.getInt(KEY_LAST_POWER_CHECK_HOUR, -1)
-
-            var shouldCheckPower = false
-
-            if (lastCheckDateStr.isEmpty() || lastCheckHour == -1) {
-                shouldCheckPower = true
-            } else {
-                val sdf = SimpleDateFormat("dd-MM-yyyy", Locale.US)
-                try {
-                    val lastDate = sdf.parse(lastCheckDateStr)
-                    if (lastDate != null) {
-                        val cal = Calendar.getInstance()
-                        cal.time = lastDate
-                        cal.set(Calendar.HOUR_OF_DAY, lastCheckHour)
-                        cal.set(Calendar.MINUTE, 0)
-                        cal.set(Calendar.SECOND, 0)
-                        cal.set(Calendar.MILLISECOND, 0)
-
-                        // Giờ check tiếp theo = giờ check lần trước + 1h + 1m
-                        cal.add(Calendar.HOUR_OF_DAY, 1)
-                        cal.add(Calendar.MINUTE, 1)
-
-                        val targetCheckTime = cal.timeInMillis
-                        if (System.currentTimeMillis() >= targetCheckTime) {
-                            shouldCheckPower = true
-                        }
-                    } else {
-                        shouldCheckPower = true
-                    }
-                } catch (e: Exception) {
-                    shouldCheckPower = true
-                }
-            }
-
-            Log.d(
-                TAG,
-                "syncLogs() - sending listDir with unique reqId, shouldCheckPower=$shouldCheckPower"
-            )
-
-            requestDirPage("/logs/toggle/", 0)
-
-            if (shouldCheckPower) {
-                requestDirPage("/logs/power/", 0)
-            } else {
-                Log.d(TAG, "syncLogs() - Skip power listDir because time check rule is not met yet")
-            }
+            refreshSegmentData()
+        } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+            _userMessages.emit("Thiết bị chưa phản hồi đồng bộ log. Vui lòng thử lại.")
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(TAG, "Log sync failed", error)
+            _userMessages.emit(error.message ?: "Không thể đồng bộ lịch sử")
+        } finally {
+            runCatching { refreshSegmentData() }.onFailure { Log.w(TAG, "Cannot refresh segment cache", it) }
+            _isSyncing.value = false
         }
     }
 
-    fun syncSysLogs(force: Boolean = true) {
-        scope.launch {
-            if (_isSyncing.value) return@launch
-            _isSyncing.value = true
-
-            scope.launch {
-                kotlinx.coroutines.delay(30_000)
-                if (_isSyncing.value) {
-                    Log.w(TAG, "Sync sys timeout! Resetting isSyncing to false.")
-                    _isSyncing.value = false
-                    activeListDirReqIds.clear()
-                    pendingDirPages.clear()
+    private fun refreshSegmentData() {
+        for (stream in 0..2) {
+            val type = listOf("power", "toggle", "sys")[stream]
+            val grouped = segmentReader.grouped(stream).toMutableMap()
+            if (stream == 2) v2SysDates = grouped.keys.toSet()
+            val legacyUnknown = prefs.getString(KEY_RAW_CONTENT + "/logs/$type/nosync.log", "").orEmpty() +
+                prefs.getString(KEY_RAW_CONTENT + "/logs/$type/01-01-1970.log", "").orEmpty()
+            if (legacyUnknown.isNotEmpty()) grouped.putIfAbsent("Chưa xác định", "")
+            // A later time anchor can move previously undated records into a real day.
+            if ("Chưa xác định" !in grouped) {
+                when (stream) {
+                    1 -> {
+                        _dailyToggleLogs.value = _dailyToggleLogs.value - "Chưa xác định"
+                        prefs.edit().remove(PREFIX_TOGGLE + "Chưa xác định").apply()
+                    }
+                    2 -> _dailySysLogs.value = _dailySysLogs.value - "Chưa xác định"
                 }
             }
-
-            requestDirPage("/logs/sys/", 0)
+            for ((date, content) in grouped) {
+                val legacy = if (date == "Chưa xác định") legacyUnknown else
+                    prefs.getString(KEY_RAW_CONTENT + "/logs/$type/$date.log", "").orEmpty()
+                val combined = legacy + content
+                when (stream) {
+                    0 -> savePowerLogToCache(parsePowerLogData(date, combined))
+                    1 -> saveToggleLogToCache(date, parseToggleLogData(combined))
+                    2 -> saveSysLogToCache(date, combined)
+                }
+            }
         }
+        _availableDates.value = sortDates((_dailyPowerLogs.value.keys + _dailyToggleLogs.value.keys).toList())
+        _availableSysDates.value = sortDates(_dailySysLogs.value.keys.toList())
     }
 
     fun deleteSysLogFile(dateStr: String) {
+        if (dateStr in v2SysDates) {
+            scope.launch { _userMessages.emit("Ngày này nằm trong segment có thể chứa nhiều ngày. Hãy dùng mục Quản lý dữ liệu trên thiết bị để xem phạm vi và xóa.") }
+            return
+        }
         val fullPath = "/logs/sys/$dateStr.log"
         val reqId = "del_${System.currentTimeMillis()}"
         scope.launch {
@@ -295,310 +315,6 @@ class LogRepository(
                 val errMsg = event.message ?: "Xóa file thất bại"
                 _userMessages.emit("Lỗi xóa file $filename: $errMsg")
             }
-        }
-    }
-
-    private suspend fun requestDirPage(path: String, offset: Int) {
-        val reqId = remote.listDir(path, offset = offset.toLong(), limit = DIR_LIST_PAGE_LIMIT.toLong())
-        activeListDirReqIds += reqId
-        if (offset == 0) {
-            pendingDirPages[path] = DirListPageState()
-        }
-    }
-
-    private fun handleListDirResult(event: PumpCommandEvent.ListDirResult) {
-        if (!event.success) {
-            Log.e(TAG, "ListDir failed for ${event.path}: ${event.message}")
-            activeListDirReqIds.remove(event.reqId)
-            pendingDirPages.remove(event.path)
-            _isSyncing.value = false
-            return
-        }
-
-        if (event.reqId.isNullOrEmpty() || event.reqId !in activeListDirReqIds) {
-            Log.w(TAG, "Ignoring listDir response for ${event.path}: reqId mismatch or not ours")
-            return
-        }
-
-        val state = pendingDirPages[event.path] ?: run {
-            Log.w(TAG, "Ignoring listDir response for ${event.path}: no active page state")
-            activeListDirReqIds.remove(event.reqId)
-            return
-        }
-
-        // Phát hiện total thay đổi → restart pagination từ đầu
-        if (state.expectedTotal != 0 && event.total > 0 && event.total != state.expectedTotal) {
-            Log.w(TAG, "Total changed from ${state.expectedTotal} to ${event.total}, restarting pagination for ${event.path}")
-            state.pendingEntries.clear()
-            state.currentOffset = 0
-            state.expectedTotal = event.total
-            activeListDirReqIds.remove(event.reqId)
-            scope.launch {
-                requestDirPage(event.path, 0)
-            }
-            return
-        }
-
-        if (state.expectedTotal == 0 && event.total > 0) {
-            state.expectedTotal = event.total
-        }
-
-        state.pendingEntries.addAll(event.entries)
-
-        // Còn trang → request tiếp
-        if (event.more) {
-            state.currentOffset += DIR_LIST_PAGE_LIMIT
-            activeListDirReqIds.remove(event.reqId)
-            scope.launch {
-                requestDirPage(event.path, state.currentOffset)
-            }
-            return
-        }
-
-        // Hoàn tất tất cả trang → xử lý entries
-        activeListDirReqIds.remove(event.reqId)
-        pendingDirPages.remove(event.path)
-        processDirEntries(event.path, state.pendingEntries)
-    }
-
-    private fun processDirEntries(path: String, entries: List<RemoteFileEntry>) {
-        val todayDateStr = getTodayDateStr()
-        val cal = Calendar.getInstance()
-        val curHour = cal.get(Calendar.HOUR_OF_DAY)
-
-        if (path.contains("power")) {
-            prefs.edit()
-                .putString(KEY_LAST_POWER_CHECK_DATE, todayDateStr)
-                .putInt(KEY_LAST_POWER_CHECK_HOUR, curHour)
-                .apply()
-
-            entries.filter { it.name.endsWith(".log") && !it.name.startsWith("nosync") }.forEach { entry ->
-                val fullPath = "/logs/power/${entry.name}"
-                val deviceSize = entry.size
-                val savedFileSize = prefs.getLong(KEY_RAW_SIZE + fullPath, -1L)
-                val savedContent = prefs.getString(KEY_RAW_CONTENT + fullPath, "") ?: ""
-
-                when {
-                    savedFileSize == -1L -> {
-                        if (deviceSize > 0L) {
-                            Log.d(TAG, "Power log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
-                            scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                                activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                            }
-                        }
-                    }
-                    deviceSize > savedFileSize -> {
-                        Log.d(TAG, "Power log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
-                        }
-                    }
-                    deviceSize < savedFileSize -> {
-                        Log.d(TAG, "Power log $fullPath REPLACED (deviceSize=$deviceSize < saved=$savedFileSize). Re-download from 0")
-                        prefs.edit()
-                            .remove(KEY_RAW_CONTENT + fullPath)
-                            .remove(KEY_RAW_SIZE + fullPath)
-                            .apply()
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                        }
-                    }
-                    else -> {
-                        Log.d(TAG, "Power log $fullPath UNCHANGED (deviceSize=$deviceSize == saved=$savedFileSize).")
-                        if (savedContent.isNotEmpty()) {
-                            val dateStr = entry.name.removeSuffix(".log")
-                            val dailyLog = parsePowerLogData(dateStr, savedContent)
-                            val finalLog = mergeWithRealtimeData(dailyLog)
-                            savePowerLogToCache(finalLog)
-                        }
-                    }
-                }
-            }
-        } else if (path.contains("toggle")) {
-            entries.filter { it.name.endsWith(".log") && !it.name.startsWith("nosync") }.forEach { entry ->
-                val fullPath = "/logs/toggle/${entry.name}"
-                val deviceSize = entry.size
-                val savedFileSize = prefs.getLong(KEY_RAW_SIZE + fullPath, -1L)
-                val savedContent = prefs.getString(KEY_RAW_CONTENT + fullPath, "") ?: ""
-
-                when {
-                    savedFileSize == -1L -> {
-                        if (deviceSize > 0L) {
-                            Log.d(TAG, "Toggle log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
-                            scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                                activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                            }
-                        }
-                    }
-                    deviceSize > savedFileSize -> {
-                        Log.d(TAG, "Toggle log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
-                        }
-                    }
-                    deviceSize < savedFileSize -> {
-                        Log.d(TAG, "Toggle log $fullPath REPLACED (deviceSize=$deviceSize < saved=$savedFileSize). Re-download from 0")
-                        prefs.edit()
-                            .remove(KEY_RAW_CONTENT + fullPath)
-                            .remove(KEY_RAW_SIZE + fullPath)
-                            .apply()
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                        }
-                    }
-                    else -> {
-                        Log.d(TAG, "Toggle log $fullPath UNCHANGED (deviceSize=$deviceSize == saved=$savedFileSize).")
-                        if (savedContent.isNotEmpty()) {
-                            val dateStr = entry.name.removeSuffix(".log")
-                            val events = parseToggleLogData(savedContent)
-                            saveToggleLogToCache(dateStr, events)
-                        }
-                    }
-                }
-            }
-        } else if (path.contains("sys")) {
-            entries.filter { it.name.endsWith(".log") && !it.name.startsWith("nosync") }.forEach { entry ->
-                val fullPath = "/logs/sys/${entry.name}"
-                val deviceSize = entry.size
-                val savedFileSize = prefs.getLong(KEY_RAW_SIZE + fullPath, -1L)
-                val savedContent = prefs.getString(KEY_RAW_CONTENT + fullPath, "") ?: ""
-
-                when {
-                    savedFileSize == -1L -> {
-                        if (deviceSize > 0L) {
-                            Log.d(TAG, "Sys log $fullPath FIRST (deviceSize=$deviceSize). Download from 0")
-                            scope.launch {
-                                val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                                activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                            }
-                        }
-                    }
-                    deviceSize > savedFileSize -> {
-                        Log.d(TAG, "Sys log $fullPath INCREMENTAL (deviceSize=$deviceSize > saved=$savedFileSize). Offset=$savedFileSize")
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = savedFileSize, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = savedFileSize)
-                        }
-                    }
-                    deviceSize < savedFileSize -> {
-                        Log.d(TAG, "Sys log $fullPath REPLACED (deviceSize=$deviceSize < saved=$savedFileSize). Re-download from 0")
-                        prefs.edit()
-                            .remove(KEY_RAW_CONTENT + fullPath)
-                            .remove(KEY_RAW_SIZE + fullPath)
-                            .apply()
-                        scope.launch {
-                            val reqId = remote.readFile(fullPath, offset = 0L, limit = 1024, encode = false)
-                            activeReadFileSessions[fullPath] = FileReadSession(reqId = reqId, expectedOffset = 0L)
-                        }
-                    }
-                    else -> {
-                        Log.d(TAG, "Sys log $fullPath UNCHANGED (deviceSize=$deviceSize == saved=$savedFileSize).")
-                        if (savedContent.isNotEmpty()) {
-                            val dateStr = entry.name.removeSuffix(".log")
-                            saveSysLogToCache(dateStr, savedContent)
-                        }
-                    }
-                }
-            }
-        }
-        _isSyncing.value = false
-    }
-
-    private fun handleReadFileResult(event: PumpCommandEvent.ReadFileResult) {
-        val fullPath = event.path
-        if (!event.success) {
-            Log.e(TAG, "ReadFile failed for $fullPath: ${event.message}")
-            activeReadFileSessions.remove(fullPath)
-            pendingFileBuffers.remove(fullPath)
-            return
-        }
-
-        // Bắt buộc phải có reqId
-        if (event.reqId.isNullOrEmpty()) {
-            Log.w(TAG, "Ignoring ReadFileResult for $fullPath: reqId is missing")
-            return
-        }
-
-        val session = activeReadFileSessions[fullPath]
-
-        // 1. Phải khớp với reqId của session hiện tại trên máy này
-        if (session == null || event.reqId != session.reqId) {
-            Log.w(TAG, "Ignoring ReadFileResult for $fullPath: reqId ${event.reqId} != expected ${session?.reqId}")
-            return
-        }
-
-        // 2. Phải khớp offset mong muốn
-        if (event.offset != session.expectedOffset) {
-            Log.w(TAG, "Ignoring ReadFileResult for $fullPath: offset ${event.offset} != expected ${session.expectedOffset}")
-            return
-        }
-
-        val filename = fullPath.substringAfterLast("/")
-        val dateStr = filename.removeSuffix(".log")
-        if (dateStr.isBlank()) return
-
-        // Nối dữ liệu mới tải từ offset vào dữ liệu raw đã lưu dưới máy
-        val savedContent = prefs.getString(KEY_RAW_CONTENT + fullPath, "") ?: ""
-        val savedFileSize = prefs.getLong(KEY_RAW_SIZE + fullPath, -1L)
-
-        val stream = pendingFileBuffers.getOrPut(fullPath) {
-            java.io.ByteArrayOutputStream().apply {
-                if (event.offset > 0L && savedContent.isNotEmpty()) {
-                    val savedBytes = savedContent.toByteArray(Charsets.UTF_8)
-                    val prefixLen = if (savedFileSize in 1..savedBytes.size.toLong()) {
-                        savedFileSize.toInt()
-                    } else if (event.offset <= savedBytes.size.toLong()) {
-                        event.offset.toInt()
-                    } else {
-                        savedBytes.size
-                    }
-                    write(savedBytes, 0, prefixLen)
-                }
-            }
-        }
-
-        stream.write(event.data)
-
-        if (event.more) {
-            val nextOffset = event.offset + event.data.size.toLong()
-            Log.d(
-                TAG,
-                "ReadFile path=$fullPath has MORE data (total size=${event.size}). Requesting next chunk at offset=$nextOffset"
-            )
-            scope.launch {
-                val nextReqId = remote.readFile(fullPath, offset = nextOffset, limit = 1024, encode = false)
-                activeReadFileSessions[fullPath] = FileReadSession(reqId = nextReqId, expectedOffset = nextOffset)
-            }
-            return
-        }
-
-        // Tải hoàn tất tất cả các chunk mới của file
-        activeReadFileSessions.remove(fullPath)
-        val fullBytes = stream.toByteArray()
-        val fullContent = String(fullBytes, Charsets.UTF_8)
-        pendingFileBuffers.remove(fullPath)
-
-        // Lưu dữ liệu raw + kích thước file gốc (dùng Long, tránh lỗi UTF-8)
-        prefs.edit()
-            .putString(KEY_RAW_CONTENT + fullPath, fullContent)
-            .putLong(KEY_RAW_SIZE + fullPath, event.size)
-            .apply()
-
-        if (fullPath.contains("/power/")) {
-            val dailyLog = parsePowerLogData(dateStr, fullContent)
-            val finalLog = mergeWithRealtimeData(dailyLog)
-            savePowerLogToCache(finalLog)
-        } else if (fullPath.contains("/toggle/")) {
-            val toggleEvents = parseToggleLogData(fullContent)
-            saveToggleLogToCache(dateStr, toggleEvents)
-        } else if (fullPath.contains("/sys/")) {
-            saveSysLogToCache(dateStr, fullContent)
         }
     }
 

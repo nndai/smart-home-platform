@@ -4,6 +4,7 @@
 #if defined(LT_ARD_HAS_SERIAL)
 #include <LittleFS.h>
 namespace compat {
+inline bool mountStorage() { return LITTLEFS.begin(); }
 inline size_t fsTotalBytes() { return LITTLEFS.totalBytes(); }
 inline size_t fsUsedBytes() { return LITTLEFS.usedBytes(); }
 }
@@ -12,6 +13,12 @@ inline size_t fsUsedBytes() { return LITTLEFS.usedBytes(); }
 using namespace fs;
 #define LITTLEFS LittleFS
 namespace compat {
+inline bool mountStorage() {
+    LittleFSConfig config;
+    config.setAutoFormat(false);
+    LittleFS.setConfig(config);
+    return LittleFS.begin();
+}
 inline size_t fsTotalBytes() {
     FSInfo info;
     LittleFS.info(info);
@@ -28,6 +35,7 @@ inline size_t fsUsedBytes() {
 using namespace fs;
 #define LITTLEFS LittleFS
 namespace compat {
+inline bool mountStorage() { return LITTLEFS.begin(false); }
 inline size_t fsTotalBytes() { return LITTLEFS.totalBytes(); }
 inline size_t fsUsedBytes() { return LITTLEFS.usedBytes(); }
 }

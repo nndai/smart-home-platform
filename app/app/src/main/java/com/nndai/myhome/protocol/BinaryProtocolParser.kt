@@ -70,7 +70,7 @@ object BinaryProtocolParser {
             JSONObject.NULL -> writer.writeNull(id)
             is Boolean -> writer.writeBool(id, value)
             is Int -> writer.writeI32(id, value)
-            is Long -> writer.writeI64(id, value)
+            is Long -> if (value in 0..0xffffffffL) writer.writeU32(id, value) else writer.writeI64(id, value)
             is Float -> writer.writeFloat32(id, value)
             is Double -> writer.writeFloat64(id, value)
             is ByteArray -> writer.writeBytes(id, value)

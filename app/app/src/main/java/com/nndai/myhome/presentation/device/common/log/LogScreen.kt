@@ -97,6 +97,14 @@ fun LogScreen(
     val dailySysLogs by viewModel.dailySysLogs.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val logs = viewModel.logs
+    val segments by viewModel.sysSegments.collectAsStateWithLifecycle()
+    var showSegments by remember { mutableStateOf(false) }
+    if (showSegments) {
+        com.nndai.myhome.presentation.device.common.log.LogSegmentsDialog(
+            segments, onDismiss = { showSegments = false }, onDelete = { viewModel.deleteSegment(it) }
+        )
+    }
+
 
     LaunchedEffect(Unit) {
         viewModel.userMessages.collect { msg ->
@@ -179,6 +187,10 @@ fun LogScreen(
             )
         } else {
             // Mode 1: File Log (/logs/sys/)
+            androidx.compose.material3.TextButton(onClick = {
+                showSegments = true
+                viewModel.loadSysSegments()
+            }) { Text("Quản lý dữ liệu trên thiết bị") }
             FileLogsContent(
                 selectedDate = selectedSysDate,
                 availableDates = availableSysDates,

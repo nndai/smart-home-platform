@@ -157,7 +157,27 @@ enum class FieldId : uint16_t {
     Networks = 173,
     Bssid = 174,
     IsEncrypt = 175,
-    Msg = 176
+    Msg = 176,
+    LogSchema = 180,
+    Generation = 181,
+    BootId = 182,
+    Revision = 183,
+    CatalogRevision = 184,
+    OldestSegmentId = 185,
+    SegmentId = 186,
+    SnapshotId = 187,
+    SnapshotSize = 188,
+    NextOffset = 189,
+    LogicalBytes = 190,
+    DroppedRecords = 191,
+    StorageState = 192,
+    MinEpoch = 193,
+    MaxEpoch = 194,
+    Sealed = 195,
+    ScanEntries = 196,
+    ReadChunks = 197,
+    QueueDepth = 198,
+    QueueHighWater = 199
 };
 
 } // namespace protocol

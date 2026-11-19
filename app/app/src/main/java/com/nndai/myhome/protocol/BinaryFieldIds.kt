@@ -135,6 +135,28 @@ object BinaryFieldIds {
     const val IS_ENCRYPT: Int = 175
     const val MSG: Int = 176
 
+    const val LOG_SCHEMA: Int = 180
+    const val GENERATION: Int = 181
+    const val BOOT_ID: Int = 182
+    const val REVISION: Int = 183
+    const val CATALOG_REVISION: Int = 184
+    const val OLDEST_SEGMENT_ID: Int = 185
+    const val SEGMENT_ID: Int = 186
+    const val SNAPSHOT_ID: Int = 187
+    const val SNAPSHOT_SIZE: Int = 188
+    const val NEXT_OFFSET: Int = 189
+    const val LOGICAL_BYTES: Int = 190
+    const val DROPPED_RECORDS: Int = 191
+    const val STORAGE_STATE: Int = 192
+    const val MIN_EPOCH: Int = 193
+    const val MAX_EPOCH: Int = 194
+    const val SEALED: Int = 195
+
+    const val SCAN_ENTRIES: Int = 196
+    const val READ_CHUNKS: Int = 197
+    const val QUEUE_DEPTH: Int = 198
+    const val QUEUE_HIGH_WATER: Int = 199
+
     fun getName(id: Int): String {
         return when (id) {
             SYSTEM -> "system"
@@ -263,6 +285,26 @@ object BinaryFieldIds {
             BSSID -> "bssid"
             IS_ENCRYPT -> "isEncrypt"
             MSG -> "msg"
+            LOG_SCHEMA -> "logSchema"
+            GENERATION -> "generation"
+            BOOT_ID -> "bootId"
+            REVISION -> "revision"
+            CATALOG_REVISION -> "catalogRevision"
+            OLDEST_SEGMENT_ID -> "oldestSegmentId"
+            SEGMENT_ID -> "segmentId"
+            SNAPSHOT_ID -> "snapshotId"
+            SNAPSHOT_SIZE -> "snapshotSize"
+            NEXT_OFFSET -> "nextOffset"
+            LOGICAL_BYTES -> "logicalBytes"
+            DROPPED_RECORDS -> "droppedRecords"
+            STORAGE_STATE -> "storageState"
+            MIN_EPOCH -> "minEpoch"
+            MAX_EPOCH -> "maxEpoch"
+            SEALED -> "sealed"
+            SCAN_ENTRIES -> "scanEntries"
+            READ_CHUNKS -> "readChunks"
+            QUEUE_DEPTH -> "queueDepth"
+            QUEUE_HIGH_WATER -> "queueHighWater"
             else -> "unknown"
         }
     }
@@ -396,6 +438,26 @@ object BinaryFieldIds {
             "isEncrypt" -> IS_ENCRYPT
             "msg" -> MSG
             "wifiSsid" -> WIFI_S_S_I_D
+            "logSchema" -> LOG_SCHEMA
+            "generation" -> GENERATION
+            "bootId" -> BOOT_ID
+            "revision" -> REVISION
+            "catalogRevision" -> CATALOG_REVISION
+            "oldestSegmentId" -> OLDEST_SEGMENT_ID
+            "segmentId" -> SEGMENT_ID
+            "snapshotId" -> SNAPSHOT_ID
+            "snapshotSize" -> SNAPSHOT_SIZE
+            "nextOffset" -> NEXT_OFFSET
+            "logicalBytes" -> LOGICAL_BYTES
+            "droppedRecords" -> DROPPED_RECORDS
+            "storageState" -> STORAGE_STATE
+            "minEpoch" -> MIN_EPOCH
+            "maxEpoch" -> MAX_EPOCH
+            "sealed" -> SEALED
+            "scanEntries" -> SCAN_ENTRIES
+            "readChunks" -> READ_CHUNKS
+            "queueDepth" -> QUEUE_DEPTH
+            "queueHighWater" -> QUEUE_HIGH_WATER
             else -> NONE
         }
     }

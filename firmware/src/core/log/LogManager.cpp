@@ -9,19 +9,13 @@ LogManager::LogManager()
 {}
 
 bool LogManager::begin() {
-    if (!LITTLEFS.begin()) return false;
+    if (!compat::mountStorage()) return false;
 
     for (const char* d : {SysLog::DIR, ToggleLog::DIR, PowerLog::DIR}) {
         if (!LITTLEFS.exists(d)) LITTLEFS.mkdir(d);
     }
 
-    if (LITTLEFS.exists("/logs/nosync.log")) {
-        LITTLEFS.remove("/logs/nosync.log");
-    }
-    String oldPowerNosync = String(PowerLog::DIR) + "nosync.log";
-    if (LITTLEFS.exists(oldPowerNosync)) {
-        LITTLEFS.remove(oldPowerNosync);
-    }
+    if (!LogStorageManager::instance().begin()) return false;
 
     _sysLog.begin();
     _toggleLog.begin();
@@ -43,7 +37,9 @@ void LogManager::setTime(unsigned long epoch) {
         bool firstSync = !_time.isTimeSynced();
         _time.setTime(epoch);
         if (firstSync) {
-            _sysLog.migrateNosync(epoch);
+            for (uint8_t stream = 0; stream < logv2::StreamCount; ++stream) {
+                LogStorageManager::instance().enqueue(logv2::Stream(stream), "", epoch, logv2::TimeAnchor);
+            }
         }
     }
 }
@@ -56,22 +52,22 @@ void LogManager::setSysLogFileLevel(uint8_t lv) { _sysLog.setLevel(lv); }
 void LogManager::setLogCallback(LogCallback cb) { _sysLog.setCallback(cb); }
 void LogManager::setMqttLogEnabled(bool en) { _mqttLogEnabled = en; }
 bool LogManager::isMqttLogEnabled() const { return _mqttLogEnabled; }
-size_t LogManager::getSysLogSize() { return _sysLog.getSize(); }
+size_t LogManager::getSysLogSize() { return LogStorageManager::instance().size(logv2::Sys); }
 bool LogManager::readSysLog(String& out, size_t maxBytes) { return _sysLog.read(out, maxBytes); }
-void LogManager::clearSysLog() { _sysLog.clear(); }
+void LogManager::clearSysLog() { LogStorageManager::instance().clear(logv2::Sys); }
 
 // ── Toggle log delegates ──
 void LogManager::logToggle(ToggleSource src, bool on) { _toggleLog.log(src, on); }
-size_t LogManager::getToggleLogSize() { return _toggleLog.getSize(); }
+size_t LogManager::getToggleLogSize() { return LogStorageManager::instance().size(logv2::Toggle); }
 bool LogManager::readToggleLog(String& out, size_t maxBytes) { return _toggleLog.read(out, maxBytes); }
-void LogManager::clearToggleLog() { _toggleLog.clear(); }
+void LogManager::clearToggleLog() { LogStorageManager::instance().clear(logv2::Toggle); }
 
 // ── Power log delegates ──
 //void LogManager::logPower(unsigned long power) { _powerLog.log(power); }
 void LogManager::logHourlyPower(uint8_t hour, uint32_t energyWh, time_t intervalEpoch) { _powerLog.logHourly(hour, energyWh, intervalEpoch); }
-size_t LogManager::getPowerLogSize() { return _powerLog.getSize(); }
+size_t LogManager::getPowerLogSize() { return LogStorageManager::instance().size(logv2::Power); }
 bool LogManager::readPowerLog(String& out, size_t maxBytes) { return _powerLog.read(out, maxBytes); }
-void LogManager::clearPowerLog() { _powerLog.clear(); }
+void LogManager::clearPowerLog() { LogStorageManager::instance().clear(logv2::Power); }
 
 // ── Time delegates ──
 bool LogManager::isTimeSynced() const { return _time.isTimeSynced(); }
