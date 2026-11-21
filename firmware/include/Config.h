@@ -143,14 +143,14 @@
 #define TASK_LOGWRITER_STACK     1024   // 1KB
 #define TASK_OTA_STACK           8192   // 8KB
 #elif defined(ARDUINO_ARCH_ESP32)
-// ESP32 (FreeRTOS chuẩn): usStackDepth tính bằng WORD (4 Bytes)
-#define TASK_NETWORK_STACK       2048   // 8192 Bytes
-#define TASK_SENSOR_STACK        1024   // 4096 Bytes
-#define TASK_NTP_STACK           512    // 2048 Bytes
-#define TASK_WDT_STACK           256    // 1024 Bytes
-#define TASK_STREAM_STACK        1024   // 4096 Bytes
-#define TASK_LOGWRITER_STACK     512    // 2048 Bytes
-#define TASK_OTA_STACK           2048   // 8192 Bytes
+// ESP-IDF xTaskCreate() takes the stack size in bytes.
+#define TASK_NETWORK_STACK       2048
+#define TASK_SENSOR_STACK        1024
+#define TASK_NTP_STACK           512
+#define TASK_WDT_STACK           256
+#define TASK_STREAM_STACK        1024
+#define TASK_LOGWRITER_STACK     4096   // LittleFS/VFS calls run on the storage task stack.
+#define TASK_OTA_STACK           2048
 #else
 // LN882H / LibreTiny (FreeRTOS chuẩn): usStackDepth tính bằng WORD (4 Bytes)
 #define TASK_NETWORK_STACK       2048   // 8192 Bytes

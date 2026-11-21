@@ -263,7 +263,7 @@ bool LogStorageManager::cleanupStep() {
     // At most one removal per tick, in diagnostic -> toggle -> power order.
     for (int i = Sys; i >= Power; --i) {
         auto& s = _stores[i];
-        if (s.count && (_pressure || s.needsSpace || s.bytes > s.quota || s.count == MAX_SEGMENTS)) {
+        if (s.count && (_pressure || s.needsSpace || s.bytes > s.quota)) {
             // Keep a durable last ID even if both catalog slots need rebuilding later.
             if (s.count == 1) {
                 if (!s.entries[0].sealed || !createSegment(i, s.entries[0].month)) continue;
@@ -281,10 +281,13 @@ bool LogStorageManager::cleanupStep() {
 
 bool LogStorageManager::createSegment(uint8_t stream, uint32_t month) {
     auto& s = _stores[stream];
-    if (s.count >= MAX_SEGMENTS || s.nextId == UINT32_MAX || _free < _low + HEADER_SIZE) return false;
-    if (s.count) s.entries[s.count - 1].sealed = true;
+    if (s.count >= MAX_SEGMENTS || s.nextId == UINT32_MAX || _free < _low + HEADER_SIZE) {
+        s.state = "storage_full";
+        return false;
+    }
     const uint32_t id = s.nextId++;
     if (!writeSegmentHeader(stream, s.generation, id)) { s.state = "io_error"; return false; }
+    if (s.count) s.entries[s.count - 1].sealed = true;
     Entry e; e.id = id; e.size = HEADER_SIZE; e.month = month; e.sealed = false;
     s.entries[s.count++] = e; s.bytes += HEADER_SIZE;
     _free = _free > HEADER_SIZE ? _free - HEADER_SIZE : 0;
@@ -296,8 +299,16 @@ bool LogStorageManager::append(const Pending& p) {
     auto& s = _stores[p.stream];
     if (p.generation != s.generation) return false;
     const size_t bytes = RECORD_HEADER_SIZE + strlen(p.text) + 4;
+    if (HEADER_SIZE + bytes > s.quota) {
+        s.state = "storage_full";
+        return false;
+    }
     const uint32_t month = monthOf(p.epoch);
-    if (_pressure || _free < _low + bytes || s.bytes + bytes > s.quota) {
+    const bool rollover = !s.count || s.entries[s.count - 1].sealed ||
+        s.entries[s.count - 1].size + bytes > s.segmentLimit ||
+        (p.stream == Power && month && s.entries[s.count - 1].month != month);
+    const size_t growth = bytes + (rollover ? HEADER_SIZE : 0);
+    if (_pressure || _free < _low + growth || s.bytes + growth > s.quota) {
         s.state = "storage_full";
         s.needsSpace = true;
         // Seal a lone full active file so maintenance can reclaim it on a later tick.
@@ -307,8 +318,9 @@ bool LogStorageManager::append(const Pending& p) {
         }
         return false;
     }
-    if (!s.count || s.entries[s.count - 1].sealed || s.entries[s.count - 1].size + bytes > s.segmentLimit ||
-        (p.stream == Power && month && s.entries[s.count - 1].month != month)) {
+    if (rollover) {
+        // A full catalog can still append to its active segment. Evict only at rollover.
+        if (s.count == MAX_SEGMENTS && !removeEntry(p.stream, 0)) return false;
         if (!createSegment(p.stream, month)) return false;
     }
     auto& e = s.entries[s.count - 1];
@@ -441,10 +453,22 @@ void LogStorageManager::handle(protocol::CommandId command, const protocol::Comm
         auto& s = _stores[stream];
         if (gen != s.generation) { status(r, "generation_changed"); return; }
         for (uint8_t i = 0; i < s.count; ++i) if (s.entries[i].id == id) {
-            if (!s.entries[i].sealed && !createSegment(stream, s.entries[i].month)) {
-                status(r, "storage_full"); return;
+            if (s.count == 1) {
+                if (!createSegment(stream, s.entries[i].month)) {
+                    status(r, s.state); return;
+                }
+            } else if (!s.entries[i].sealed) {
+                // No writer can enter while this lock is held. The next append can rotate.
+                s.entries[i].sealed = true;
+                if (!removeEntry(stream, i)) {
+                    s.entries[i].sealed = false;
+                    status(r, "io_error");
+                    return;
+                }
+                status(r, "ok");
+                return;
             }
-            status(r, removeEntry(stream, i) ? "ok" : "active_segment"); return;
+            status(r, removeEntry(stream, i) ? "ok" : "io_error"); return;
         }
         status(r, "cursor_expired");
     }

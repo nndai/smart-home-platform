@@ -1,6 +1,8 @@
 package com.nndai.myhome.presentation.update
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,33 +35,22 @@ import androidx.compose.ui.window.DialogProperties
 fun AppUpdateDialog(
     viewModel: AppUpdateViewModel
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    LaunchedEffect(state) {
-        if (state is AppUpdateState.ReadyToInstall) {
-            val apkUri = (state as AppUpdateState.ReadyToInstall).apkUri
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-            }
-            context.startActivity(intent)
-            // After triggering install, we can reset state or keep it in ReadyToInstall
-            // Normally user will leave the app to install. 
-            // If they cancel, they might need to restart app to see prompt again.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+
+    LaunchedEffect(lifecycle, viewModel) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.observeDownloadWhileVisible()
         }
     }
 
-    if (state is AppUpdateState.UpdateAvailable || state is AppUpdateState.Downloading || state is AppUpdateState.ReadyToInstall || state is AppUpdateState.Error) {
-        
-        val isMandatory = (state as? AppUpdateState.UpdateAvailable)?.updateInfo?.is_mandatory == true ||
-                (state as? AppUpdateState.Downloading) != null || 
-                (state as? AppUpdateState.ReadyToInstall) != null
-                // If downloading or ready, we don't let them dismiss usually, but let's base it on actual data if possible.
-                // For simplicity, we just check if it's mandatory. Wait, when in Downloading state, we lose the updateInfo in current sealed class.
-                // Let's just lock the dialog if it's downloading to prevent issues.
-
-        val lockDialog = isMandatory || state is AppUpdateState.Downloading
+    if (state is AppUpdateState.UpdateAvailable || state is AppUpdateState.Downloading ||
+        state is AppUpdateState.ReadyToInstall || state is AppUpdateState.Error
+    ) {
+        val lockDialog = (state as? AppUpdateState.UpdateAvailable)?.updateInfo?.is_mandatory == true ||
+            state is AppUpdateState.Downloading || state is AppUpdateState.ReadyToInstall
 
         Dialog(
             onDismissRequest = {
@@ -109,11 +103,7 @@ fun AppUpdateDialog(
                                 }
                                 Button(
                                     onClick = {
-                                        viewModel.downloadUpdate(
-                                            context = context,
-                                            downloadUrl = currentState.updateInfo.download_url,
-                                            versionName = currentState.updateInfo.version_name
-                                        )
+                                        viewModel.downloadUpdate(currentState.updateInfo)
                                     }
                                 ) {
                                     Text("Cập nhật ngay")
@@ -126,19 +116,24 @@ fun AppUpdateDialog(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            LinearProgressIndicator(
-                                progress = { currentState.progress },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "${(currentState.progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                            val progress = currentState.progress
+                            if (progress == null) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "${(progress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                         }
                         is AppUpdateState.ReadyToInstall -> {
                             Text(
-                                text = "Đã tải xong. Đang mở trình cài đặt...",
+                                text = "Đã tải xong bản cập nhật.",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(modifier = Modifier.height(16.dp))
@@ -148,11 +143,17 @@ fun AppUpdateDialog(
                                         setDataAndType(currentState.apkUri, "application/vnd.android.package-archive")
                                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
                                     }
-                                    context.startActivity(intent)
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (_: ActivityNotFoundException) {
+                                        Toast.makeText(context, "Không tìm thấy trình cài đặt.", Toast.LENGTH_SHORT).show()
+                                    } catch (_: SecurityException) {
+                                        Toast.makeText(context, "Không có quyền mở trình cài đặt.", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Cài đặt thủ công")
+                                Text("Cài đặt")
                             }
                         }
                         is AppUpdateState.Error -> {

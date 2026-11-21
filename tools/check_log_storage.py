@@ -69,6 +69,7 @@ def main():
             file.write(b"\x52\x02\x01\x00\xff")
         run(executable, store, "reboot")
         run(executable, store, "codec")
+        run(executable, store / "retention", "retention")
         if args.kotlin:
             kotlin_check(root, output, args.gradle_cache, args.java, store / "codec.bin")
     print("Storage checks passed.")

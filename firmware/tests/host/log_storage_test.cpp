@@ -64,6 +64,38 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 10000 && state().strings[FieldId::Status] == "recovering"; ++i) step();
     assert(state().strings[FieldId::Status] == "ok"); step(100);
     const std::string mode = argv[2];
+    if (mode == "retention") {
+        constexpr uint32_t monthStep = 32u * 86400;
+        const uint32_t start = 1700000000;
+        for (uint32_t i = 0; i < LogStorageManager::MAX_SEGMENTS; ++i) {
+            assert(manager.enqueue(logv2::Power, "1|1|3600", start + i * monthStep));
+            step(4);
+        }
+        const auto full = state(logv2::Power);
+        assert(full.numbers.at(FieldId::Total) == LogStorageManager::MAX_SEGMENTS);
+        const auto oldest = full.numbers.at(FieldId::OldestSegmentId);
+        const uint32_t lastMonth = start + (LogStorageManager::MAX_SEGMENTS - 1) * monthStep;
+        assert(manager.enqueue(logv2::Power, "2|1|3600", lastMonth));
+        step(4);
+        assert(state(logv2::Power).numbers.at(FieldId::OldestSegmentId) == oldest);
+        assert(manager.enqueue(logv2::Power, "1|1|3600", lastMonth + monthStep));
+        step(4);
+        const auto rotated = state(logv2::Power);
+        assert(rotated.numbers.at(FieldId::Total) == LogStorageManager::MAX_SEGMENTS);
+        assert(rotated.numbers.at(FieldId::OldestSegmentId) == oldest + 1);
+
+        Request deletion;
+        deletion.numbers[FieldId::Stream] = logv2::Power;
+        deletion.numbers[FieldId::Generation] = rotated.numbers.at(FieldId::Generation);
+        deletion.numbers[FieldId::SegmentId] = rotated.numbers.at(FieldId::SegmentId);
+        assert(call(CommandId::DeleteLogSegment, deletion).strings.at(FieldId::Status) == "ok");
+        assert(state(logv2::Power).numbers.at(FieldId::OldestSegmentId) == oldest + 1);
+        assert(manager.enqueue(logv2::Power, "2|1|3600", lastMonth + monthStep));
+        step(4);
+        assert(state(logv2::Power).numbers.at(FieldId::SegmentId) > rotated.numbers.at(FieldId::SegmentId));
+        std::cout << "full catalog append, rollover and active deletion passed\n";
+        return 0;
+    }
     if (mode == "codec") {
         assert(logv2::checksum(reinterpret_cast<const uint8_t*>("123456789"),9) == 0xcbf43926);
         uint8_t bytes[1024];
